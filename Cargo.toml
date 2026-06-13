@@ -1,0 +1,99 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/protocol",
+    "crates/engine",
+    "crates/server",
+    "crates/client",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+authors = ["mewcode contributors"]
+publish = false
+
+[workspace.dependencies]
+# Core
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+futures = "0.3"
+async-trait = "0.1"
+
+# HTTP / SSE
+axum = "0.8"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace", "cors"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+eventsource-stream = "0.2"
+http = "1"
+
+# Database
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json", "macros", "migrate"] }
+
+# AI framework
+rig-core = { version = "0.38" }
+
+# Tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-appender = "0.2"
+
+# TUI
+ratatui = "0.30"
+crossterm = "0.29"
+tui-textarea = "0.7"
+tui-markdown = "0.3"
+syntect = "5"
+tachyonfx = "0.8"
+
+# CLI & config
+clap = { version = "4", features = ["derive", "env"] }
+figment = { version = "0.10", features = ["toml", "env"] }
+dirs = "5"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# IDs
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# Terminal sizes
+unicode-width = "0.2"
+unicode-segmentation = "1"
+
+# Tools
+globset = "0.4"
+grep = "0.3"
+ignore = "0.4"
+
+# Testing
+insta = { version = "1", features = ["yaml"] }
+proptest = "1"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
+panic = "abort"
+
+[profile.dev]
+opt-level = 0
+debug = true
+incremental = true
+
+[workspace.lints.rust]
+missing_docs = "allow"
+
+[workspace.metadata.cargo-all-features]
+denylist = ["mewcode-client"]

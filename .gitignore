@@ -1,0 +1,37 @@
+# Build artifacts
+target/
+**/target/
+
+# cargo backup files (from `rustup` switching toolchains, etc.)
+*.rs.bk
+**/*.rs.bk
+Cargo.lock.bak
+
+# MSVC Windows builds of rustc emit these debug symbols
+*.pdb
+**/*.pdb
+
+# Local config & secrets — never commit these
+.env
+.env.local
+.envrc
+**/.env
+**/.env.local
+
+# Docker volumes (postgres data lives here per docker-compose.yml)
+data/
+
+# Logs
+*.log
+**/*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~

@@ -1,0 +1,37 @@
+[package]
+name = "mewcode-engine"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+description = "AI agent harness for mewcode: rig-based providers, tools, and streaming."
+
+[dependencies]
+mewcode-protocol = { path = "../protocol" }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-appender = { workspace = true }
+
+rig-core = { workspace = true }
+reqwest = { workspace = true }
+http = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+dirs = { workspace = true }
+globset = { workspace = true }
+ignore = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

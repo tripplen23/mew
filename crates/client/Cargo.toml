@@ -1,0 +1,47 @@
+[package]
+name = "mewcode-client"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+publish.workspace = true
+default-run = "mewcode"
+
+description = "ratatui-based terminal UI for mewcode."
+
+[[bin]]
+name = "mewcode"
+path = "src/main.rs"
+
+[dependencies]
+mewcode-protocol = { path = "../protocol" }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+ratatui = { workspace = true }
+crossterm = { workspace = true }
+unicode-width = { workspace = true }
+unicode-segmentation = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+
+clap = { workspace = true }
+figment = { workspace = true }
+dirs = { workspace = true }
+
+reqwest = { workspace = true }
+eventsource-stream = { workspace = true }
+http = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
