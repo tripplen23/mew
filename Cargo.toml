@@ -37,9 +37,6 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "str
 eventsource-stream = "0.2"
 http = "1"
 
-# Database
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json", "macros", "migrate"] }
-
 # AI framework
 rig-core = { version = "0.38" }
 
@@ -79,6 +76,7 @@ ignore = "0.4"
 # Testing
 insta = { version = "1", features = ["yaml"] }
 proptest = "1"
+tempfile = "3"
 
 [profile.release]
 opt-level = 3

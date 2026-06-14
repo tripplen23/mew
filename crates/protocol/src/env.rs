@@ -8,8 +8,9 @@
 /// proxies it to the engine.
 pub const OPENCODE_GO_API_KEY: &str = "OPENCODE_GO_API_KEY";
 
-/// Postgres connection string. Optional in in-memory mode.
-pub const DATABASE_URL: &str = "DATABASE_URL";
+/// Optional override for the data directory where sessions are stored.
+/// Falls back to `$XDG_DATA_HOME/mewcode`, then `~/.local/share/mewcode`.
+pub const MEWCODE_DATA_DIR: &str = "MEWCODE_DATA_DIR";
 
 /// Optional TOML config file read by both the server and the client.
 pub const CONFIG_FILE: &str = "mewcode.toml";

@@ -1,4 +1,5 @@
-//! Session CRUD. In-memory for now; replaced by sqlx in Phase 4.
+//! Session CRUD. Backed by the in-memory store until the filesystem
+//! `SessionStore` wiring lands.
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;

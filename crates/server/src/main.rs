@@ -1,5 +1,4 @@
-use mewcode_protocol::env::DATABASE_URL;
-use mewcode_server::{config::ServerConfig, db, AppState};
+use mewcode_server::{config::ServerConfig, AppState};
 use tokio::net::TcpListener;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
@@ -15,15 +14,7 @@ async fn main() -> anyhow::Result<()> {
         .parse()
         .expect("MEWCODE_HOST/MEWCODE_PORT must form a valid SocketAddr");
 
-    let pool = match &config.database_url {
-        Some(url) => Some(db::connect(url).await?),
-        None => {
-            tracing::warn!("{DATABASE_URL} is not set; running in in-memory mode");
-            None
-        }
-    };
-
-    let state = AppState::new(config.clone(), pool);
+    let state = AppState::new(config.clone());
 
     let listener = TcpListener::bind(addr).await?;
     tracing::info!(%addr, "mewcode server listening");

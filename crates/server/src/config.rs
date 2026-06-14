@@ -2,7 +2,7 @@
 
 use figment::providers::{Env, Format, Toml};
 use figment::Figment;
-use mewcode_protocol::env::{CONFIG_FILE, DATABASE_URL, OPENCODE_GO_API_KEY};
+use mewcode_protocol::env::{CONFIG_FILE, OPENCODE_GO_API_KEY};
 use serde::Deserialize;
 
 /// Default host the server binds to.
@@ -26,9 +26,6 @@ pub struct ServerConfig {
     /// Port to bind to.
     #[serde(default = "default_port")]
     pub port: u16,
-    /// Postgres connection string.
-    #[serde(default)]
-    pub database_url: Option<String>,
     /// OpenCode Go API key. Required.
     pub opencode_go_api_key: String,
     /// Default model.
@@ -50,16 +47,11 @@ impl ServerConfig {
             .merge(Toml::file(CONFIG_FILE).nested())
             .merge(Env::prefixed(ENV_PREFIX).split("__"));
 
-        // `OPENCODE_GO_API_KEY` and `DATABASE_URL` are the canonical env
-        // vars; pull them in if the prefixed form isn't set.
+        // `OPENCODE_GO_API_KEY` is the canonical env var; pull it in if the
+        // prefixed form isn't set.
         if let Ok(key) = std::env::var(OPENCODE_GO_API_KEY) {
             if figment.find_metadata("opencode_go_api_key").is_none() {
                 figment = figment.merge(("opencode_go_api_key", key));
-            }
-        }
-        if let Ok(url) = std::env::var(DATABASE_URL) {
-            if figment.find_metadata("database_url").is_none() {
-                figment = figment.merge(("database_url", url));
             }
         }
 

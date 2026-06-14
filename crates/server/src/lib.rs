@@ -3,10 +3,10 @@
 #![forbid(unsafe_code)]
 
 pub mod config;
-pub mod db;
 pub mod error;
 pub mod routes;
 pub mod sse;
+pub mod store;
 
 pub use config::ServerConfig;
 pub use error::AppError;
@@ -26,18 +26,16 @@ use crate::routes::sessions::MemoryStore;
 pub struct AppState {
     /// Server config.
     pub config: ServerConfig,
-    /// Database pool. `None` in in-memory mode.
-    pub pool: Option<sqlx::PgPool>,
-    /// In-memory session store, used while the sqlx layer is being built.
+    /// In-memory session store. Replaced by the filesystem-backed
+    /// `SessionStore` when the Phase 4 wiring lands.
     pub store: Arc<RwLock<MemoryStore>>,
 }
 
 impl AppState {
     /// Construct a new state with an empty in-memory store.
-    pub fn new(config: ServerConfig, pool: Option<sqlx::PgPool>) -> Self {
+    pub fn new(config: ServerConfig) -> Self {
         Self {
             config,
-            pool,
             store: Arc::new(RwLock::new(MemoryStore::default())),
         }
     }

@@ -16,7 +16,7 @@ A Cargo workspace with four crates:
 
 - `crates/protocol` — wire-protocol types. No I/O. The single source of truth for messages, models, tools, skills, and the streaming event shape.
 - `crates/engine` — AI agent harness. Talks to OpenCode Go, registers local tools, runs the tool-calling loop.
-- `crates/server` — axum + sqlx backend. Session storage, SSE chat streaming, OpenCode Go proxy.
+- `crates/server` — axum backend. Local filesystem session storage, SSE chat streaming, OpenCode Go proxy.
 - `crates/client` — ratatui TUI.
 
 The dependency direction is a partial order, not a strict tree. The actual graph:

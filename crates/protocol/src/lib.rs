@@ -1,7 +1,7 @@
 //! Shared protocol types for mewcode.
 //!
 //! No I/O. Defines the data shapes that flow between the client (TUI),
-//! the server (axum + sqlx), and the engine (rig-based agent harness).
+//! the server (axum + filesystem store), and the engine (rig-based agent harness).
 
 #![forbid(unsafe_code)]
 
