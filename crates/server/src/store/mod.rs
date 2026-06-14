@@ -4,6 +4,8 @@
 //! backend (in-memory or filesystem). Backends return [`StoreError`] at their
 //! boundary; no backend-specific error type appears in the trait signatures.
 
+use std::path::PathBuf;
+
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use mewcode_protocol::{Message, Mode, ModelId};
@@ -11,6 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::AppError;
 
+pub mod fs;
 pub mod memory;
 
 /// Which storage backend is active.
@@ -118,6 +121,13 @@ pub struct NewSession {
 pub trait SessionStore: Send + Sync {
     /// Which backend this store represents. Synchronous.
     fn backend(&self) -> Backend;
+
+    /// The resolved data directory, when the backend is filesystem-backed.
+    ///
+    /// Returns `None` for non-persistent backends (the in-memory store).
+    fn data_dir_path(&self) -> Option<PathBuf> {
+        None
+    }
 
     /// List all sessions as summaries.
     async fn list_sessions(&self) -> Result<Vec<SessionSummary>, StoreError>;

@@ -50,3 +50,4 @@ rig-core = { workspace = true }
 tower = { workspace = true, features = ["util"] }
 http-body-util = "0.1"
 tempfile = { workspace = true }
+proptest = { workspace = true }

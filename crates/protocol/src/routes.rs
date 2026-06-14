@@ -18,3 +18,6 @@ pub const SESSION_BY_ID: &str = "/sessions/{id}";
 
 /// `POST /chat` — SSE chat stream.
 pub const CHAT: &str = "/chat";
+
+/// `GET /storage/status` — active storage backend and resolved data dir.
+pub const STORAGE_STATUS: &str = "/storage/status";
