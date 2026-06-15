@@ -3,7 +3,7 @@ use std::str::FromStr;
 /// All models reachable through an OpenCode Go subscription. Some hit
 /// the Anthropic-compatible `/v1/messages` endpoint, the rest hit
 /// OpenAI-compatible `/v1/chat/completions`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 pub enum ModelId {
     // === Anthropic-compatible /v1/messages ===
     #[serde(rename = "minimax-m3")]
@@ -155,7 +155,7 @@ impl FromStr for ModelId {
 }
 
 /// Which OpenCode Go endpoint a model is served from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum ModelKind {
     /// `/v1/messages` (Anthropic-compatible).

@@ -13,7 +13,7 @@ use crate::AppState;
 /// `backend` is always exactly the active store's wire label (`"memory"` or
 /// `"filesystem"`); `data_dir` is the resolved path string for the filesystem
 /// backend and `null` for the in-memory backend.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct StorageStatus {
     /// Active backend label, one of `"memory"` or `"filesystem"`.
     pub backend: String,
@@ -23,6 +23,14 @@ pub struct StorageStatus {
 
 /// `GET /storage/status` — report the active backend and data dir. Reads only
 /// store metadata, never session or message content.
+#[utoipa::path(
+    get,
+    path = "/storage/status",
+    tag = "meta",
+    responses(
+        (status = 200, description = "Active storage backend and resolved data dir", body = StorageStatus),
+    ),
+)]
 pub async fn status(State(state): State<AppState>) -> Json<StorageStatus> {
     Json(StorageStatus {
         backend: state.store.backend().as_str().to_owned(),

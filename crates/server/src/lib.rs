@@ -4,6 +4,7 @@
 
 pub mod config;
 pub mod error;
+pub mod openapi;
 pub mod routes;
 pub mod sse;
 pub mod store;
@@ -17,7 +18,10 @@ use std::sync::Arc;
 use axum::Router;
 use mewcode_protocol::routes::{CHAT, HEALTH, MODELS, SESSIONS, SESSION_BY_ID, STORAGE_STATUS};
 use tower_http::trace::TraceLayer;
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 
+use crate::openapi::ApiDoc;
 use crate::store::SessionStore;
 
 /// Shared application state.
@@ -56,6 +60,7 @@ pub fn build_app(state: AppState) -> Router {
         .route(STORAGE_STATUS, axum::routing::get(routes::storage::status))
         .with_state(state)
         .layer(TraceLayer::new_for_http())
+        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
 }
 
 /// Run the server, blocking the current task.

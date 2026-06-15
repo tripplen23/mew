@@ -2,7 +2,7 @@ use crate::{Message, MessagePart, Mode, ModelId};
 
 /// Server → client streaming events. Sent over SSE as JSON lines; the
 /// shape mirrors the AI SDK's `UIMessageStreamResponse`.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum StreamEvent {
     /// Stream has started; the assistant message id is known.
@@ -63,7 +63,7 @@ impl StreamEvent {
 }
 
 /// Client → server request to stream a chat turn.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 pub struct ChatRequest {
     /// Session this turn belongs to.
     pub session_id: uuid::Uuid,

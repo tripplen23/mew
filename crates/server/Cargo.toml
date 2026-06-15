@@ -39,6 +39,10 @@ uuid = { workspace = true }
 clap = { workspace = true }
 figment = { workspace = true }
 dirs = { workspace = true }
+dotenvy = { workspace = true }
+
+utoipa = { workspace = true }
+utoipa-swagger-ui = { workspace = true }
 
 reqwest = { workspace = true }
 eventsource-stream = { workspace = true }

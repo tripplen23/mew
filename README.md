@@ -38,6 +38,16 @@ cp .env.example .env
 cargo run -- tui
 ```
 
+## Server API
+
+- **Run server with command**:
+
+```bash
+cargo run -p mewcode-server
+```
+
+- **Swagger UI** — http://127.0.0.1:3737/swagger-ui/
+
 ## License
 
 MIT

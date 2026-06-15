@@ -65,7 +65,7 @@ impl From<StoreError> for AppError {
 }
 
 /// A full session including its message history.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct Session {
     /// Unique session identifier.
     pub id: uuid::Uuid,
@@ -84,7 +84,7 @@ pub struct Session {
 }
 
 /// A lightweight view of a session, without message history.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct SessionSummary {
     /// Unique session identifier.
     pub id: uuid::Uuid,
@@ -102,7 +102,7 @@ pub struct SessionSummary {
 ///
 /// Values are already resolved: unparsable inputs are rejected upstream and
 /// surfaced as [`StoreError::Invalid`].
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct NewSession {
     /// Human-readable title.
     pub title: String,

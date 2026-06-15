@@ -57,6 +57,11 @@ tachyonfx = "0.8"
 clap = { version = "4", features = ["derive", "env"] }
 figment = { version = "0.10", features = ["toml", "env"] }
 dirs = "5"
+dotenvy = "0.15"
+
+# OpenAPI / Swagger UI
+utoipa = { version = "5", features = ["axum_extras", "chrono", "uuid"] }
+utoipa-swagger-ui = { version = "9", features = ["axum"] }
 
 # Time
 chrono = { version = "0.4", features = ["serde"] }

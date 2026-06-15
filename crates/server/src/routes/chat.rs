@@ -14,6 +14,17 @@ use std::convert::Infallible;
 use crate::sse::from_channel;
 use crate::AppState;
 
+/// `POST /chat` — stream a chat turn. The response is `text/event-stream`;
+/// each `data:` line is a JSON [`StreamEvent`].
+#[utoipa::path(
+    post,
+    path = "/chat",
+    tag = "chat",
+    request_body = ChatRequest,
+    responses(
+        (status = 200, description = "SSE stream of StreamEvent", body = StreamEvent, content_type = "text/event-stream"),
+    ),
+)]
 pub async fn chat_stream(
     State(state): State<AppState>,
     Json(req): Json<ChatRequest>,

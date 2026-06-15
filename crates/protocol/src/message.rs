@@ -1,5 +1,5 @@
 /// A chat message exchanged between client, server, and engine.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 pub struct Message {
     /// Stable identifier for this message.
     pub id: uuid::Uuid,
@@ -39,7 +39,7 @@ impl Message {
 }
 
 /// Who produced a message.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
     /// Human input.
@@ -52,7 +52,7 @@ pub enum Role {
 
 /// The ordered, typed parts of a message. Mirrors the AI SDK's
 /// `UIMessage` part model.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum MessagePart {
     /// Plain text.
@@ -72,7 +72,7 @@ pub enum MessagePart {
 }
 
 /// A request from the model to invoke a tool.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 pub struct ToolCall {
     /// Stable id used to match the call with its result.
     pub id: String,
@@ -83,7 +83,7 @@ pub struct ToolCall {
 }
 
 /// The result of a tool invocation.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 pub struct ToolResult {
     /// The id of the originating [`ToolCall`].
     pub call_id: String,
