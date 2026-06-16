@@ -30,6 +30,9 @@ tracing-subscriber = { workspace = true }
 
 ratatui = { workspace = true }
 crossterm = { workspace = true }
+tui-textarea = { workspace = true }
+tui-markdown = { workspace = true }
+syntect = { workspace = true }
 unicode-width = { workspace = true }
 unicode-segmentation = { workspace = true }
 chrono = { workspace = true }
@@ -45,3 +48,4 @@ http = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }
+proptest = { workspace = true }

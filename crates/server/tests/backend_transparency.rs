@@ -177,8 +177,10 @@ async fn apply(
 fn op_strategy() -> impl Strategy<Value = Op> {
     prop_oneof![
         "[a-z ]{0,8}".prop_map(|title| Op::Create { title }),
-        (0usize..8, "[a-z ]{0,8}")
-            .prop_map(|(session_index, text)| Op::Append { session_index, text }),
+        (0usize..8, "[a-z ]{0,8}").prop_map(|(session_index, text)| Op::Append {
+            session_index,
+            text
+        }),
         (0usize..8).prop_map(|session_index| Op::Delete { session_index }),
         (0usize..8).prop_map(|session_index| Op::Get { session_index }),
         Just(Op::List),

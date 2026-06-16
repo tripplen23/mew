@@ -51,7 +51,6 @@ crossterm = "0.29"
 tui-textarea = "0.7"
 tui-markdown = "0.3"
 syntect = "5"
-tachyonfx = "0.8"
 
 # CLI & config
 clap = { version = "4", features = ["derive", "env"] }

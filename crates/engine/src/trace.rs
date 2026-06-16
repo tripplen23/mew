@@ -1,6 +1,6 @@
 //! Tracing setup.
 
-use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 /// Default `tracing` filter when `RUST_LOG` is unset.
 pub const DEFAULT_LOG: &str = "info";

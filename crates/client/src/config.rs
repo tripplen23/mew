@@ -1,7 +1,7 @@
 //! Client configuration.
 
-use figment::providers::{Env, Format, Toml};
 use figment::Figment;
+use figment::providers::{Env, Format, Toml};
 use mewcode_protocol::env::CONFIG_FILE;
 use serde::Deserialize;
 
@@ -38,9 +38,15 @@ pub struct ClientConfig {
     pub log: String,
 }
 
-fn default_api_url() -> String { DEFAULT_API_URL.to_string() }
-fn default_theme() -> String { DEFAULT_THEME.to_string() }
-fn default_log() -> String { DEFAULT_LOG.to_string() }
+fn default_api_url() -> String {
+    DEFAULT_API_URL.to_string()
+}
+fn default_theme() -> String {
+    DEFAULT_THEME.to_string()
+}
+fn default_log() -> String {
+    DEFAULT_LOG.to_string()
+}
 
 /// Load from env + optional toml. `MEWCODE_API_URL` is the canonical
 /// server URL env var.
@@ -50,10 +56,7 @@ impl ClientConfig {
             .merge(Toml::file(CONFIG_FILE).nested())
             .merge(Env::prefixed(ENV_PREFIX).split("__"));
         if let Ok(url) = std::env::var(ENV_API_URL) {
-            return figment
-                .merge(("api_url", url))
-                .extract()
-                .map_err(Box::new);
+            return figment.merge(("api_url", url)).extract().map_err(Box::new);
         }
         figment.extract().map_err(Box::new)
     }

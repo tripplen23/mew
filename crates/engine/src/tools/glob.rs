@@ -5,7 +5,7 @@ use mewcode_protocol::tool::names;
 use mewcode_protocol::{
     ToolAnnotations, ToolContracts, ToolDescriptor, ToolError, ToolExample, ToolOutput,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::ProjectContext;
 
@@ -73,16 +73,24 @@ impl ToolContracts for GlobTool {
         let pattern = input
             .get("pattern")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| ToolError::invalid_input("missing `pattern`", "pass a string `pattern` field"))?;
-        let path = input.get("path").and_then(|v| v.as_str()).unwrap_or(".");
-        let resolved = mewcode_protocol::tool::resolve_inside_root(&self.ctx.root, std::path::Path::new(path))
-            .map_err(|e| ToolError::Rejected {
-                message: e.to_string(),
-                hint: Some("paths must stay inside the project root".into()),
+            .ok_or_else(|| {
+                ToolError::invalid_input("missing `pattern`", "pass a string `pattern` field")
             })?;
+        let path = input.get("path").and_then(|v| v.as_str()).unwrap_or(".");
+        let resolved =
+            mewcode_protocol::tool::resolve_inside_root(&self.ctx.root, std::path::Path::new(path))
+                .map_err(|e| ToolError::Rejected {
+                    message: e.to_string(),
+                    hint: Some("paths must stay inside the project root".into()),
+                })?;
 
         let glob = globset::Glob::new(pattern)
-            .map_err(|e| ToolError::invalid_input(format!("invalid glob: {e}"), "double-check the pattern syntax"))?
+            .map_err(|e| {
+                ToolError::invalid_input(
+                    format!("invalid glob: {e}"),
+                    "double-check the pattern syntax",
+                )
+            })?
             .compile_matcher();
 
         let mut files: Vec<String> = Vec::new();

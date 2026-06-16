@@ -3,7 +3,7 @@
 //! Generated at compile time from handler `#[utoipa::path]` annotations and
 //! the `#[derive(utoipa::ToSchema)]` types in the `routes/` and `store/`
 //! modules. The spec is exposed as JSON at `/api-docs/openapi.json`; a
-//! Swagger UI is mounted at `/swagger-ui` by [`mount_openapi`].
+//! Swagger UI is mounted at `/swagger-ui` by `mount_openapi`.
 
 use serde::Serialize;
 use utoipa::OpenApi;

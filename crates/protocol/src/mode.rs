@@ -1,7 +1,18 @@
 use std::str::FromStr;
 
 /// Build vs Plan mode. `Plan` is read-only; `Build` adds write tools.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+#[derive(
+    Debug,
+    Default,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    utoipa::ToSchema,
+)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum Mode {
     /// Full read + write toolset.
@@ -42,4 +53,3 @@ impl FromStr for Mode {
         }
     }
 }
-

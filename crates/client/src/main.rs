@@ -6,7 +6,11 @@ use mewcode_client::ClientConfig;
 const SERVER_BINARY: &str = "mewcode-server";
 
 #[derive(Debug, Parser)]
-#[command(name = "mewcode", version, about = "A hyper-sick terminal coding agent")]
+#[command(
+    name = "mewcode",
+    version,
+    about = "A hyper-sick terminal coding agent"
+)]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,

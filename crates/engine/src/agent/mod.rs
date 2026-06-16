@@ -14,11 +14,7 @@ use self::prompt::format_tool_descriptors;
 
 /// Build the system prompt for the given mode.
 /// PLAN emphasises analysis, BUILD implementation.
-pub fn build_system_prompt(
-    mode: Mode,
-    skills: &SkillRegistry,
-    tools: &ToolRegistry,
-) -> String {
+pub fn build_system_prompt(mode: Mode, skills: &SkillRegistry, tools: &ToolRegistry) -> String {
     let mut parts: Vec<String> = Vec::new();
 
     parts.push(

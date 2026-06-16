@@ -1,7 +1,7 @@
 //! Server configuration.
 
-use figment::providers::{Env, Format, Toml};
 use figment::Figment;
+use figment::providers::{Env, Format, Toml};
 use mewcode_protocol::env::{CONFIG_FILE, OPENCODE_GO_API_KEY};
 use serde::Deserialize;
 
@@ -36,9 +36,15 @@ pub struct ServerConfig {
     pub log: String,
 }
 
-fn default_host() -> String { DEFAULT_HOST.to_string() }
-fn default_port() -> u16 { DEFAULT_PORT }
-fn default_log() -> String { DEFAULT_LOG.to_string() }
+fn default_host() -> String {
+    DEFAULT_HOST.to_string()
+}
+fn default_port() -> u16 {
+    DEFAULT_PORT
+}
+fn default_log() -> String {
+    DEFAULT_LOG.to_string()
+}
 
 impl ServerConfig {
     /// Load from env vars and optional `mewcode.toml`.

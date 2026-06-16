@@ -57,7 +57,10 @@ fn format_tool_descriptor(d: &ToolDescriptor) -> String {
             d.max_response_chars
         ));
     } else {
-        s.push_str(&format!("**Max response:** ~{} chars\n\n", d.max_response_chars));
+        s.push_str(&format!(
+            "**Max response:** ~{} chars\n\n",
+            d.max_response_chars
+        ));
     }
 
     s.push_str("**Input schema:**\n```json\n");

@@ -17,12 +17,19 @@ fn bundled_skills_load() {
     for s in reg.skills() {
         println!(
             "  - {} ({:?}): {}",
-            s.skill.name,
-            s.source,
-            s.skill.description
+            s.skill.name, s.source, s.skill.description
         );
     }
-    assert!(!reg.is_empty(), "expected to find at least one bundled skill");
-    assert!(reg.get("review-pr").is_some(), "expected the `review-pr` skill");
-    assert!(reg.get("write-rust-error").is_some(), "expected the `write-rust-error` skill");
+    assert!(
+        !reg.is_empty(),
+        "expected to find at least one bundled skill"
+    );
+    assert!(
+        reg.get("review-pr").is_some(),
+        "expected the `review-pr` skill"
+    );
+    assert!(
+        reg.get("write-rust-error").is_some(),
+        "expected the `write-rust-error` skill"
+    );
 }

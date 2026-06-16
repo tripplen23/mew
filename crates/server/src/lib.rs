@@ -16,7 +16,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::Router;
-use mewcode_protocol::routes::{CHAT, HEALTH, MODELS, SESSIONS, SESSION_BY_ID, STORAGE_STATUS};
+use mewcode_protocol::routes::{CHAT, HEALTH, MODELS, SESSION_BY_ID, SESSIONS, STORAGE_STATUS};
 use tower_http::trace::TraceLayer;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;

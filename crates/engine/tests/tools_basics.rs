@@ -10,8 +10,8 @@ use mewcode_engine::skills::{SkillRegistry, SkillSource};
 use mewcode_engine::tools::{
     GlobTool, ListDirectoryTool, ProjectContext, ReadFileTool, UseSkillTool,
 };
-use mewcode_protocol::tool::ToolContracts;
 use mewcode_protocol::ToolError;
+use mewcode_protocol::tool::ToolContracts;
 use serde_json::json;
 
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -19,8 +19,7 @@ static COUNTER: AtomicUsize = AtomicUsize::new(0);
 fn tmp() -> ProjectContext {
     let n = COUNTER.fetch_add(1, Ordering::Relaxed);
     let pid = std::process::id();
-    let dir = std::env::temp_dir()
-        .join(format!("mewcode-tool-test-{pid}-{n}"));
+    let dir = std::env::temp_dir().join(format!("mewcode-tool-test-{pid}-{n}"));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(dir.join("src")).unwrap();
     std::fs::write(dir.join("src/lib.rs"), "pub fn hello() {}").unwrap();
@@ -64,13 +63,16 @@ async fn glob_finds_matching_files() {
     let tool = GlobTool::new(ctx);
     let out = tool.execute(json!({ "pattern": "**/*.rs" })).await.unwrap();
     let files = out.0["files"].as_array().unwrap();
-    assert!(files.iter().any(|f| f.as_str().unwrap().ends_with("lib.rs")));
+    assert!(
+        files
+            .iter()
+            .any(|f| f.as_str().unwrap().ends_with("lib.rs"))
+    );
 }
 
 #[tokio::test]
 async fn use_skill_returns_body() {
-    let tmpdir = std::env::temp_dir()
-        .join(format!("mewcode-skill-test-{}", std::process::id()));
+    let tmpdir = std::env::temp_dir().join(format!("mewcode-skill-test-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmpdir);
     std::fs::create_dir_all(tmpdir.join("alpha")).unwrap();
     std::fs::write(

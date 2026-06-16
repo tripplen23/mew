@@ -34,8 +34,6 @@ Prerequisites:
 ```bash
 cp .env.example .env
 # fill in OPENCODE_GO_API_KEY
-
-cargo run -- tui
 ```
 
 ## Server API
@@ -47,6 +45,12 @@ cargo run -p mewcode-server
 ```
 
 - **Swagger UI** — http://127.0.0.1:3737/swagger-ui/
+
+## TUI
+
+```bash
+cargo run -p mewcode-client -- tui
+```
 
 ## License
 

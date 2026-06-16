@@ -11,8 +11,8 @@ use std::sync::Arc;
 use mewcode_engine::agent::build_system_prompt;
 use mewcode_engine::skills::{SkillRegistry, SkillSource};
 use mewcode_engine::tools::{
-    default_registry, GlobTool, ListDirectoryTool, ProjectContext, ReadFileTool, ToolRegistry,
-    UseSkillTool,
+    GlobTool, ListDirectoryTool, ProjectContext, ReadFileTool, ToolRegistry, UseSkillTool,
+    default_registry,
 };
 use mewcode_protocol::Mode;
 

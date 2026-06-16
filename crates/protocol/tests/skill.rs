@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use mewcode_protocol::{parse_skill_md, Skill, SkillError};
+use mewcode_protocol::{Skill, SkillError, parse_skill_md};
 
 const SAMPLE: &str = r#"---
 name: review-pr
@@ -35,7 +35,10 @@ fn missing_frontmatter_is_error() {
 fn missing_name_is_error() {
     let raw = "---\ndescription: foo\n---\nbody\n";
     let err = parse_skill_md(raw, Path::new("SKILL.md")).unwrap_err();
-    assert!(matches!(err, SkillError::MissingField { field: "name", .. }));
+    assert!(matches!(
+        err,
+        SkillError::MissingField { field: "name", .. }
+    ));
 }
 
 #[test]

@@ -1,9 +1,9 @@
-//! Storage status. Reports the active [`SessionStore`] backend and, for the
-//! filesystem backend, the resolved data directory — without reading any
-//! session or message data.
+//! Storage status. Reports the active [`crate::store::SessionStore`] backend
+//! and, for the filesystem backend, the resolved data directory — without
+//! reading any session or message data.
 
-use axum::extract::State;
 use axum::Json;
+use axum::extract::State;
 use serde::Serialize;
 
 use crate::AppState;

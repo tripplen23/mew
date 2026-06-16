@@ -1,8 +1,8 @@
 //! Application error type with `IntoResponse` impl.
 
+use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::Json;
 use serde_json::json;
 
 #[derive(Debug, thiserror::Error)]

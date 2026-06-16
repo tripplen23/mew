@@ -13,8 +13,8 @@ use mewcode_protocol::routes::SESSIONS;
 use mewcode_protocol::{Mode, ModelId};
 use mewcode_server::store::memory::MemoryStore;
 use mewcode_server::store::{Session, SessionSummary};
-use mewcode_server::{build_app, AppState, ServerConfig};
-use serde_json::{json, Value};
+use mewcode_server::{AppState, ServerConfig, build_app};
+use serde_json::{Value, json};
 use tower::ServiceExt;
 
 /// A throwaway server config; the session handlers never touch the API key.
@@ -146,7 +146,10 @@ async fn list_returns_summaries_newest_first_without_messages() {
 
     let (status, bytes) = send(
         app,
-        Request::builder().uri(SESSIONS).body(Body::empty()).unwrap(),
+        Request::builder()
+            .uri(SESSIONS)
+            .body(Body::empty())
+            .unwrap(),
     )
     .await;
     assert_eq!(status, StatusCode::OK);

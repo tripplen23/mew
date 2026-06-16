@@ -115,7 +115,7 @@ pub struct NewSession {
 /// Storage abstraction over session persistence.
 ///
 /// Implementations must be object-safe so they can be held behind
-/// `Arc<dyn SessionStore>`; [`async_trait`] is used because native
+/// `Arc<dyn SessionStore>`; [`macro@async_trait`] is used because native
 /// async-fn-in-trait is not yet dyn-compatible with a clean `Send` bound.
 #[async_trait]
 pub trait SessionStore: Send + Sync {
@@ -142,9 +142,5 @@ pub trait SessionStore: Send + Sync {
     async fn delete_session(&self, id: uuid::Uuid) -> Result<(), StoreError>;
 
     /// Append a message to a session's history.
-    async fn append_message(
-        &self,
-        id: uuid::Uuid,
-        message: Message,
-    ) -> Result<(), StoreError>;
+    async fn append_message(&self, id: uuid::Uuid, message: Message) -> Result<(), StoreError>;
 }

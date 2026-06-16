@@ -70,7 +70,9 @@ pub fn truncate_with_marker(value: &str, limit: usize) -> String {
     }
     let truncated: String = value.chars().take(limit).collect();
     let total = value.chars().count();
-    format!("{truncated}\n\n… [truncated: {total} total chars, showing first {limit}. Re-call with a narrower path/pattern/limit to see more.]")
+    format!(
+        "{truncated}\n\n… [truncated: {total} total chars, showing first {limit}. Re-call with a narrower path/pattern/limit to see more.]"
+    )
 }
 
 /// Verbosity the model can request for a tool's response.
@@ -147,7 +149,7 @@ pub struct ToolExample {
 }
 
 /// Full description of a tool, sent to the model and stored in the
-/// [`ToolRegistry`].
+/// `ToolRegistry`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolDescriptor {
     /// snake_case tool name.
@@ -321,9 +323,7 @@ impl From<&ToolError> for ToolErrorPayload {
                 format!("tool '{name}' is not registered"),
                 Some("use one of the tools listed in your system prompt".into()),
             ),
-            ToolError::Other { message, hint } => {
-                ("other".into(), message.clone(), hint.clone())
-            }
+            ToolError::Other { message, hint } => ("other".into(), message.clone(), hint.clone()),
         };
         ToolErrorPayload {
             error: true,

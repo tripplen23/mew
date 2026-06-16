@@ -6,7 +6,7 @@ use mewcode_protocol::{
     ResponseFormat, ToolAnnotations, ToolContracts, ToolDescriptor, ToolError, ToolExample,
     ToolOutput,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::ProjectContext;
 
@@ -81,10 +81,9 @@ impl ToolContracts for ReadFileTool {
     }
 
     async fn execute(&self, input: Value) -> Result<ToolOutput, ToolError> {
-        let path = input
-            .get("path")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ToolError::invalid_input("missing `path`", "pass a string `path` field"))?;
+        let path = input.get("path").and_then(|v| v.as_str()).ok_or_else(|| {
+            ToolError::invalid_input("missing `path`", "pass a string `path` field")
+        })?;
 
         let response_format: ResponseFormat = input
             .get("response_format")
@@ -95,22 +94,29 @@ impl ToolContracts for ReadFileTool {
             })
             .unwrap_or_default();
 
-        let resolved = mewcode_protocol::tool::resolve_inside_root(&self.ctx.root, std::path::Path::new(path))
-            .map_err(|e| ToolError::Rejected {
-                message: e.to_string(),
-                hint: Some("paths must stay inside the project root".into()),
-            })?;
+        let resolved =
+            mewcode_protocol::tool::resolve_inside_root(&self.ctx.root, std::path::Path::new(path))
+                .map_err(|e| ToolError::Rejected {
+                    message: e.to_string(),
+                    hint: Some("paths must stay inside the project root".into()),
+                })?;
 
         let content = std::fs::read_to_string(&resolved).map_err(|e| {
             let hint: Option<String> = if e.kind() == std::io::ErrorKind::NotFound {
                 Some("check the file exists; use `glob` to find files when uncertain".into())
             } else if e.kind() == std::io::ErrorKind::InvalidData {
-                Some("the file is binary; try `grep` with a pattern, or read a different file".into())
+                Some(
+                    "the file is binary; try `grep` with a pattern, or read a different file"
+                        .into(),
+                )
             } else {
                 None
             };
             match hint {
-                Some(h) => ToolError::Rejected { message: e.to_string(), hint: Some(h) },
+                Some(h) => ToolError::Rejected {
+                    message: e.to_string(),
+                    hint: Some(h),
+                },
                 None => ToolError::Io(e),
             }
         })?;

@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use mewcode_protocol::{
     ToolAnnotations, ToolContracts, ToolDescriptor, ToolError, ToolExample, ToolOutput,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::Skills;
 
@@ -62,10 +62,9 @@ impl ToolContracts for UseSkillTool {
     }
 
     async fn execute(&self, input: Value) -> Result<ToolOutput, ToolError> {
-        let name = input
-            .get("name")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ToolError::invalid_input("missing `name`", "pass a string `name` field"))?;
+        let name = input.get("name").and_then(|v| v.as_str()).ok_or_else(|| {
+            ToolError::invalid_input("missing `name`", "pass a string `name` field")
+        })?;
 
         let body = self
             .skills

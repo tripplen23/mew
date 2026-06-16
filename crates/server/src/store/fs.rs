@@ -172,8 +172,7 @@ fn read_meta(meta_path: &Path) -> Result<MetaJson, StoreError> {
         }
         Err(e) => return Err(StoreError::Io(e)),
     };
-    serde_json::from_str(&raw)
-        .map_err(|e| StoreError::Invalid(format!("corrupt {META_FILE}: {e}")))
+    serde_json::from_str(&raw).map_err(|e| StoreError::Invalid(format!("corrupt {META_FILE}: {e}")))
 }
 
 /// Read and replay `messages.jsonl` in append order.
@@ -202,9 +201,10 @@ fn read_messages(messages_path: &Path) -> Result<Vec<Message>, StoreError> {
                 tracing::warn!("ignoring unparseable trailing line in {MESSAGES_FILE}: {e}");
             }
             Err(e) => {
-                return Err(StoreError::Invalid(
-                    format!("corrupt {MESSAGES_FILE} at line {}: {e}", i + 1),
-                ));
+                return Err(StoreError::Invalid(format!(
+                    "corrupt {MESSAGES_FILE} at line {}: {e}",
+                    i + 1
+                )));
             }
         }
     }

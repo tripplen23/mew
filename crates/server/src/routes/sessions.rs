@@ -1,15 +1,15 @@
-//! Session CRUD. Delegates to the active [`SessionStore`] backend held in
-//! [`AppState`].
+//! Session CRUD. Delegates to the active [`crate::store::SessionStore`] backend
+//! held in [`AppState`].
 
+use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::Json;
 use mewcode_protocol::{Mode, ModelId};
 use serde::Deserialize;
 
-use crate::store::{NewSession, Session, SessionSummary};
 use crate::AppError;
 use crate::AppState;
+use crate::store::{NewSession, Session, SessionSummary};
 
 /// Request body for `POST /sessions`.
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
@@ -95,7 +95,7 @@ pub async fn create(
 
 /// `DELETE /sessions/{id}` — delete a session and its message history.
 /// Returns:
-/// `204 No Content` on success, 
+/// `204 No Content` on success,
 /// `404` when the session does not exist.
 #[utoipa::path(
     delete,

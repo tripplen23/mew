@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use mewcode_server::store::fs::{resolve_data_dir, FsStore};
-use mewcode_server::{config::ServerConfig, AppState};
+use mewcode_server::store::fs::{FsStore, resolve_data_dir};
+use mewcode_server::{AppState, config::ServerConfig};
 use tokio::net::TcpListener;
-use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

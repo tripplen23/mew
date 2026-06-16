@@ -2,7 +2,7 @@
 
 use mewcode_protocol::tool::names;
 use mewcode_protocol::{
-    tools_for_mode, truncate_with_marker, Mode, ToolError, ToolErrorPayload, ToolName,
+    Mode, ToolError, ToolErrorPayload, ToolName, tools_for_mode, truncate_with_marker,
 };
 
 #[test]

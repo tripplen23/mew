@@ -5,15 +5,15 @@
 
 #![forbid(unsafe_code)]
 
-pub mod provider;
 pub mod agent;
-pub mod harness;
-pub mod skills;
-pub mod tools;
-pub mod streaming;
-pub mod trace;
-pub mod error;
 pub mod config;
+pub mod error;
+pub mod harness;
+pub mod provider;
+pub mod skills;
+pub mod streaming;
+pub mod tools;
+pub mod trace;
 
 pub use config::EngineConfig;
 pub use error::EngineError;

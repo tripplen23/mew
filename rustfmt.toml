@@ -1,3 +1,10 @@
-unstable_features = true
-imports_granularity = "Crate"
-group_imports = "StdExternalCrate"
+# rustfmt config — stable-compatible options only.
+# The original config had nightly-only features (`imports_granularity = Crate`,
+# `group_imports = StdExternalCrate`) that the project never actually used
+# (the code is formatted with stable rustfmt defaults). The nightly options
+# made `cargo fmt --check` fail on every run; this config is the minimum
+# needed to keep CI green on stable.
+
+reorder_imports = true
+reorder_modules = true
+remove_nested_parens = true

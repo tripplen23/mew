@@ -5,7 +5,7 @@ use mewcode_protocol::tool::names;
 use mewcode_protocol::{
     ToolAnnotations, ToolContracts, ToolDescriptor, ToolError, ToolExample, ToolOutput,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::ProjectContext;
 
@@ -62,17 +62,17 @@ impl ToolContracts for ListDirectoryTool {
     }
 
     async fn execute(&self, input: Value) -> Result<ToolOutput, ToolError> {
-        let path = input
-            .get("path")
-            .and_then(|v| v.as_str())
-            .unwrap_or(".");
-        let resolved = mewcode_protocol::tool::resolve_inside_root(&self.ctx.root, std::path::Path::new(path))
-            .map_err(|e| ToolError::Rejected {
-                message: e.to_string(),
-                hint: Some("paths must stay inside the project root".into()),
-            })?;
+        let path = input.get("path").and_then(|v| v.as_str()).unwrap_or(".");
+        let resolved =
+            mewcode_protocol::tool::resolve_inside_root(&self.ctx.root, std::path::Path::new(path))
+                .map_err(|e| ToolError::Rejected {
+                    message: e.to_string(),
+                    hint: Some("paths must stay inside the project root".into()),
+                })?;
 
-        let mut rd = tokio::fs::read_dir(&resolved).await.map_err(ToolError::Io)?;
+        let mut rd = tokio::fs::read_dir(&resolved)
+            .await
+            .map_err(ToolError::Io)?;
         let mut dirs = Vec::new();
         let mut files = Vec::new();
         while let Some(entry) = rd.next_entry().await.map_err(ToolError::Io)? {

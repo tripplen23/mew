@@ -70,7 +70,10 @@ impl Skill {
     /// Render the catalog entry (name + description) for the system
     /// prompt. The body is intentionally omitted.
     pub fn catalog_entry(&self) -> String {
-        format!("- **{}** — {}\n  _invoke with: `use_skill(\"{}\")`_", self.name, self.description, self.name)
+        format!(
+            "- **{}** — {}\n  _invoke with: `use_skill(\"{}\")`_",
+            self.name, self.description, self.name
+        )
     }
 }
 
@@ -107,19 +110,17 @@ pub enum SkillError {
 /// Parse a `SKILL.md` document. The expected layout is YAML frontmatter
 /// between `---` markers, then a markdown body.
 pub fn parse_skill_md(raw: &str, path: &Path) -> Result<Skill, SkillError> {
-    let (frontmatter, body) = split_frontmatter(raw).ok_or_else(|| {
-        SkillError::MalformedFrontmatter {
+    let (frontmatter, body) =
+        split_frontmatter(raw).ok_or_else(|| SkillError::MalformedFrontmatter {
             path: path.to_path_buf(),
             message: "expected `---` markers around YAML frontmatter at the top of the file".into(),
-        }
-    })?;
+        })?;
 
-    let parsed: Frontmatter = serde_yaml::from_str(frontmatter).map_err(|e| {
-        SkillError::MalformedFrontmatter {
+    let parsed: Frontmatter =
+        serde_yaml::from_str(frontmatter).map_err(|e| SkillError::MalformedFrontmatter {
             path: path.to_path_buf(),
             message: format!("YAML parse error: {e}"),
-        }
-    })?;
+        })?;
 
     let name = parsed.name.ok_or_else(|| SkillError::MissingField {
         path: path.to_path_buf(),

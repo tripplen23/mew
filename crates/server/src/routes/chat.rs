@@ -2,17 +2,17 @@
 
 use std::sync::Arc;
 
+use axum::Json;
 use axum::extract::State;
 use axum::response::sse::Sse;
-use axum::Json;
 use futures::stream::Stream;
-use mewcode_engine::{skills::SkillRegistry, tools::ToolRegistry, Harness};
-use mewcode_protocol::event::{text_of, ChatRequest};
+use mewcode_engine::{Harness, skills::SkillRegistry, tools::ToolRegistry};
+use mewcode_protocol::event::{ChatRequest, text_of};
 use mewcode_protocol::{Message, Role, StreamEvent};
 use std::convert::Infallible;
 
-use crate::sse::from_channel;
 use crate::AppState;
+use crate::sse::from_channel;
 
 /// `POST /chat` — stream a chat turn. The response is `text/event-stream`;
 /// each `data:` line is a JSON [`StreamEvent`].

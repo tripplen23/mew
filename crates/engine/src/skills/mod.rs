@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use mewcode_protocol::{Skill, SkillError, GLOBAL_SKILLS_DIR, PROJECT_SKILLS_DIR, SKILL_FILE};
+use mewcode_protocol::{GLOBAL_SKILLS_DIR, PROJECT_SKILLS_DIR, SKILL_FILE, Skill, SkillError};
 use tracing::{info, warn};
 
 /// Source of a loaded skill.
@@ -92,11 +92,7 @@ impl SkillRegistry {
     /// should keep skills in `.mewcode/skills/`.
     pub fn find_dev_skills_dir_from(start: &Path) -> Option<PathBuf> {
         let dev = start.join("skills");
-        if dev.is_dir() {
-            Some(dev)
-        } else {
-            None
-        }
+        if dev.is_dir() { Some(dev) } else { None }
     }
 
     /// Load all skills from a directory. Each immediate subdirectory of
@@ -134,10 +130,8 @@ impl SkillRegistry {
                         path = %path.display(),
                         "loaded skill"
                     );
-                    self.skills.insert(
-                        skill.name.clone(),
-                        LoadedSkill::new(skill, source),
-                    );
+                    self.skills
+                        .insert(skill.name.clone(), LoadedSkill::new(skill, source));
                 }
                 Err(e) => {
                     warn!(
@@ -216,4 +210,3 @@ impl SkillRegistry {
         Ok(loaded.skill.body.clone())
     }
 }
-
