@@ -97,15 +97,7 @@ impl Harness {
         messages: &[Message],
         tx: mpsc::Sender<StreamEvent>,
     ) -> Result<(), EngineError> {
-        let span = tracing::info_span!(
-            "chat-turn",
-            gen_ai.operation.name = "invoke_agent",
-            gen_ai.agent.name = "mewcode",
-            gen_ai.request.model = self.model.provider_id(),
-            mewcode.mode = ?self.mode,
-            langfuse.trace.name = "chat-turn",
-            langfuse.session.id = tracing::field::Empty,
-        );
+        let span = self.chat_turn_span();
         if let Some(session_id) = self.session_id {
             span.record("langfuse.session.id", session_id.to_string());
         }
@@ -114,6 +106,38 @@ impl Harness {
             .instrument(span)
             .await
             .map(|_| ())
+    }
+
+    fn chat_turn_span(&self) -> tracing::Span {
+        tracing::info_span!(
+            "chat-turn",
+            gen_ai.operation.name = "invoke_agent",
+            gen_ai.agent.name = "mewcode",
+            gen_ai.provider.name = "opencode-go",
+            gen_ai.request.model = self.model.provider_id(),
+            gen_ai.request.max_tokens = Self::MAX_TOKENS,
+            gen_ai.system_instructions = tracing::field::Empty,
+            gen_ai.prompt = tracing::field::Empty,
+            gen_ai.completion = tracing::field::Empty,
+            gen_ai.response.id = tracing::field::Empty,
+            gen_ai.response.model = tracing::field::Empty,
+            gen_ai.usage.input_tokens = tracing::field::Empty,
+            gen_ai.usage.output_tokens = tracing::field::Empty,
+            gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
+            gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
+            gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
+            gen_ai.usage.reasoning_tokens = tracing::field::Empty,
+            mewcode.mode = ?self.mode,
+            langfuse.trace.name = "chat-turn",
+            langfuse.session.id = tracing::field::Empty,
+            langfuse.trace.input = tracing::field::Empty,
+            langfuse.trace.output = tracing::field::Empty,
+            langfuse.observation.type = "generation",
+            langfuse.observation.input = tracing::field::Empty,
+            langfuse.observation.output = tracing::field::Empty,
+            input.value = tracing::field::Empty,
+            output.value = tracing::field::Empty,
+        )
     }
 
     /// The turn proper: resolve config, select the user message, run one
@@ -137,9 +161,11 @@ impl Harness {
 
         let provider = Provider::for_model(self.model, &cfg.api_key, &cfg.base_url)?;
         let system_prompt = build_system_prompt(self.mode, &self.skills, &self.tools);
+        Self::record_turn_input(&tracing::Span::current(), &system_prompt, &user_text);
 
         // Exactly one completion, no tool dispatch, no follow-up turn.
         let reply = self.complete(provider, system_prompt, user_text).await?;
+        Self::record_turn_output(&tracing::Span::current(), &reply);
 
         // Only on success do we emit anything, so a failed completion leaves the
         // channel untouched for the caller's single `Error` event.
@@ -206,5 +232,106 @@ impl Harness {
         .map_err(|e| EngineError::Other(e.to_string()))?;
 
         Ok(())
+    }
+
+    fn record_turn_input(span: &tracing::Span, system_prompt: &str, user_text: &str) {
+        span.record("gen_ai.system_instructions", system_prompt);
+        span.record("gen_ai.prompt", user_text);
+        span.record("langfuse.trace.input", user_text);
+        span.record("input.value", user_text);
+
+        let input = serde_json::json!({
+            "role": "user",
+            "content": user_text,
+        });
+        span.record("langfuse.observation.input", input.to_string());
+    }
+
+    fn record_turn_output(span: &tracing::Span, reply: &str) {
+        span.record("gen_ai.completion", reply);
+        span.record("langfuse.trace.output", reply);
+        span.record("output.value", reply);
+
+        let output = serde_json::json!({
+            "role": "assistant",
+            "content": reply,
+        });
+        span.record("langfuse.observation.output", output.to_string());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+    use tracing::field::{Field, Visit};
+    use tracing::{Id, Subscriber};
+    use tracing_subscriber::layer::{Context, SubscriberExt};
+    use tracing_subscriber::{Layer, Registry};
+
+    #[derive(Clone, Default)]
+    struct Records(Arc<Mutex<Vec<(String, String)>>>);
+
+    impl Records {
+        fn contains(&self, field: &str, value: &str) -> bool {
+            self.0
+                .lock()
+                .expect("records lock")
+                .iter()
+                .any(|(f, v)| f == field && v == value)
+        }
+    }
+
+    struct CaptureLayer(Records);
+
+    impl<S: Subscriber> Layer<S> for CaptureLayer {
+        fn on_record(&self, _span: &Id, values: &tracing::span::Record<'_>, _ctx: Context<'_, S>) {
+            values.record(&mut CaptureVisitor(&self.0));
+        }
+    }
+
+    struct CaptureVisitor<'a>(&'a Records);
+
+    impl Visit for CaptureVisitor<'_> {
+        fn record_str(&mut self, field: &Field, value: &str) {
+            self.0
+                .0
+                .lock()
+                .expect("records lock")
+                .push((field.name().to_string(), value.to_string()));
+        }
+
+        fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+            self.0
+                .0
+                .lock()
+                .expect("records lock")
+                .push((field.name().to_string(), format!("{value:?}")));
+        }
+    }
+
+    #[test]
+    fn chat_turn_span_records_langfuse_io_fields() {
+        let records = Records::default();
+        let subscriber = Registry::default().with(CaptureLayer(records.clone()));
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        let harness = Harness::new(
+            ModelId::default(),
+            Mode::default(),
+            Arc::new(SkillRegistry::default()),
+            Arc::new(ToolRegistry::new()),
+        );
+        let span = harness.chat_turn_span();
+
+        // If any field was not declared when the span was created, tracing drops
+        // this record call and the assertion below fails.
+        Harness::record_turn_input(&span, "system", "hello");
+        Harness::record_turn_output(&span, "pong");
+
+        assert!(records.contains("langfuse.trace.input", "hello"));
+        assert!(records.contains("langfuse.trace.output", "pong"));
+        assert!(records.contains("gen_ai.prompt", "hello"));
+        assert!(records.contains("gen_ai.completion", "pong"));
     }
 }
