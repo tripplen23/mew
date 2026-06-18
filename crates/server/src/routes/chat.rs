@@ -8,7 +8,7 @@ use axum::response::sse::Sse;
 use futures::stream::Stream;
 use mewcode_engine::{Harness, skills::SkillRegistry, tools::ToolRegistry};
 use mewcode_protocol::event::ChatRequest;
-use mewcode_protocol::{Message, MessagePart, StreamEvent};
+use mewcode_protocol::{Message, MessagePart, Role, StreamEvent};
 use std::convert::Infallible;
 
 use crate::AppState;
@@ -49,9 +49,14 @@ pub async fn chat_stream(
         .with_tracer(state.tracer.clone())
         .with_session(req.session_id);
 
-    // The client sends the full history each turn; the new user message is the
-    // last entry. We persist only that (earlier turns are already stored).
-    let new_user_message = req.messages.last().cloned();
+    // The client sends the full history each turn; the new user message should
+    // be the last entry. Filter by role so a malformed trailing assistant/tool
+    // message cannot be persisted as a new user turn.
+    let new_user_message = req
+        .messages
+        .last()
+        .filter(|m| m.role == Role::User)
+        .cloned();
     let session_id = req.session_id;
     let model = req.model;
     let store = state.store.clone();

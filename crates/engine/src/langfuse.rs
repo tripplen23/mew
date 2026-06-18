@@ -16,7 +16,7 @@
 //! > its own task and swallows its own errors, so a slow or down Langfuse can
 //! > never add latency to — or fail — a user's turn.
 
-use std::env;
+use std::{env, time::Duration};
 
 use chrono::{DateTime, Utc};
 use serde_json::{Value, json};
@@ -81,7 +81,10 @@ impl LangfuseTracer {
             .or_else(|| non_blank(env::var(ENV_BASE_URL).ok()))
             .unwrap_or_else(|| DEFAULT_HOST.to_string());
         Some(Self {
-            http: reqwest::Client::new(),
+            http: reqwest::Client::builder()
+                .timeout(Duration::from_secs(10))
+                .build()
+                .expect("failed to build Langfuse reqwest client"),
             base_url: host.trim_end_matches('/').to_string(),
             public_key,
             secret_key,
@@ -109,10 +112,18 @@ impl LangfuseTracer {
                 let status = r.status();
                 let body = r.text().await.unwrap_or_default();
                 if !status.is_success() {
-                    tracing::warn!(%status, %body, "langfuse ingestion rejected the batch");
+                    tracing::warn!(
+                        %status,
+                        body_len = body.len(),
+                        "langfuse ingestion rejected the batch"
+                    );
                 } else if has_event_errors(&body) {
                     // A 207 can still carry per-event validation errors.
-                    tracing::warn!(%status, %body, "langfuse ingestion reported per-event errors");
+                    tracing::warn!(
+                        %status,
+                        body_len = body.len(),
+                        "langfuse ingestion reported per-event errors"
+                    );
                 } else {
                     tracing::debug!(%status, "langfuse ingestion accepted the turn");
                 }

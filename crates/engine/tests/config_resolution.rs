@@ -12,6 +12,10 @@ use mewcode_protocol::env::OPENCODE_GO_API_KEY;
 fn config_resolution_uses_defaults_key_and_override() {
     let prior_key = std::env::var(OPENCODE_GO_API_KEY).ok();
     let prior_base = std::env::var(ENV_BASE_URL).ok();
+    let _guard = EnvGuard {
+        key: prior_key,
+        base: prior_base,
+    };
 
     // With only OPENCODE_GO_API_KEY set and no base override, the
     // key is taken from that variable and the base URL falls back to default.
@@ -44,9 +48,18 @@ fn config_resolution_uses_defaults_key_and_override() {
         cfg.base_url, "https://example.test/base",
         "non-empty override replaces the default base URL"
     );
+}
 
-    restore(OPENCODE_GO_API_KEY, prior_key);
-    restore(ENV_BASE_URL, prior_base);
+struct EnvGuard {
+    key: Option<String>,
+    base: Option<String>,
+}
+
+impl Drop for EnvGuard {
+    fn drop(&mut self) {
+        restore(OPENCODE_GO_API_KEY, self.key.take());
+        restore(ENV_BASE_URL, self.base.take());
+    }
 }
 
 fn set(key: &str, value: &str) {

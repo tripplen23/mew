@@ -54,6 +54,16 @@ fn press(app: &mut App, code: KeyCode) {
     update(app, Msg::Key(KeyEvent::new(code, KeyModifiers::NONE)));
 }
 
+fn press_until(app: &mut App, code: KeyCode, done: impl Fn(&SessionState) -> bool) {
+    for _ in 0..200 {
+        if done(session(app)) {
+            return;
+        }
+        press(app, code);
+    }
+    panic!("scroll did not reach expected boundary");
+}
+
 fn session(app: &App) -> &SessionState {
     match &app.screen {
         Screen::Session(s) => s,
@@ -86,10 +96,8 @@ fn page_up_reveals_history_and_releases_follow() {
     let mut app = app_with_long_transcript();
     draw(&mut app); // populate max_scroll / viewport
 
-    // Page up far enough to reach the very top.
-    for _ in 0..20 {
-        press(&mut app, KeyCode::PageUp);
-    }
+    // Page up until the state reaches the very top.
+    press_until(&mut app, KeyCode::PageUp, |s| s.scroll == 0);
     let buf = draw(&mut app);
 
     assert!(
@@ -104,16 +112,12 @@ fn page_up_reveals_history_and_releases_follow() {
 fn page_down_to_bottom_re_engages_follow() {
     let mut app = app_with_long_transcript();
     draw(&mut app);
-    for _ in 0..20 {
-        press(&mut app, KeyCode::PageUp);
-    }
+    press_until(&mut app, KeyCode::PageUp, |s| s.scroll == 0);
     draw(&mut app);
     assert!(!session(&app).follow);
 
-    // Page back down to the bottom.
-    for _ in 0..20 {
-        press(&mut app, KeyCode::PageDown);
-    }
+    // Page back down until reaching the bottom re-engages follow.
+    press_until(&mut app, KeyCode::PageDown, |s| s.follow);
     let buf = draw(&mut app);
 
     assert!(buf.contains("line-39"), "back at the latest line:\n{buf}");

@@ -44,7 +44,7 @@ pub(super) fn render_session(frame: &mut Frame, area: Rect, s: &mut SessionState
     // rendered into below), so "the bottom" is computed exactly. `line_count`
     // is the ratatui-unstable API enabled in Cargo.toml.
     let para = Paragraph::new(Text::from(lines)).wrap(Wrap { trim: false });
-    let total = para.line_count(inner.width) as u16;
+    let total = para.line_count(inner.width).min(u16::MAX as usize) as u16;
 
     s.viewport = inner.height;
     s.max_scroll = total.saturating_sub(inner.height);

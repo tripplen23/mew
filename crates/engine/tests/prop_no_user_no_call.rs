@@ -3,7 +3,7 @@
 //! Feature: session-flow-and-engine-v0, a history with no `Role::User`
 //! message yields no completion — `last_user_text` is `None` and `run_turn`
 //! fails the turn before any provider is built or any request is issued,
-//! so the stream channel never sees a `Start`, `TextDelta`, or `Finish` event.
+//! so the stream channel never sees an event.
 //!
 //! The assertion is deliberately credential-independent: `run_turn` only emits
 //! on the success path, so whether resolution fails for a missing key or
@@ -73,16 +73,13 @@ proptest! {
         // so draining the receiver sees every event that ever reached it.
         prop_assert!(result.is_err(), "turn must fail without a user message");
 
+        let mut observed = Vec::new();
         while let Ok(event) = rx.try_recv() {
-            prop_assert!(
-                !matches!(
-                    event,
-                    StreamEvent::Start { .. }
-                        | StreamEvent::TextDelta { .. }
-                        | StreamEvent::Finish { .. }
-                ),
-                "no provider call: channel must not see Start/TextDelta/Finish, got {event:?}"
-            );
+            observed.push(event);
         }
+        prop_assert!(
+            observed.is_empty(),
+            "no provider call: expected empty channel, got {observed:?}"
+        );
     }
 }
