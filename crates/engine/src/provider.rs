@@ -114,17 +114,16 @@ impl AnthropicProvider {
     }
 }
 
-/// OpenAI-compatible provider. Wraps rig-core's
-/// [`openai::Client`](https://docs.rs/rig-core/latest/rig_core/providers/openai/client/index.html#typealias.Client).
+/// OpenAI-compatible provider. Wraps rig-core's chat-completions client.
 #[derive(Clone)]
 pub struct OpenAiProvider {
-    client: rig_core::providers::openai::Client,
+    client: rig_core::providers::openai::CompletionsClient,
 }
 
 impl OpenAiProvider {
     /// Build a new provider.
     pub fn new(api_key: &str, base_url: &str) -> Self {
-        let client = rig_core::providers::openai::Client::builder()
+        let client = rig_core::providers::openai::CompletionsClient::builder()
             .api_key(api_key)
             .base_url(base_url)
             .build()
@@ -133,7 +132,7 @@ impl OpenAiProvider {
     }
 
     /// Borrow the underlying rig client.
-    pub fn client(&self) -> &rig_core::providers::openai::Client {
+    pub fn client(&self) -> &rig_core::providers::openai::CompletionsClient {
         &self.client
     }
 }

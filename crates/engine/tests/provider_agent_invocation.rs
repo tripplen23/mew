@@ -18,4 +18,12 @@ fn provider_invocation_uses_rig_agent_pattern() {
         !provider_src.contains(".completion_request("),
         "provider must not invoke direct completion_request from the harness path"
     );
+    assert!(
+        provider_src.contains("openai::CompletionsClient"),
+        "OpenCode Go OpenAI-compatible models must use Rig's chat-completions client, not the Responses API client"
+    );
+    assert!(
+        !provider_src.contains("openai::Client,"),
+        "OpenAI-compatible provider must not use Rig's default Responses API client"
+    );
 }

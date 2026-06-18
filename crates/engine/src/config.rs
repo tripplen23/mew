@@ -5,8 +5,8 @@ use mewcode_protocol::env::OPENCODE_GO_API_KEY;
 
 use crate::error::EngineError;
 
-/// Default base URL of the OpenCode Go API.
-pub const DEFAULT_BASE_URL: &str = "https://opencode.ai/zen/go";
+/// Default versioned base URL of the OpenCode Go API.
+pub const DEFAULT_BASE_URL: &str = "https://opencode.ai/zen/go/v1";
 
 /// Env-var name for overriding [`DEFAULT_BASE_URL`].
 pub const ENV_BASE_URL: &str = "MEWCODE_ENGINE_BASE_URL";

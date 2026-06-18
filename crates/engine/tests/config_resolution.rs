@@ -26,7 +26,7 @@ fn config_resolution_uses_defaults_key_and_override() {
         cfg.api_key, "sk-test-123",
         "key is read from OPENCODE_GO_API_KEY"
     );
-    assert_eq!(DEFAULT_BASE_URL, "https://opencode.ai/zen/go");
+    assert_eq!(DEFAULT_BASE_URL, "https://opencode.ai/zen/go/v1");
     assert_eq!(
         cfg.base_url, DEFAULT_BASE_URL,
         "base URL defaults to OpenCode Go production"
