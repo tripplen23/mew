@@ -27,6 +27,9 @@ pub enum ModelId {
     Qwen36Plus,
 
     // === OpenAI-compatible /v1/chat/completions ===
+    #[serde(rename = "glm-5.2")]
+    Glm52,
+
     #[serde(rename = "glm-5.1")]
     Glm51,
 
@@ -64,6 +67,7 @@ impl ModelId {
         ModelId::Qwen37Max,
         ModelId::Qwen37Plus,
         ModelId::Qwen36Plus,
+        ModelId::Glm52,
         ModelId::Glm51,
         ModelId::Glm5,
         ModelId::KimiK27Code,
@@ -83,7 +87,8 @@ impl ModelId {
             | ModelId::Qwen37Max
             | ModelId::Qwen37Plus
             | ModelId::Qwen36Plus => ModelKind::AnthropicMessages,
-            ModelId::Glm51
+            ModelId::Glm52
+            | ModelId::Glm51
             | ModelId::Glm5
             | ModelId::KimiK27Code
             | ModelId::KimiK26
@@ -103,6 +108,7 @@ impl ModelId {
             ModelId::Qwen37Max => "qwen3.7-max",
             ModelId::Qwen37Plus => "qwen3.7-plus",
             ModelId::Qwen36Plus => "qwen3.6-plus",
+            ModelId::Glm52 => "glm-5.2",
             ModelId::Glm51 => "glm-5.1",
             ModelId::Glm5 => "glm-5",
             ModelId::KimiK27Code => "kimi-k2.7-code",
@@ -123,6 +129,7 @@ impl ModelId {
             ModelId::Qwen37Max => "Qwen 3.7 Max",
             ModelId::Qwen37Plus => "Qwen 3.7 Plus",
             ModelId::Qwen36Plus => "Qwen 3.6 Plus",
+            ModelId::Glm52 => "GLM 5.2",
             ModelId::Glm51 => "GLM 5.1",
             ModelId::Glm5 => "GLM 5",
             ModelId::KimiK27Code => "Kimi K2.7 Code",

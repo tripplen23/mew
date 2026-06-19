@@ -133,9 +133,9 @@ impl Provider {
     }
 }
 
-/// Inputs to [`Provider::invoke_agent`] / [`Provider::invoke_agent_streaming`].
-/// Bundled into a struct to keep argument counts below clippy's threshold
-/// and to make call-sites self-documenting.
+/// Inputs to [`Provider::invoke_agent_streaming`].  Bundled into a struct
+/// to keep argument counts below clippy's threshold and to make call-sites
+/// self-documenting.
 pub struct AgentRequest<'a> {
     /// Model identifier (e.g. `"claude-sonnet-4"`).
     pub model_id: &'a str,
@@ -152,7 +152,6 @@ pub struct AgentRequest<'a> {
 }
 
 /// Generic streaming helper for any Rig `Agent` with the default hook (`()`).
-#[allow(clippy::too_many_arguments)]
 async fn stream_agent_completion<M: rig_core::completion::CompletionModel + 'static>(
     agent: rig_core::agent::Agent<M, ()>,
     user_text: String,
