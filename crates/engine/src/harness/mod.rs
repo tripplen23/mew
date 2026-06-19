@@ -18,6 +18,8 @@ use uuid::Uuid;
 use crate::agent::build_system_prompt;
 use crate::config::EngineConfig;
 use crate::error::EngineError;
+use crate::history::HistoryStrategy;
+use crate::memory::MemoryStore;
 use crate::provider::Provider;
 use crate::skills::SkillRegistry;
 use crate::tools::ToolRegistry;
@@ -32,6 +34,8 @@ pub struct Harness {
     skills: Arc<SkillRegistry>,
     tools: Arc<ToolRegistry>,
     session_id: Option<Uuid>,
+    history_strategy: HistoryStrategy,
+    memory: Option<MemoryStore>,
 }
 
 impl std::fmt::Debug for Harness {
@@ -61,12 +65,21 @@ impl Harness {
             skills,
             tools,
             session_id: None,
+            history_strategy: HistoryStrategy::default_raw(),
+            memory: None,
         }
     }
 
     /// Record the chat session id so reported turns are grouped by session in Langfuse.
     pub fn with_session(mut self, session_id: Uuid) -> Self {
         self.session_id = Some(session_id);
+        self
+    }
+
+    /// Attach a memory store for durable facts. When set, the memory content
+    /// is injected into the system prompt as a `# Memory` section.
+    pub fn with_memory(mut self, memory: MemoryStore) -> Self {
+        self.memory = Some(memory);
         self
     }
 
@@ -144,11 +157,13 @@ impl Harness {
         )
     }
 
-    /// The turn proper: resolve config, select the user message, run one
-    /// agent invocation, and emit the success-path events. Returns the assistant
-    /// reply on success so the caller can both report it and discard it. The
-    /// SSE emission is unchanged — nothing reaches the channel on failure, so
-    /// the server route stays the single owner of the `Error` event.
+    /// The turn proper: resolve config, select the user message, build
+    /// history from prior turns, optionally inject durable memory into
+    /// the system prompt, then run one agent invocation and emit the
+    /// success-path events. Returns the assistant reply on success so the
+    /// caller can both report it and discard it. The SSE emission is
+    /// unchanged — nothing reaches the channel on failure, so the server
+    /// route stays the single owner of the `Error` event.
     async fn run_turn_inner(
         &self,
         messages: &[Message],
@@ -163,15 +178,24 @@ impl Harness {
         let user_text = last_user_text(messages)
             .ok_or_else(|| EngineError::Other("no user message in chat history".to_string()))?;
 
+        // Build the conversation history (Phase 8): window and map messages.
+        let history = self.history_strategy.build(messages);
+
+        // Build the system prompt, optionally injecting durable memory (Phase 9).
+        let mut system_prompt = build_system_prompt(self.mode, &self.skills, &self.tools);
+        if let Some(memory_section) = self.memory.as_ref().and_then(|m| m.format()) {
+            system_prompt.push_str("\n\n");
+            system_prompt.push_str(&memory_section);
+        }
+
         let provider = Provider::for_model(self.model, &cfg.api_key, &cfg.base_url)?;
-        let system_prompt = build_system_prompt(self.mode, &self.skills, &self.tools);
         Self::record_turn_input(&tracing::Span::current(), &system_prompt, &user_text);
 
-        // Exactly one agent invocation. Tool wiring comes next; keeping the
-        // call behind `invoke_agent` means streaming can reuse the same agent
-        // construction path rather than a direct completion request.
+        // Exactly one agent invocation with history. Tool wiring comes next;
+        // keeping the call behind `invoke_agent` means streaming can reuse the
+        // same agent construction path rather than a direct completion request.
         let reply = self
-            .invoke_agent(provider, system_prompt, user_text)
+            .invoke_agent(provider, system_prompt, history, user_text)
             .await?;
         Self::record_turn_output(&tracing::Span::current(), &reply);
 
@@ -181,18 +205,21 @@ impl Harness {
         Ok(reply)
     }
 
-    /// Run exactly one prompt through the routed Rig agent. Kept off the
-    /// emission path so `run_turn` emits nothing until a reply exists.
+    /// Run exactly one prompt through the routed Rig agent with conversation
+    /// history. Kept off the emission path so `run_turn` emits nothing until
+    /// a reply exists.
     async fn invoke_agent(
         &self,
         provider: Provider,
         system_prompt: String,
+        history: Vec<rig_core::completion::Message>,
         user_text: String,
     ) -> Result<String, EngineError> {
         provider
             .invoke_agent(
                 self.model.provider_id(),
                 system_prompt,
+                history,
                 user_text,
                 Self::MAX_TOKENS,
                 Self::MAX_AGENT_TURNS,

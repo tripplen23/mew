@@ -45,11 +45,13 @@ impl Provider {
     /// Go wire protocols, but both go through Rig's `Agent` abstraction. That
     /// keeps the harness ready for the next phase: tools, skills, and streaming
     /// can attach to the agent builder/request instead of a low-level completion
-    /// request.
+    /// Build and invoke a Rig agent for one user prompt, with conversation
+    /// history so follow-up questions have context.
     pub async fn invoke_agent(
         &self,
         model_id: &str,
         system_prompt: String,
+        history: Vec<rig_core::completion::Message>,
         user_text: String,
         max_tokens: u64,
         max_turns: usize,
@@ -67,6 +69,7 @@ impl Provider {
 
                 agent
                     .prompt(user_text)
+                    .with_history(history)
                     .await
                     .map_err(|e| EngineError::Other(e.to_string()))?
             }
@@ -82,6 +85,7 @@ impl Provider {
 
                 agent
                     .prompt(user_text)
+                    .with_history(history)
                     .await
                     .map_err(|e| EngineError::Other(e.to_string()))?
             }
