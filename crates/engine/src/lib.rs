@@ -10,6 +10,8 @@ pub mod agent;
 pub mod config;
 pub mod error;
 pub mod harness;
+pub mod history;
+pub mod memory;
 pub mod provider;
 pub mod skills;
 pub mod streaming;
