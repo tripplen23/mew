@@ -372,7 +372,6 @@ async fn agent_reads_readme_via_tool_call() {
     // --- Clean up ---
     let _ = std::fs::remove_dir_all(&project);
     let _ = std::fs::remove_dir_all(&data_dir);
-    let _ = std::fs::remove_dir_all(
-        std::env::temp_dir().join(format!("mewcode-e2e-mem-{session_id}")),
-    );
+    let _ =
+        std::fs::remove_dir_all(std::env::temp_dir().join(format!("mewcode-e2e-mem-{session_id}")));
 }
