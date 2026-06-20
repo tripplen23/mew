@@ -4,8 +4,10 @@
 //! calls or the user cancels.
 
 mod completion;
+mod trace;
 
 pub use self::completion::last_user_text;
+pub use self::trace::{chat_turn_span, record_turn_input, record_turn_output};
 
 use std::sync::Arc;
 
@@ -23,7 +25,6 @@ use crate::memory::MemoryStore;
 use crate::provider::{AgentRequest, Provider};
 use crate::skills::SkillRegistry;
 use crate::tools::ToolRegistry;
-use crate::trace;
 
 /// The agent harness.
 #[derive(Clone)]
@@ -111,7 +112,7 @@ impl Harness {
         messages: &[Message],
         tx: mpsc::Sender<StreamEvent>,
     ) -> Result<(), EngineError> {
-        let span = self.chat_turn_span();
+        let span = trace::chat_turn_span(self.model, self.mode);
         if let Some(session_id) = self.session_id {
             span.record("langfuse.session.id", session_id.to_string());
         }
@@ -120,41 +121,6 @@ impl Harness {
             .instrument(span)
             .await
             .map(|_| ())
-    }
-
-    /// Create the [`tracing::Span`] for one agent turn. Exposed as `pub`
-    /// only for the tracing-instrumentation unit test in
-    /// `crates/engine/tests/chat_turn_span.rs`.
-    pub fn chat_turn_span(&self) -> tracing::Span {
-        tracing::info_span!(
-            "chat-turn",
-            gen_ai.operation.name = trace::GEN_AI_OP_INVOKE_AGENT,
-            gen_ai.agent.name = trace::GEN_AI_AGENT_MEWCODE,
-            gen_ai.provider.name = trace::GEN_AI_PROVIDER_OPENCODE_GO,
-            gen_ai.request.model = self.model.provider_id(),
-            gen_ai.request.max_tokens = Self::MAX_TOKENS,
-            gen_ai.system_instructions = tracing::field::Empty,
-            gen_ai.prompt = tracing::field::Empty,
-            gen_ai.completion = tracing::field::Empty,
-            gen_ai.response.id = tracing::field::Empty,
-            gen_ai.response.model = tracing::field::Empty,
-            gen_ai.usage.input_tokens = tracing::field::Empty,
-            gen_ai.usage.output_tokens = tracing::field::Empty,
-            gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
-            gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
-            gen_ai.usage.reasoning_tokens = tracing::field::Empty,
-            mewcode.mode = ?self.mode,
-            langfuse.trace.name = trace::TRACE_NAME_CHAT_TURN,
-            langfuse.session.id = tracing::field::Empty,
-            langfuse.trace.input = tracing::field::Empty,
-            langfuse.trace.output = tracing::field::Empty,
-            langfuse.observation.type = trace::LANGFUSE_OBSERVATION_GENERATION,
-            langfuse.observation.input = tracing::field::Empty,
-            langfuse.observation.output = tracing::field::Empty,
-            input.value = tracing::field::Empty,
-            output.value = tracing::field::Empty,
-        )
     }
 
     /// The turn proper: resolve config, select the user message, build
@@ -199,7 +165,7 @@ impl Harness {
         }
 
         let provider = Provider::for_model(self.model, &cfg.api_key, &cfg.base_url)?;
-        Self::record_turn_input(&tracing::Span::current(), &system_prompt, &user_text);
+        trace::record_turn_input(&tracing::Span::current(), &system_prompt, &user_text);
 
         // Emit Start before the first token so the client can prepare.
         let message_id = uuid::Uuid::new_v4();
@@ -217,7 +183,7 @@ impl Harness {
         let reply = self
             .stream_agent(provider, system_prompt, history, user_text, tx)
             .await?;
-        Self::record_turn_output(&tracing::Span::current(), &reply);
+        trace::record_turn_output(&tracing::Span::current(), &reply);
 
         // Emit Finish, recording wall-clock duration (token counts deferred
         // until provider reports them).
@@ -302,34 +268,5 @@ impl Harness {
         .map_err(|e| EngineError::Other(e.to_string()))?;
 
         Ok(())
-    }
-
-    /// Record the turn's input on the current span. Exposed as `pub` for the
-    /// tracing-instrumentation unit test.
-    pub fn record_turn_input(span: &tracing::Span, system_prompt: &str, user_text: &str) {
-        span.record(trace::FIELD_GEN_AI_SYSTEM_INSTRUCTIONS, system_prompt);
-        span.record(trace::FIELD_GEN_AI_PROMPT, user_text);
-        span.record(trace::FIELD_LANGFUSE_TRACE_INPUT, user_text);
-        span.record(trace::FIELD_INPUT_VALUE, user_text);
-
-        let input = serde_json::json!({
-            "role": trace::GEN_AI_ROLE_USER,
-            "content": user_text,
-        });
-        span.record(trace::FIELD_LANGFUSE_OBSERVATION_INPUT, input.to_string());
-    }
-
-    /// Record the turn's output on the current span. Exposed as `pub` for the
-    /// tracing-instrumentation unit test.
-    pub fn record_turn_output(span: &tracing::Span, reply: &str) {
-        span.record(trace::FIELD_GEN_AI_COMPLETION, reply);
-        span.record(trace::FIELD_LANGFUSE_TRACE_OUTPUT, reply);
-        span.record(trace::FIELD_OUTPUT_VALUE, reply);
-
-        let output = serde_json::json!({
-            "role": trace::GEN_AI_ROLE_ASSISTANT,
-            "content": reply,
-        });
-        span.record(trace::FIELD_LANGFUSE_OBSERVATION_OUTPUT, output.to_string());
     }
 }

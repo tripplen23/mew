@@ -9,9 +9,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use mewcode_engine::Harness;
-use mewcode_engine::skills::SkillRegistry;
-use mewcode_engine::tools::ToolRegistry;
+use mewcode_engine::harness::{chat_turn_span, record_turn_input, record_turn_output};
 use mewcode_protocol::{Mode, ModelId};
 use tracing::field::{Field, Visit};
 use tracing::{Id, Subscriber};
@@ -65,16 +63,10 @@ fn chat_turn_span_records_langfuse_io_fields() {
     let subscriber = Registry::default().with(CaptureLayer(records.clone()));
     let _guard = tracing::subscriber::set_default(subscriber);
 
-    let harness = Harness::new(
-        ModelId::default(),
-        Mode::default(),
-        Arc::new(SkillRegistry::default()),
-        Arc::new(ToolRegistry::new()),
-    );
-    let span = harness.chat_turn_span();
+    let span = chat_turn_span(ModelId::default(), Mode::default());
 
-    Harness::record_turn_input(&span, "system", "hello");
-    Harness::record_turn_output(&span, "pong");
+    record_turn_input(&span, "system", "hello");
+    record_turn_output(&span, "pong");
 
     assert!(records.contains("langfuse.trace.input", "hello"));
     assert!(records.contains("langfuse.trace.output", "pong"));

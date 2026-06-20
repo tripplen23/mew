@@ -22,7 +22,6 @@ tokio = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-tracing-appender = { workspace = true }
 
 rig-core = { workspace = true }
 reqwest = { workspace = true }
