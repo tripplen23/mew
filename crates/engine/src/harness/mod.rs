@@ -263,10 +263,7 @@ impl Harness {
     /// Output token cap for a single turn.
     const MAX_TOKENS: u64 = 4096;
 
-    /// Max internal Rig agent turns. With tools registered, the agent needs
-    /// multiple turns: call tool → receive result → produce final reply.
-    /// 10 is generous enough for a few tool calls per turn without runaway
-    /// loops.
+    /// Max internal Rig agent turns.
     const MAX_AGENT_TURNS: usize = 10;
 
     /// Emit the success-path event sequence for one turn: exactly one `Start`
@@ -307,8 +304,7 @@ impl Harness {
         Ok(())
     }
 
-    /// Record the turn's input on the current span. Exposed as `pub` for the
-    /// tracing-instrumentation unit test.
+    /// Record the turn's input on the current span.
     pub fn record_turn_input(span: &tracing::Span, system_prompt: &str, user_text: &str) {
         span.record(trace::FIELD_GEN_AI_SYSTEM_INSTRUCTIONS, system_prompt);
         span.record(trace::FIELD_GEN_AI_PROMPT, user_text);
