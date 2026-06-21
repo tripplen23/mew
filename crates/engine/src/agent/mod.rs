@@ -61,14 +61,12 @@ impl Agent {
     }
 
     /// Cap completion tokens for this turn.
-    #[allow(dead_code)]
     pub fn with_max_tokens(mut self, max_tokens: u64) -> Self {
         self.max_tokens = max_tokens;
         self
     }
 
     /// Cap internal agent turns for this turn.
-    #[allow(dead_code)]
     pub fn with_max_turns(mut self, max_turns: usize) -> Self {
         self.max_turns = max_turns;
         self

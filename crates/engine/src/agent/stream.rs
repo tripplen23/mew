@@ -51,8 +51,7 @@ pub async fn run_agent_stream<M: rig_core::completion::CompletionModel + 'static
                     .await;
             }
             Ok(MultiTurnStreamItem::StreamUserItem(user_content)) => {
-                // StreamedUserContent has a single variant (ToolResult), so
-                // we destructure directly.
+                // StreamedUserContent has a single variant (ToolResult), so we destructure directly.
                 let rig_core::streaming::StreamedUserContent::ToolResult { tool_result, .. } =
                     user_content;
                 let output = tool_result
@@ -98,9 +97,6 @@ pub async fn run_agent_stream<M: rig_core::completion::CompletionModel + 'static
             }
             Err(e) => return Err(EngineError::Other(e.to_string())),
             Ok(_) => {
-                // Unhandled stream item — Rig may add new variants in
-                // future versions. Log at trace level so they're visible
-                // when debugging without spamming normal runs.
                 tracing::trace!("unhandled MultiTurnStreamItem variant");
             }
         }
