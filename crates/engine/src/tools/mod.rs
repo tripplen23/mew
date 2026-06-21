@@ -1,9 +1,7 @@
-//! Engine-local tool registry. Tools are grouped by domain under
-//! submodules (`fs`, `skills`, `memory`); this module holds the shared
+//! Engine-local tool registry. This module holds the shared
 //! scaffolding: the [`ToolRegistry`], the [`ProjectContext`] every tool
 //! receives, the [`Skills`] type alias, the [`adapter`] that bridges
-//! mewcode tools to Rig's `ToolDyn`, and the [`default_registry`]
-//! factory.
+//! mewcode tools to Rig's `ToolDyn`, and the [`default_registry`] factory.
 //!
 //! Adding a new tool:
 //! 1. Create it under the appropriate domain submodule
@@ -108,8 +106,7 @@ impl ProjectContext {
     }
 }
 
-/// Build the default tool registry: every read-only tool plus `use_skill`
-/// and, when a memory store is provided, `mewcode_memory`.
+/// Build the default tool registry.
 pub fn default_registry(
     ctx: ProjectContext,
     skills: Skills,
