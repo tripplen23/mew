@@ -57,9 +57,12 @@ fn init_tracing(log_filter: &str) -> Option<SdkTracerProvider> {
     let provider = build_langfuse_provider();
     let otel_layer = provider.as_ref().map(|provider| {
         let tracer = provider.tracer("mewcode-server");
-        // Langfuse should show one clean Mew-level generation. Rig's internal
-        // provider span has model/usage but no IO fields, so exporting it
-        // creates a duplicate observation with null input/output.
+        // Suppress Rig's per-turn `chat` spans and provider `completions`
+        // spans — they create noisy duplicate observations in Langfuse.
+        // Rig's `invoke_agent` (generation) and `execute_tool` spans pass
+        // through and carry the standard `gen_ai.*` semantic-convention
+        // fields. Our `chat-turn` span adds the `langfuse.*` fields that
+        // Rig does not emit.
         tracing_opentelemetry::layer()
             .with_tracer(tracer)
             .with_filter(EnvFilter::new(

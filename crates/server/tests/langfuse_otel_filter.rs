@@ -1,8 +1,10 @@
 // Feature: Rig-agent Langfuse tracing
 //
-// The server exports the Mew-level `chat-turn` generation to Langfuse. Rig also
-// emits internal agent/provider spans, but those lack Langfuse IO fields in the
-// current Rig version and produce duplicate null-input/null-output observations.
+// The server exports a Mew-level `chat-turn` span to Langfuse with
+// `langfuse.*` IO fields. Rig's `invoke_agent` and `execute_tool` spans
+// pass through the filter and carry the standard `gen_ai.*` fields.
+// Rig's per-turn `chat` spans and provider `completions` spans are
+// suppressed to avoid noisy duplicate observations.
 
 #[test]
 fn langfuse_otel_exports_mew_turn_not_rig_internal_spans() {

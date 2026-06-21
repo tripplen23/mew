@@ -87,6 +87,4 @@ fn chat_turn_span_records_langfuse_io_fields() {
         "observation input should include user message"
     );
     assert!(records.contains("langfuse.trace.output", "pong"));
-    assert!(records.contains("gen_ai.prompt", "hello"));
-    assert!(records.contains("gen_ai.completion", "pong"));
 }
