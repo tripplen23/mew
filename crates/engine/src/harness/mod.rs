@@ -13,7 +13,6 @@ use std::sync::Arc;
 
 use mewcode_protocol::{Message, Mode, ModelId, Role, StreamEvent};
 use tokio::sync::mpsc;
-use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 use uuid::Uuid;
 
@@ -31,7 +30,6 @@ use crate::tools::ToolRegistry;
 pub struct Harness {
     model: ModelId,
     mode: Mode,
-    cancel: CancellationToken,
     skills: Arc<SkillRegistry>,
     tools: Arc<ToolRegistry>,
     session_id: Option<Uuid>,
@@ -62,7 +60,6 @@ impl Harness {
         Self {
             model,
             mode,
-            cancel: CancellationToken::new(),
             skills,
             tools,
             session_id: None,
@@ -84,19 +81,9 @@ impl Harness {
         self
     }
 
-    /// Cancel the in-flight stream, if any.
-    pub fn cancel(&self) {
-        self.cancel.cancel();
-    }
-
-    /// The system prompt for the model's first turn.
-    pub fn system_prompt(&self) -> String {
-        self.compose_system_prompt()
-    }
-
     /// The exact system prompt sent this turn: static sections plus, when
-    /// present, the durable-memory section. Single source of truth so the
-    /// public accessor cannot drift from what `run_turn_inner` actually sends.
+    /// present, the durable-memory section. Single source of truth so
+    /// `run_turn_inner` always sends what this returns.
     fn compose_system_prompt(&self) -> String {
         let mut prompt = build_system_prompt(self.mode, &self.skills, &self.tools);
         if let Some(section) = self.memory.as_ref().and_then(|m| m.format()) {
@@ -106,19 +93,10 @@ impl Harness {
         prompt
     }
 
-    /// Number of skills currently available.
-    pub fn skill_count(&self) -> usize {
-        self.skills.len()
-    }
-
-    /// Tool names currently registered.
-    pub fn tool_names(&self) -> Vec<&'static str> {
-        self.tools.names()
-    }
-
-    /// Invoke the configured Rig agent once and stream the reply as
-    /// `Start` → `TextDelta`* → `Finish`. Returns `Err` on any failure and
-    /// emits nothing on that path — the caller owns the `Error` event.
+    /// Run one agent invocation, streaming events through the channel.
+    /// The agent may make up to `MAX_AGENT_TURNS` sub-turns (tool calls
+    /// → results → reply) before finishing. Returns `Err` on any failure
+    /// and emits nothing on that path — the caller owns the `Error` event.
     pub async fn run_turn(
         &self,
         messages: &[Message],
@@ -176,7 +154,7 @@ impl Harness {
         trace::record_turn_input(&tracing::Span::current(), &system_prompt, &user_text);
 
         // Emit Start before the first token so the client can prepare.
-        let message_id = uuid::Uuid::new_v4();
+        let message_id = Uuid::new_v4();
         let started = std::time::Instant::now();
         tx.send(StreamEvent::Start {
             message_id,
@@ -215,7 +193,7 @@ impl Harness {
         tx: &mpsc::Sender<StreamEvent>,
     ) -> Result<(), EngineError> {
         let started = std::time::Instant::now();
-        let message_id = uuid::Uuid::new_v4();
+        let message_id = Uuid::new_v4();
 
         tx.send(StreamEvent::Start {
             message_id,
