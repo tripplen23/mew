@@ -102,15 +102,17 @@ impl ToolContracts for WriteFileTool {
 
         // Safety gate: refuse to overwrite a non-empty file unless the caller
         // explicitly passes `overwrite: true`. Empty files and non-existent
-        // files are safe to write without the flag.
+        // files are safe to write without the flag. We use `metadata.len()`
+        // (not `read_to_string`) so binary files and unreadable files still
+        // count as non-empty and remain protected by the safety gate.
         if resolved.exists() {
-            let existing = std::fs::read_to_string(&resolved).unwrap_or_default();
-            if !existing.is_empty() && !overwrite {
+            let len = std::fs::metadata(&resolved).map(|m| m.len()).unwrap_or(0);
+            if len > 0 && !overwrite {
                 return Err(ToolError::Rejected {
                     message: format!(
                         "file '{}' already exists and is non-empty ({} bytes)",
                         path,
-                        existing.len()
+                        len
                     ),
                     hint: Some(
                         "set `overwrite: true` to replace the file, or use `edit_file` for targeted edits"

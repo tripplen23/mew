@@ -430,12 +430,13 @@ fn plan_mode_filters_write_tools() {
     assert!(plan_names.contains(&"glob"));
     assert!(plan_names.contains(&"grep"));
     assert!(plan_names.contains(&"use_skill"));
-    assert!(plan_names.contains(&"mewcode_memory")); // Memory tool is read-only
 
-    // Write tools should be absent.
+    // Write tools should be absent. `mewcode_memory` is `WRITE_LOCAL`
+    // (it persists to disk) so it is gated out of Plan mode too.
     assert!(!plan_names.contains(&"write_file"));
     assert!(!plan_names.contains(&"edit_file"));
     assert!(!plan_names.contains(&"bash"));
+    assert!(!plan_names.contains(&"mewcode_memory"));
 }
 
 #[test]
@@ -597,8 +598,8 @@ fn plan_mode_includes_memory_when_store_provided() {
     let plan_names: Vec<&str> = plan_reg.names().into_iter().collect();
 
     assert!(
-        plan_names.contains(&"mewcode_memory"),
-        "memory tool should be available in Plan mode — tools: {:?}",
+        !plan_names.contains(&"mewcode_memory"),
+        "memory tool should be filtered in Plan mode (it is WRITE_LOCAL) — tools: {:?}",
         plan_names
     );
 

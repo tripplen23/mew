@@ -133,13 +133,13 @@ pub fn default_registry(
     reg.register(Arc::new(GrepTool::new(ctx.clone())));
     reg.register(Arc::new(UseSkillTool::new(skills)));
 
-    // Memory tool is read-only and safe in all modes
-    if let Some(store) = memory {
-        reg.register(Arc::new(MewcodeMemoryTool::new(store)));
-    }
-
-    // Write tools — only in Build mode.
+    // Write-capable tools — only in Build mode. `mewcode_memory` is
+    // `WRITE_LOCAL` (it can persist facts to disk) so it must be gated
+    // the same way as `write_file` / `edit_file` / `bash`.
     if mode.allows_writes() {
+        if let Some(store) = memory {
+            reg.register(Arc::new(MewcodeMemoryTool::new(store)));
+        }
         reg.register(Arc::new(WriteFileTool::new(ctx.clone())));
         reg.register(Arc::new(EditFileTool::new(ctx.clone())));
         reg.register(Arc::new(BashTool::new(ctx)));

@@ -719,19 +719,25 @@ async fn prompt_caching_records_cache_read_tokens() {
         "Langfuse should have traces for session {session_id}"
     );
 
-    // Check at least one observation has usage metadata with cache info.
+    // Check at least one observation has cache-read token usage.
+    // Langfuse's observations API returns the cache breakdown as
+    // `usage.cacheReadInputTokens` (and `cacheCreationInputTokens`).
+    // Generic `usage.input > 0` is not a cache signal — it fires for
+    // every regular completion, so checking it would pass even if
+    // caching is broken.
     let mut found_cache = false;
     for trace in trace_data {
         if let Some(trace_id) = trace.get("id").and_then(|v| v.as_str()) {
             let observations = langfuse_observations(trace_id).await;
             if let Some(obs) = observations.get("data").and_then(|d| d.as_array()) {
                 for o in obs {
-                    if let Some(usage) = o.get("usage") {
-                        if let Some(input) = usage.get("input").and_then(|v| v.as_u64()) {
-                            if input > 0 {
-                                found_cache = true;
-                            }
-                        }
+                    let cache_read = o
+                        .get("usage")
+                        .and_then(|u| u.get("cacheReadInputTokens"))
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
+                    if cache_read > 0 {
+                        found_cache = true;
                     }
                 }
             }
@@ -741,8 +747,15 @@ async fn prompt_caching_records_cache_read_tokens() {
     eprintln!("\n=== Caching E2E Summary ===");
     eprintln!("Turn 1 reply: {} chars", reply1.len());
     eprintln!("Turn 2 reply: {} chars", reply2.len());
-    eprintln!("Found usage metadata: {found_cache}");
+    eprintln!("Found cacheReadInputTokens > 0: {found_cache}");
     eprintln!("==========================\n");
+
+    assert!(
+        found_cache,
+        "expected at least one observation with usage.cacheReadInputTokens > 0; \
+         prompt caching is not working (or the cache_read field is being \
+         filtered out before it reaches Langfuse)"
+    );
 
     let _ = std::fs::remove_dir_all(&project);
     let _ = std::fs::remove_dir_all(&data_dir);
