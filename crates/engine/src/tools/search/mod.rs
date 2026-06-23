@@ -40,7 +40,7 @@ impl ToolContracts for GrepTool {
 
 **When NOT to use:** For finding files by name, use `glob` instead. For reading a specific file, use `read_file`.
 
-**Pattern syntax:** Standard Rust regex syntax (see https://docs.rs/regex). Use `\\b` for word boundaries, `(?i)` for case-insensitive."
+**Pattern syntax:** Regex pattern. Lookarounds and backreferences are not supported."
                 .to_string(),
             input_schema: json!({
                 "type": "object",
