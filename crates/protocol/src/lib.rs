@@ -22,7 +22,8 @@ pub use message::{Message, MessagePart, Role, ToolCall, ToolResult};
 pub use mode::{Mode, ModeParseError};
 pub use model::{ModelId, ModelKind};
 pub use skill::{
-    GLOBAL_SKILLS_DIR, PROJECT_SKILLS_DIR, SKILL_FILE, Skill, SkillError, parse_skill_md,
+    CONVENTIONAL_SUBDIRS, GLOBAL_SKILLS_DIR, PROJECT_SKILLS_DIR, SKILL_FILE, Skill, SkillError,
+    parse_skill_md, read_skill_subfile,
 };
 pub use tool::{
     ResponseFormat, ToolAnnotations, ToolContracts, ToolDescriptor, ToolError, ToolErrorPayload,

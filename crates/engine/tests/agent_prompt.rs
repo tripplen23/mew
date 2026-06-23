@@ -11,7 +11,7 @@ use std::sync::Arc;
 use mewcode_engine::agent::build_system_prompt;
 use mewcode_engine::skills::{SkillRegistry, SkillSource};
 use mewcode_engine::tools::{
-    GlobTool, ListDirectoryTool, ProjectContext, ReadFileTool, ToolRegistry, UseSkillTool,
+    GlobTool, ListDirectoryTool, ProjectContext, ReadFileTool, SkillViewTool, ToolRegistry,
     default_registry,
 };
 use mewcode_protocol::Mode;
@@ -27,13 +27,13 @@ fn build_mode_includes_tool_descriptors() {
         Mode::Build,
     ));
     let prompt = build_system_prompt(Mode::Build, &skills, &tools);
-    // Build mode registry: read_file, list_directory, glob, grep, use_skill,
+    // Build mode registry: read_file, list_directory, glob, grep, skill_view,
     // write_file, edit_file, bash, mewcode_memory.
     assert!(prompt.contains("### `read_file`"));
     assert!(prompt.contains("### `list_directory`"));
     assert!(prompt.contains("### `glob`"));
     assert!(prompt.contains("### `grep`"));
-    assert!(prompt.contains("### `use_skill`"));
+    assert!(prompt.contains("### `skill_view`"));
     assert!(prompt.contains("### `write_file`"));
     assert!(prompt.contains("### `edit_file`"));
     assert!(prompt.contains("### `bash`"));
@@ -44,11 +44,11 @@ fn plan_mode_excludes_write_tool_descriptors() {
     let skills = Arc::new(SkillRegistry::new());
     let ctx = ProjectContext::new(std::env::temp_dir());
     let mut tools = ToolRegistry::new();
-    // Only register the read-only tools + use_skill (the PLAN set).
+    // Only register the read-only tools + skill_view (the PLAN set).
     tools.register(Arc::new(ReadFileTool::new(ctx.clone())));
     tools.register(Arc::new(ListDirectoryTool::new(ctx.clone())));
     tools.register(Arc::new(GlobTool::new(ctx)));
-    tools.register(Arc::new(UseSkillTool::new(skills.clone())));
+    tools.register(Arc::new(SkillViewTool::new(skills.clone())));
 
     let prompt = build_system_prompt(Mode::Plan, &skills, &tools);
     assert!(prompt.contains("### `read_file`"));
@@ -117,7 +117,7 @@ fn tools_are_sorted_alphabetically() {
     let skills_arc = Arc::new(SkillRegistry::new());
     let mut tools = ToolRegistry::new();
     // Register in non-alphabetical order to prove the sort works.
-    tools.register(Arc::new(UseSkillTool::new(skills_arc)));
+    tools.register(Arc::new(SkillViewTool::new(skills_arc)));
     tools.register(Arc::new(ReadFileTool::new(ctx.clone())));
     tools.register(Arc::new(GlobTool::new(ctx.clone())));
     tools.register(Arc::new(ListDirectoryTool::new(ctx)));
@@ -126,7 +126,7 @@ fn tools_are_sorted_alphabetically() {
     let glob_pos = prompt.find("### `glob`").unwrap();
     let list_pos = prompt.find("### `list_directory`").unwrap();
     let read_pos = prompt.find("### `read_file`").unwrap();
-    let use_pos = prompt.find("### `use_skill`").unwrap();
+    let use_pos = prompt.find("### `skill_view`").unwrap();
     assert!(glob_pos < list_pos);
     assert!(list_pos < read_pos);
     assert!(read_pos < use_pos);

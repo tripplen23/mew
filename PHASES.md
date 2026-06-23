@@ -14,7 +14,7 @@
 | 10 | Streaming (rig → SSE → TUI live tokens) | ✅ |
 | 11 | Tool-calling loop (`RigToolAdapter`, `MAX_AGENT_TURNS=10`, `agent_tool_e2e.rs`) | ✅ |
 | 12 | Remaining tools + PLAN mode gate + Anthropic prompt caching | ✅ |
-| 13 | Skills runtime (hot-reload, assets, frontmatter lint) | ⬜ |
+| 13 | Skills runtime (2-tool progressive disclosure + external dirs) | ⬜ (active) |
 | 14 | TUI polish (markdown, code blocks, tool cards, theme, slash menu, @-mention) | ⬜ |
 | 15 | Config & persistence (`~/.config/mewcode/config.toml`, recent sessions) | ⬜ |
 | 16 | Hardening (error toasts, Ctrl-C graceful shutdown, retries, command palette) | ⬜ |
@@ -26,6 +26,73 @@
 - Lint `SKILL.md` frontmatter on load, surface errors at boot
 - More bundled sample skills (`explain-error`, `refactor-rust`)
 - Ref: [Anthropic Skills guide][skills-guide]
+
+## Phase 13 — Skills runtime (active)
+
+**Why:** follow the [Anthropic Skills guide][skills-guide] progressive-disclosure
+pattern correctly, support path-based skill loading so other clients can add
+their own skills without touching source, and minimise per-turn token spend.
+
+**2-tool API** (Hermes / agentskills.io compatible — not 3):
+- `skills_list(name?: string)` — Level 0 catalog. Returns
+  `[{name, description, source, assets}, ...]`. ~3 k tokens flat, the only
+  part the model must always see (in the system prompt as a compact list,
+  not via this tool — the tool is for the model to *re-read* the catalog).
+- `skill_view(name: string, path?: string)` — Level 1 (no `path`): full
+  `SKILL.md` body. Level 2 (with `path`): one sub-file under the skill
+  directory (e.g. `references/forms.md`, `scripts/build.sh`).
+
+The 3-tool split originally proposed (`load_skill` / `read_skill` /
+`use_skill`) was rejected because (a) it ships 3 tool descriptors for what
+is one mental action, (b) it does not match the agentskills.io open
+standard Hermes already conforms to, and (c) the user explicitly invited
+a "more minimal" alternative.
+
+**Path-based skill loading** (no source code edit needed to add a skill):
+- A skill is a directory containing a `SKILL.md` (YAML frontmatter
+  `name` + `description` required) plus any number of sub-folders
+  (`references/`, `scripts/`, `assets/`).
+- `SkillRegistry::load` is the single entry point and takes an
+  `SkillLoadConfig { bundled_dir?, project_dirs: [..], external_dirs: [..] }`.
+  Order of precedence: **project > external > bundled** (project shadows
+  external shadows bundled on name collision).
+- Default discovery: `~/.config/mewcode/skills/` (global),
+  `<project>/.mewcode/skills/` (walks up to the nearest), `./skills/`
+  (dev). External dirs are added from `mewcode.toml` /
+  `MEWCODE_SKILLS__EXTERNAL_DIRS` (CSV) and `${VAR}` is expanded.
+  Non-existent paths are silently skipped (Hermes behaviour).
+
+**Token-efficiency** (progressive disclosure, in the order the model hits
+each level):
+- L0: system prompt gets a *compact* one-line-per-skill list with no body
+  (`~80 bytes/skill` vs the current ~250). Tool descriptors are
+  shorter — only the two tool names + one-line description, with a
+  pointer to the system-prompt catalog for the full per-skill index.
+- L1: `skill_view` returns the body but **truncated to a budget**
+  (default 100 000 chars; `truncate_with_marker` adds an explicit
+  truncation footer so the model knows more is available).
+- L2: `skill_view(name, path)` returns a single sub-file. A skill author
+  who writes 200 kB of references across 20 files can keep the L0/L1
+  cost flat and the L2 cost bounded by what the model actually
+  requested.
+
+**Sub-folder discovery** (today assets are tracked but not exposed via
+tool). New `skill_view(name, path)` makes them reachable.
+
+**E2E verification**
+- A unit test that `load(SkillLoadConfig::default())` discovers
+  `./skills/review-pr` and `./skills/write-rust-error`.
+- A unit test for external_dir precedence: external `foo` is shadowed
+  by project `foo`.
+- A unit test that `skill_view("review-pr", "references/checklist.md")`
+  returns that file's contents.
+- The existing Phase-12 e2e should be extendable: an extra turn
+  invoking `skills_list` then `skill_view` against a fresh e2e skill
+  and asserting the round-trip works against a real LLM.
+
+[skills-guide]: https://www.anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills
+[hermes-skills]: https://hermes-agent.nousresearch.com/docs/user-guide/features/skills
+[agentskills.io]: https://agentskills.io/
 
 ## Phase 14 — TUI polish
 - Markdown rendering (`tui-markdown`)
@@ -40,7 +107,7 @@
 ## Phase 16 — Hardening
 - Error toasts, Ctrl-C graceful shutdown, retries, command palette
 
-## Phase 17 — Trace ingestion latency (active)
+## Phase 17 — Trace ingestion latency
 
 Traces take ~13 min to appear in Langfuse. Three confirmed root causes
 (verified against `opentelemetry_sdk-0.31.0` / `opentelemetry-langfuse-0.6.1`

@@ -45,8 +45,18 @@ pub async fn chat_stream(
     let (htx, mut hrx) = tokio::sync::mpsc::channel::<StreamEvent>(64);
     let (stx, srx) = tokio::sync::mpsc::channel::<StreamEvent>(64);
 
-    let skills = Arc::new(SkillRegistry::load_defaults());
-    // Build a real tool registry: read-only tools + memory + use_skill.
+    // Load skills from the default locations plus the server's
+    // configured `external_dirs` (Hermes-compatible shared skill
+    // dirs — see crates/server/src/config.rs). Missing external
+    // dirs are silently skipped.
+    let skill_cfg = mewcode_engine::skills::SkillLoadConfig {
+        bundled_dir: None,
+        external_dirs: state.config.skills.resolved_dirs(),
+        project_search_start: std::env::current_dir().ok(),
+        include_dev_dir: true,
+    };
+    let skills = Arc::new(SkillRegistry::load(&skill_cfg));
+    // Build a real tool registry: read-only tools + memory + skill_view.
     // Write tools (write_file, edit_file, bash) only in Build mode.
     // The project root defaults to the server's CWD — future phases can make
     // this configurable per session.

@@ -37,6 +37,7 @@ fn test_config() -> ServerConfig {
         opencode_go_api_key: "test-key".into(),
         default_model: None,
         log: "off".into(),
+        skills: Default::default(),
     }
 }
 
