@@ -20,9 +20,9 @@ pub use self::prompt::build_system_prompt;
 use crate::error::EngineError;
 use crate::provider::Provider;
 
-pub(crate) const DEFAULT_MAX_TOKENS: u64 = 4096;
+pub(crate) const DEFAULT_MAX_TOKENS: u64 = 16384;
 
-const DEFAULT_MAX_TURNS: usize = 10;
+const DEFAULT_MAX_TURNS: usize = 100;
 
 /// A configured agent ready to run one turn.
 ///

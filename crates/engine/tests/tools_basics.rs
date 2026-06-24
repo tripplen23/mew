@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use mewcode_engine::skills::{SkillRegistry, SkillSource};
 use mewcode_engine::tools::{
-    GlobTool, ListDirectoryTool, ProjectContext, ReadFileTool, UseSkillTool,
+    GlobTool, ListDirectoryTool, ProjectContext, ReadFileTool, SkillViewTool,
 };
 use mewcode_protocol::ToolError;
 use mewcode_protocol::tool::ToolContracts;
@@ -85,7 +85,7 @@ async fn use_skill_returns_body() {
     reg.load_dir(&tmpdir, SkillSource::Global);
     let skills = std::sync::Arc::new(reg);
 
-    let tool = UseSkillTool::new(skills);
+    let tool = SkillViewTool::new(skills);
     let out = tool.execute(json!({ "name": "alpha" })).await.unwrap();
     assert!(out.0["body"].as_str().unwrap().contains("body content"));
 }

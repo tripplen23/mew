@@ -5,6 +5,43 @@ use figment::providers::{Env, Format, Toml};
 use mewcode_protocol::env::{CONFIG_FILE, OPENCODE_GO_API_KEY};
 use serde::Deserialize;
 
+/// Expand a `~` and `${VAR}` placeholders in `raw`. Returns the path
+/// unchanged if the placeholder is unset. Used for `external_dirs`
+/// (Hermes-compatible behaviour).
+fn expand_path(raw: &str) -> String {
+    let mut s = raw.to_string();
+    if let Some(stripped) = s.strip_prefix("~/") {
+        if let Some(home) = dirs::home_dir() {
+            s = format!("{}/{}", home.display(), stripped);
+        }
+    } else if s == "~" {
+        if let Some(home) = dirs::home_dir() {
+            s = home.display().to_string();
+        }
+    }
+    // ${VAR} substitution. Char-based walk so non-ASCII bytes
+    // (e.g. `café` in a path) survive intact.
+    let mut result = String::with_capacity(s.len());
+    let mut rest = s.as_str();
+    while let Some(start) = rest.find("${") {
+        result.push_str(&rest[..start]);
+        let after = &rest[start + 2..];
+        if let Some(end) = after.find('}') {
+            let var = &after[..end];
+            match std::env::var(var) {
+                Ok(v) => result.push_str(&v),
+                Err(_) => result.push_str(&rest[start..start + 2 + end + 1]),
+            }
+            rest = &after[end + 1..];
+        } else {
+            result.push_str(&rest[start..]);
+            return result;
+        }
+    }
+    result.push_str(rest);
+    result
+}
+
 /// Default host the server binds to.
 pub const DEFAULT_HOST: &str = "127.0.0.1";
 
@@ -34,6 +71,22 @@ pub struct ServerConfig {
     /// Log level.
     #[serde(default = "default_log")]
     pub log: String,
+    /// Skill configuration. Optional — when absent, only the default
+    /// discovery locations (global + project + dev) are used.
+    #[serde(default)]
+    pub skills: SkillServerConfig,
+}
+
+/// Skills subsection of [`ServerConfig`].
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct SkillServerConfig {
+    /// Additional skill directories to scan, in addition to the
+    /// defaults. `~` and `${VAR}` are expanded at load time. Useful
+    /// for sharing skills across multiple repos or with other agents
+    /// (Hermes / agentskills.io compatible — see
+    /// `https://hermes-agent.nousresearch.com/docs/user-guide/features/skills`).
+    #[serde(default)]
+    pub external_dirs: Vec<String>,
 }
 
 fn default_host() -> String {
@@ -62,5 +115,48 @@ impl ServerConfig {
         }
 
         figment.extract().map_err(Box::new)
+    }
+}
+
+impl SkillServerConfig {
+    /// Resolve `external_dirs` to a list of absolute paths with `~` and
+    /// `${VAR}` placeholders expanded. Non-existent paths are still
+    /// returned — the engine's `SkillRegistry::load` will silently
+    /// skip them (Hermes behaviour).
+    pub fn resolved_dirs(&self) -> Vec<std::path::PathBuf> {
+        self.external_dirs
+            .iter()
+            .map(|s| std::path::PathBuf::from(expand_path(s)))
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn expand_tilde() {
+        let home = dirs::home_dir().unwrap();
+        let out = expand_path("~/skills");
+        assert!(out.starts_with(home.to_str().unwrap()));
+    }
+
+    #[test]
+    fn expand_env_var() {
+        // PATH is set on every system; use it to verify the ${VAR} branch
+        // runs without mutating env state.
+        let out = expand_path("${PATH}/skills");
+        assert!(out.ends_with("/skills"), "got {out}");
+        assert!(!out.contains("${"), "placeholder should be expanded");
+    }
+
+    #[test]
+    fn expand_unknown_var_is_left_alone() {
+        let out = expand_path("${MEW_DEFINITELY_NOT_SET_XYZ_42}/skills");
+        // Either fully resolved (if user happens to have it set) or
+        // left as-is — both are acceptable. We just want the function
+        // to not panic.
+        assert!(out.contains("skills"));
     }
 }

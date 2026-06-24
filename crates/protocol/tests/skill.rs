@@ -47,7 +47,10 @@ fn catalog_entry_includes_name_and_description() {
     let entry = skill.catalog_entry();
     assert!(entry.contains("review-pr"));
     assert!(entry.contains("Review a pull request"));
-    assert!(entry.contains("use_skill"));
+    // Compact L0 form: no body, no per-skill tool name reference. The
+    // tool name lives in the tool descriptor (rendered elsewhere); the
+    // catalog is just a one-line-per-skill index for the system prompt.
+    assert!(!entry.contains("skill_view"));
 }
 
 #[test]

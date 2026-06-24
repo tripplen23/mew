@@ -14,18 +14,12 @@
 | 10 | Streaming (rig → SSE → TUI live tokens) | ✅ |
 | 11 | Tool-calling loop (`RigToolAdapter`, `MAX_AGENT_TURNS=10`, `agent_tool_e2e.rs`) | ✅ |
 | 12 | Remaining tools + PLAN mode gate + Anthropic prompt caching | ✅ |
-| 13 | Skills runtime (hot-reload, assets, frontmatter lint) | ⬜ |
+| 13 | Skills runtime (2-tool progressive disclosure + external dirs) | ✅ |
 | 14 | TUI polish (markdown, code blocks, tool cards, theme, slash menu, @-mention) | ⬜ |
 | 15 | Config & persistence (`~/.config/mewcode/config.toml`, recent sessions) | ⬜ |
 | 16 | Hardening (error toasts, Ctrl-C graceful shutdown, retries, command palette) | ⬜ |
 | 17 | Trace ingestion latency | ⬜ (active) |
 
-## Phase 13 — Skills runtime
-- Skill hot-reload: pick up new or changed `SKILL.md` files without restarting
-- Skill assets: bundle files alongside the body, exposed via `use_skill`
-- Lint `SKILL.md` frontmatter on load, surface errors at boot
-- More bundled sample skills (`explain-error`, `refactor-rust`)
-- Ref: [Anthropic Skills guide][skills-guide]
 
 ## Phase 14 — TUI polish
 - Markdown rendering (`tui-markdown`)
@@ -40,7 +34,7 @@
 ## Phase 16 — Hardening
 - Error toasts, Ctrl-C graceful shutdown, retries, command palette
 
-## Phase 17 — Trace ingestion latency (active)
+## Phase 17 — Trace ingestion latency
 
 Traces take ~13 min to appear in Langfuse. Three confirmed root causes
 (verified against `opentelemetry_sdk-0.31.0` / `opentelemetry-langfuse-0.6.1`

@@ -112,6 +112,23 @@ let api_key = env::var("OPENCODE_GO_API_KEY")?;
 
 **Why** — one source of truth, renames are one compiler-checked diff, `cargo doc` lands on the constant.
 
+### Prompt format
+
+System prompts are built from named `&'static str` helpers for static sections and `writeln!` for dynamic lines; each section includes its own leading blank line. Don't chain `push_str("...")` on inline literals — the source becomes unreadable and the layout drifts. Canonical examples: `crates/engine/src/agent/prompt.rs` and `crates/engine/src/skills/catalog.rs`.
+
+```rust
+// good
+fn mode_section(mode: Mode) -> &'static str {
+    Mode::Build => "\n\n## Mode: BUILD\n..."
+}
+let mut out = String::new();
+out.push_str(intro());
+out.push_str(mode_section(mode));
+for d in &descriptors {
+    let _ = writeln!(out, "{}", format_tool_descriptor(d));
+}
+```
+
 ## Project conventions
 
 - **No emoji in code, comments, or commits** unless explicitly asked.

@@ -429,7 +429,7 @@ fn plan_mode_filters_write_tools() {
     assert!(plan_names.contains(&"list_directory"));
     assert!(plan_names.contains(&"glob"));
     assert!(plan_names.contains(&"grep"));
-    assert!(plan_names.contains(&"use_skill"));
+    assert!(plan_names.contains(&"skill_view"));
 
     // Write tools should be absent. `mewcode_memory` is `WRITE_LOCAL`
     // (it persists to disk) so it is gated out of Plan mode too.
@@ -451,7 +451,7 @@ fn build_mode_includes_all_tools() {
     assert!(build_names.contains(&"list_directory"));
     assert!(build_names.contains(&"glob"));
     assert!(build_names.contains(&"grep"));
-    assert!(build_names.contains(&"use_skill"));
+    assert!(build_names.contains(&"skill_view"));
     assert!(build_names.contains(&"write_file"));
     assert!(build_names.contains(&"edit_file"));
     assert!(build_names.contains(&"bash"));

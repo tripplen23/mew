@@ -1,37 +1,52 @@
-//! Skill registry. Loads from two scopes (global + per-project), with
-//! per-project overriding global on name collision. The model sees only
-//! the catalog (name + description) in its system prompt; the body is
-//! loaded into context only when invoked.
+//! Skill registry.
+//!
+//! ## Loading
+//!
+//! `SkillRegistry::load(&config)` is the single entry point. It walks
+//! every directory in `config` (in precedence order: project → external
+//! → bundled), reads every immediate subdirectory that contains a
+//! `SKILL.md`, and inserts the resulting `Skill` into a name →
+//! `LoadedSkill` map. **Project shadows external shadows bundled** on
+//! name collisions, so a client can override a bundled skill locally
+//! without forking the project.
+//!
+//! Non-existent paths are silently skipped (Hermes behaviour).
+//! `${VAR}` and `~` are expanded before the directory is tested.
+//!
+//! ## Progressive disclosure
+//!
+//! Three levels, exposed through the skill tools:
+//! - L0: [`SkillRegistry::catalog_for_system_prompt`] — name +
+//!   description only, shipped in the system prompt.
+//! - L1: [`SkillRegistry::view_body`] — full `SKILL.md` body, returned
+//!   by the `skill_view` tool with no `path`.
+//! - L2: [`SkillRegistry::view_subfile`] — one sub-file under the
+//!   skill directory, returned by the `skill_view` tool with a `path`.
+//!
+//! ## File layout
+//!
+//! ```text
+//! mod.rs     — this file: SkillRegistry struct + loading + introspection
+//! config.rs  — SkillLoadConfig (where to look + precedence)
+//! source.rs  — SkillSource + LoadedSkill (provenance)
+//! catalog.rs — SkillListEntry + the L0 catalog/list renderers
+//! view.rs    — the L1/L2 read methods (view_body, view_subfile)
+//! ```
+
+mod catalog;
+mod config;
+mod source;
+mod view;
+
+pub use catalog::SkillListEntry;
+pub use config::SkillLoadConfig;
+pub use source::{LoadedSkill, SkillSource};
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use mewcode_protocol::{GLOBAL_SKILLS_DIR, PROJECT_SKILLS_DIR, SKILL_FILE, Skill, SkillError};
+use mewcode_protocol::{GLOBAL_SKILLS_DIR, PROJECT_SKILLS_DIR, SKILL_FILE, Skill};
 use tracing::{info, warn};
-
-/// Source of a loaded skill.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SkillSource {
-    /// `~/.config/mewcode/skills/...`
-    Global,
-    /// `./.mewcode/skills/...` (or inherited from a parent directory).
-    Project,
-}
-
-/// A loaded skill plus its provenance.
-#[derive(Debug, Clone)]
-pub struct LoadedSkill {
-    /// The skill itself.
-    pub skill: Skill,
-    /// Where it was loaded from.
-    pub source: SkillSource,
-}
-
-impl LoadedSkill {
-    fn new(skill: Skill, source: SkillSource) -> Self {
-        Self { skill, source }
-    }
-}
 
 /// Registry of skills available to the engine.
 #[derive(Debug, Default, Clone)]
@@ -49,24 +64,54 @@ impl SkillRegistry {
         Self::default()
     }
 
-    /// Load all skills from the default locations. Per-project overrides
-    /// global on name collision.
+    /// Load all skills from the default locations (global + project).
+    /// New code should prefer [`SkillRegistry::load`] with an explicit
+    /// config (e.g. to add `external_dirs` or `bundled_dir`).
     pub fn load_defaults() -> Self {
+        Self::load(&SkillLoadConfig::default())
+    }
+
+    /// Load skills according to `config`. Later sources override
+    /// earlier ones on name collision — bundled is lowest, dev is
+    /// highest. Project skills intentionally shadow global installs
+    /// so a repo can override a shared skill locally.
+    pub fn load(config: &SkillLoadConfig) -> Self {
         let mut reg = Self::new();
+
+        // 1. Bundled (lowest precedence).
+        if let Some(dir) = config.bundled_dir.as_deref() {
+            reg.load_dir(dir, SkillSource::Bundled);
+        }
+
+        // 2. External dirs (in the order they were declared).
+        for dir in &config.external_dirs {
+            reg.load_dir(dir, SkillSource::External);
+        }
+
+        // 3. Global (`~/.config/mewcode/skills`). Loaded before project
+        //    so project can shadow global on name collision.
         if let Some(home) = dirs::home_dir() {
             let global = home.join(".config").join("mewcode").join(GLOBAL_SKILLS_DIR);
             reg.load_dir(&global, SkillSource::Global);
         }
-        if let Some(p) = Self::find_project_skills_dir() {
-            reg.load_dir(&p, SkillSource::Project);
+
+        // 4. Project (walks up from the search start). Shadows global.
+        if let Some(start) = config.project_search_start.as_deref() {
+            if let Some(p) = Self::find_project_skills_dir_from(start) {
+                reg.load_dir(&p, SkillSource::Project);
+            }
         }
-        // Dev convenience: load `./skills/` if present. Harmless for end users.
-        if let Some(p) = std::env::current_dir()
-            .ok()
-            .and_then(|cwd| Self::find_dev_skills_dir_from(&cwd))
-        {
-            reg.load_dir(&p, SkillSource::Project);
+
+        // 5. Dev convenience (`./skills/`).
+        if config.include_dev_dir {
+            if let Some(p) = std::env::current_dir()
+                .ok()
+                .and_then(|cwd| Self::find_dev_skills_dir_from(&cwd))
+            {
+                reg.load_dir(&p, SkillSource::Dev);
+            }
         }
+
         reg
     }
 
@@ -102,13 +147,12 @@ impl SkillRegistry {
             self.missing_paths.push(dir.to_path_buf());
             return;
         }
-
         self.loaded_paths.push(dir.to_path_buf());
 
         let entries = match std::fs::read_dir(dir) {
             Ok(entries) => entries,
-            Err(e) => {
-                warn!(dir = %dir.display(), error = %e, "could not read skills directory");
+            Err(err) => {
+                warn!(path = %dir.display(), error = %err, "could not read skills dir");
                 return;
             }
         };
@@ -126,7 +170,7 @@ impl SkillRegistry {
                 Ok(skill) => {
                     info!(
                         name = %skill.name,
-                        source = ?source,
+                        source = source.label(),
                         path = %path.display(),
                         "loaded skill"
                     );
@@ -174,39 +218,5 @@ impl SkillRegistry {
     /// Directories we attempted to load from but didn't find.
     pub fn missing_paths(&self) -> &[PathBuf] {
         &self.missing_paths
-    }
-
-    /// Render the system-prompt catalog. Empty string if no skills are
-    /// loaded (so callers can prepend unconditionally).
-    pub fn catalog_for_system_prompt(&self) -> String {
-        if self.skills.is_empty() {
-            return String::new();
-        }
-        let mut out = String::from("\n## Available skills\n\n");
-        out.push_str("You have the following skills installed. Each skill is a bundle of ");
-        out.push_str("specialised instructions for a particular kind of task. When the user ");
-        out.push_str("asks you to do something that matches a skill's description, invoke it ");
-        out.push_str("with the `use_skill` tool to load the full instructions into your ");
-        out.push_str("context before proceeding. Do not invent skill names — only use the ones ");
-        out.push_str("listed below.\n\n");
-
-        for loaded in self.skills() {
-            out.push_str(&loaded.skill.catalog_entry());
-            out.push('\n');
-        }
-        out
-    }
-
-    /// Resolve a skill by name, returning the full body. This is what
-    /// the `use_skill` tool calls.
-    pub fn resolve_body(&self, name: &str) -> Result<String, SkillError> {
-        let loaded = self
-            .skills
-            .get(name)
-            .ok_or_else(|| SkillError::MissingField {
-                path: PathBuf::from(format!("<skill:{name}>")),
-                field: "name",
-            })?;
-        Ok(loaded.skill.body.clone())
     }
 }

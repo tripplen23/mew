@@ -5,6 +5,18 @@
 //! guide, a skill lives in its own directory and starts with a
 //! `SKILL.md` whose YAML frontmatter names it and tells the model when
 //! to use it. The body is loaded into context only when invoked.
+//!
+//! ## Progressive disclosure (Anthropic Skills guide, Hermes pattern)
+//!
+//! | Level | What is loaded | Cost |
+//! |-------|----------------|------|
+//! | L0 | name + description (system-prompt catalog) | ~80 bytes per skill |
+//! | L1 | full `SKILL.md` body (via `skill_view`) | varies; truncated |
+//! | L2 | one sub-file (via `skill_view(name, path)`) | bounded by file size |
+//!
+//! The L0 list is the only thing that ships in the system prompt; L1 and
+//! L2 are tool calls so the model pays the per-skill cost only when it
+//! actually needs that skill.
 
 use std::path::{Path, PathBuf};
 
@@ -47,33 +59,115 @@ impl Skill {
         })?;
         let mut skill = parse_skill_md(&raw, &path)?;
         skill.location = dir.to_path_buf();
-
-        let mut assets = Vec::new();
-        let entries = std::fs::read_dir(dir).map_err(|e| SkillError::Read {
-            path: dir.to_path_buf(),
-            source: e,
-        })?;
-        for entry in entries.flatten() {
-            let p = entry.path();
-            if p == path {
-                continue;
-            }
-            if p.is_file() {
-                assets.push(p);
-            }
-        }
-        assets.sort();
-        skill.assets = assets;
+        skill.assets = list_skill_assets(dir, &path);
         Ok(skill)
     }
 
-    /// Render the catalog entry (name + description) for the system
-    /// prompt. The body is intentionally omitted.
+    /// Render the **compact** catalog entry (name + description) for the
+    /// system prompt. The body is intentionally omitted. This is the L0
+    /// progressive-disclosure entry: small enough to keep ~30 skills
+    /// under 3 kB of prompt.
     pub fn catalog_entry(&self) -> String {
-        format!(
-            "- **{}** — {}\n  _invoke with: `use_skill(\"{}\")`_",
-            self.name, self.description, self.name
-        )
+        format!("- **{}** — {}", self.name, self.description)
+    }
+}
+
+/// Read a sub-file from a skill directory by its path relative to the
+/// skill root. The path is sandboxed inside the skill directory and
+/// cannot escape it (e.g. `..` segments are rejected, and the resolved
+/// path is canonicalized so symlink escapes are caught).
+///
+/// Used by the `skill_view` tool's Level 2 path. Returns the file
+/// contents together with the requested relative path.
+pub fn read_skill_subfile(
+    skill_root: &Path,
+    relative_path: &str,
+) -> Result<(PathBuf, String), SkillError> {
+    let rel = Path::new(relative_path);
+    if rel.is_absolute() {
+        return Err(SkillError::InvalidSubpath {
+            path: relative_path.into(),
+            reason: "must be relative to the skill root".into(),
+        });
+    }
+    if rel
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return Err(SkillError::InvalidSubpath {
+            path: relative_path.into(),
+            reason: "must not contain `..` segments".into(),
+        });
+    }
+    // Reject an in-root `SKILL.md` — that file is the L1 body and
+    // must go through `skill_view` with no `path`. Allowing it as an
+    // L2 sub-file would bypass the L1 response budget.
+    //
+    // Strip `CurDir` (`.`) components first so `./SKILL.md`,
+    // `subdir/./SKILL.md`, and similar dot-prefixed variants all
+    // normalise to `SKILL.md` and get caught by the guard. `..`
+    // is still rejected by the check above.
+    let cleaned: PathBuf = rel
+        .components()
+        .filter(|c| !matches!(c, std::path::Component::CurDir))
+        .collect();
+    if cleaned == Path::new(SKILL_FILE) {
+        return Err(SkillError::InvalidSubpath {
+            path: relative_path.into(),
+            reason: format!("`{SKILL_FILE}` is loaded via L1, not as a sub-file"),
+        });
+    }
+    let resolved = skill_root.join(&cleaned);
+    let canonical = std::fs::canonicalize(&resolved).map_err(|e| SkillError::Read {
+        path: resolved.clone(),
+        source: e,
+    })?;
+    let canon_root = std::fs::canonicalize(skill_root).map_err(|e| SkillError::Read {
+        path: skill_root.to_path_buf(),
+        source: e,
+    })?;
+    if !canonical.starts_with(&canon_root) {
+        return Err(SkillError::InvalidSubpath {
+            path: relative_path.into(),
+            reason: "resolved path escapes the skill root".into(),
+        });
+    }
+    let content = std::fs::read_to_string(&canonical).map_err(|e| SkillError::Read {
+        path: canonical.clone(),
+        source: e,
+    })?;
+    Ok((rel.to_path_buf(), content))
+}
+
+/// List the asset files in a skill directory (everything except the
+/// `SKILL.md`). Returned paths are relative to the skill root so the
+/// catalog can ship them to the model as plain strings.
+fn list_skill_assets(skill_dir: &Path, skill_md: &Path) -> Vec<PathBuf> {
+    let mut assets = Vec::new();
+    // Walk into sub-folders (references/, scripts/, …) so the catalog
+    // can advertise the full tree. The `skip` is only applied at the
+    // top level — nested `SKILL.md` files (if any) are still listed.
+    collect_files(skill_dir, skill_dir, Some(skill_md), &mut assets);
+    assets.sort();
+    assets
+}
+
+fn collect_files(root: &Path, dir: &Path, skip: Option<&Path>, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let p = entry.path();
+        if skip == Some(p.as_path()) {
+            continue;
+        }
+        if p.is_dir() {
+            collect_files(root, &p, None, out);
+        } else if p.is_file() {
+            if let Ok(rel) = p.strip_prefix(root) {
+                out.push(rel.to_path_buf());
+            }
+        }
     }
 }
 
@@ -104,6 +198,20 @@ pub enum SkillError {
         path: PathBuf,
         /// Which field is missing.
         field: &'static str,
+    },
+    /// The named skill is not installed.
+    #[error("no skill named '{name}' is installed")]
+    NotFound {
+        /// The requested skill name.
+        name: String,
+    },
+    /// The `skill_view` path argument was rejected.
+    #[error("invalid skill subpath '{path}': {reason}")]
+    InvalidSubpath {
+        /// The path the model tried to read.
+        path: String,
+        /// Why it was rejected.
+        reason: String,
     },
 }
 
@@ -144,9 +252,6 @@ pub fn parse_skill_md(raw: &str, path: &Path) -> Result<Skill, SkillError> {
 struct Frontmatter {
     name: Option<String>,
     description: Option<String>,
-    #[serde(default)]
-    #[allow(dead_code)]
-    version: Option<String>,
 }
 
 /// Split a `SKILL.md` document into frontmatter and body. Returns

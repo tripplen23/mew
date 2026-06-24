@@ -91,7 +91,7 @@ fn catalog_lists_every_skill() {
     assert!(cat.contains("**beta**"));
     assert!(cat.contains("First skill."));
     assert!(cat.contains("Second skill."));
-    assert!(cat.contains("use_skill"));
+    assert!(cat.contains("skill_view"));
 }
 
 #[test]
@@ -111,12 +111,19 @@ fn missing_directory_is_recorded() {
 }
 
 #[test]
-fn resolve_body_returns_full_prompt() {
+fn view_body_returns_full_prompt() {
     let tmp = tempdir();
     write_skill(tmp.path(), "x", "desc");
     let mut reg = SkillRegistry::new();
     reg.load_dir(tmp.path(), SkillSource::Global);
 
-    let body = reg.resolve_body("x").unwrap();
+    let body = reg.view_body("x").unwrap();
     assert!(body.contains("# x"));
+}
+
+#[test]
+fn view_body_missing_skill_returns_not_found() {
+    let reg = SkillRegistry::new();
+    let err = reg.view_body("does-not-exist").expect_err("missing");
+    assert!(matches!(err, mewcode_protocol::SkillError::NotFound { .. }));
 }

@@ -32,11 +32,11 @@ pub use fs::{EditFileTool, GlobTool, ListDirectoryTool, ReadFileTool, WriteFileT
 pub use memory::MewcodeMemoryTool;
 pub use search::GrepTool;
 pub use shell::BashTool;
-pub use skills::UseSkillTool;
+pub use skills::{SkillViewTool, SkillsListTool};
 
 /// Engine-local alias for the shared skill registry. We keep the
 /// engine's [`SkillRegistry`] in [`crate::skills`] and pass it in to
-/// tool implementations that need it (today: `use_skill`).
+/// tool implementations that need it (today: `skills_list`, `skill_view`).
 pub type Skills = Arc<SkillRegistry>;
 
 /// Registry of tools available to the harness.
@@ -131,7 +131,8 @@ pub fn default_registry(
     reg.register(Arc::new(ListDirectoryTool::new(ctx.clone())));
     reg.register(Arc::new(GlobTool::new(ctx.clone())));
     reg.register(Arc::new(GrepTool::new(ctx.clone())));
-    reg.register(Arc::new(UseSkillTool::new(skills)));
+    reg.register(Arc::new(SkillsListTool::new(skills.clone())));
+    reg.register(Arc::new(SkillViewTool::new(skills)));
 
     // `mewcode_memory` persists to disk (WRITE_LOCAL) — gate it with the writers.
     if mode.allows_writes() {
