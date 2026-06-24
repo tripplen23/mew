@@ -152,12 +152,7 @@ fn list_skill_assets(skill_dir: &Path, skill_md: &Path) -> Vec<PathBuf> {
     assets
 }
 
-fn collect_files(
-    root: &Path,
-    dir: &Path,
-    skip: Option<&Path>,
-    out: &mut Vec<PathBuf>,
-) {
+fn collect_files(root: &Path, dir: &Path, skip: Option<&Path>, out: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };

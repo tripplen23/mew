@@ -45,9 +45,7 @@ pub use source::{LoadedSkill, SkillSource};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use mewcode_protocol::{
-    GLOBAL_SKILLS_DIR, PROJECT_SKILLS_DIR, SKILL_FILE, Skill,
-};
+use mewcode_protocol::{GLOBAL_SKILLS_DIR, PROJECT_SKILLS_DIR, SKILL_FILE, Skill};
 use tracing::{info, warn};
 
 /// Registry of skills available to the engine.
