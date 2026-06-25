@@ -33,11 +33,11 @@ The thing that changed: an agent can now do the reconciliation. Recent writing
 on AI-generated code drift lands on the same prescription we arrived at
 independently — keep the plan/model as the source of truth and regenerate from
 it rather than hand-patching output, so drift always has a reset point
-([MindStudio, 2025](https://www.mindstudio.ai/blog/ai-generated-code-drift-cost-analysis/)).
+([MindStudio, 2026](https://www.mindstudio.ai/blog/ai-generated-code-drift-cost-analysis/)).
 The emerging "architectural drift" problem — code that compiles and passes
 tests but quietly violates the intended design — is exactly what a
 graph-bound-to-symbols guardrail catches
-([Toward Next AI, 2025](https://medium.com/toward-next-ai/ai-coding-agent-architecture-guardrails-how-to-stop-agents-from-passing-tests-while-breaking-7c66927cb6a3)).
+([Toward Next AI, 2026](https://medium.com/toward-next-ai/ai-coding-agent-architecture-guardrails-how-to-stop-agents-from-passing-tests-while-breaking-7c66927cb6a3)).
 *Content rephrased for compliance with licensing restrictions.*
 
 The wedge versus end-to-end code generators: our artifact is a **readable,
