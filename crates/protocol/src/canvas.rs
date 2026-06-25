@@ -15,9 +15,11 @@ use std::collections::HashMap;
 /// Intentionally does not implement `Ord` / `PartialOrd`: ids are opaque,
 /// and giving them an ordering would invite callers to rely on insertion
 /// order or alphabetical sort, neither of which the design commits to.
-#[derive(
-    Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, utoipa::ToSchema,
-)]
+///
+/// An empty `NodeId` is rejected at deserialize time — the empty string
+/// is a real footgun (silent HashMap lookups, broken find-by-id) and the
+/// data model has no legitimate use for it.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, utoipa::ToSchema)]
 #[serde(transparent)]
 pub struct NodeId(pub String);
 
@@ -31,6 +33,18 @@ impl NodeId {
 impl From<String> for NodeId {
     fn from(s: String) -> Self {
         Self(s)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for NodeId {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        if s.is_empty() {
+            return Err(serde::de::Error::custom(
+                "NodeId must not be empty (the empty string breaks HashMap keying and find-by-id)",
+            ));
+        }
+        Ok(Self(s))
     }
 }
 
@@ -114,14 +128,22 @@ pub struct Edge {
 /// drift detection.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 pub struct Graph {
-    /// Schema version. Bumped on any backwards-incompatible change to
-    /// `Graph` / `Node` / `Edge` / `NodeKind` / `EdgeKind`.
+    /// Schema version. Required — a missing `version` is a corrupt file
+    /// and fails loud rather than silently defaulting to v0. T2's loader
+    /// returns `Graph::default()` only when the *file is absent*, a
+    /// different code path from a corrupt file.
     pub version: u32,
     /// Nodes keyed implicitly by their stable `id`. Order is not
     /// significant; serde preserves insertion order on serialize.
+    /// `#[serde(default)]` matches the lenient handling of
+    /// [`Layout::positions`]: a graph with no nodes is empty, not
+    /// corrupt.
+    #[serde(default)]
     pub nodes: Vec<Node>,
     /// Edges. Dangling edges (referencing missing nodes) are rejected by
-    /// `canvas_mutate` (see milestone-1 T6), not by this struct.
+    /// `canvas_mutate` (see milestone-1 T6), not by this struct. Empty
+    /// for the same reason as `nodes` above.
+    #[serde(default)]
     pub edges: Vec<Edge>,
 }
 
@@ -146,6 +168,30 @@ pub struct Point {
     pub y: i32,
 }
 
+/// Theme names the protocol layer understands. The protocol carries the
+/// name; the client resolves it to a `Theme` struct (see
+/// `ui-aesthetic.md` §4). Keeping this an enum (not a `String`) catches
+/// typos at the data-model boundary rather than at theme-load time.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+    utoipa::ToSchema,
+)]
+#[serde(rename_all = "kebab-case")]
+pub enum ThemeName {
+    /// The single default theme shipped in M1. M2 will add more variants
+    /// here as the theming surface lands.
+    #[default]
+    Default,
+}
+
 /// Presentation overlay. **Not** the source of truth — drift detection
 /// ignores this file entirely. Missing positions are filled by the
 /// auto-layout pass; editing this file never triggers codegen.
@@ -153,13 +199,18 @@ pub struct Point {
 pub struct Layout {
     pub version: u32,
     /// Map from node id to its resolved position. Absent entries mean
-    /// "let auto-layout decide."
+    /// "let auto-layout decide." `#[serde(default)]` is the lenient
+    /// counterpart to `Graph.version`'s strictness: a missing
+    /// `positions` field is empty, not corrupt.
+    ///
+    /// Validity (i.e. each key exists in the [`Graph`]) is enforced at
+    /// the engine layer (T2's loader), not here. Drift detection (M4)
+    /// ignores this field entirely.
     #[serde(default)]
     pub positions: HashMap<NodeId, Point>,
-    /// Theme name. Resolved to a `Theme` struct on the client side (see
-    /// `ui-aesthetic.md` §4); the protocol layer just carries the string.
-    #[serde(default = "default_theme")]
-    pub theme: String,
+    /// Theme name. Resolved to a `Theme` struct on the client side.
+    #[serde(default)]
+    pub theme: ThemeName,
 }
 
 impl Default for Layout {
@@ -167,11 +218,7 @@ impl Default for Layout {
         Self {
             version: 1,
             positions: HashMap::new(),
-            theme: default_theme(),
+            theme: ThemeName::default(),
         }
     }
-}
-
-fn default_theme() -> String {
-    "default".to_string()
 }

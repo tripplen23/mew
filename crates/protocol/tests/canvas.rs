@@ -6,7 +6,7 @@
 //! taxonomy. This is the T1 acceptance test from
 //! `milestone-1-promptable-canvas.md` §3.T1.
 
-use mewcode_protocol::{EdgeKind, Graph, Layout, NodeId, NodeKind, Point};
+use mewcode_protocol::{EdgeKind, Graph, Layout, NodeId, NodeKind, Point, ThemeName};
 
 const GRAPH_JSON: &str = r#"{
   "version": 1,
@@ -68,7 +68,7 @@ fn graph_roundtrips() {
 fn layout_roundtrips() {
     let parsed: Layout = serde_json::from_str(LAYOUT_JSON).expect("layout json parses");
     assert_eq!(parsed.version, 1);
-    assert_eq!(parsed.theme, "default");
+    assert_eq!(parsed.theme, ThemeName::Default);
     assert_eq!(parsed.positions.len(), 2);
     assert_eq!(
         parsed.positions.get(&"auth".to_string().into()),
@@ -104,7 +104,7 @@ fn empty_layout_serialises_to_default() {
     let l = Layout::default();
     assert_eq!(l.version, 1);
     assert!(l.positions.is_empty());
-    assert_eq!(l.theme, "default");
+    assert_eq!(l.theme, ThemeName::Default);
 
     let serialised = serde_json::to_string(&l).expect("layout serialises");
     let reparsed: Layout = serde_json::from_str(&serialised).expect("layout reparses");
@@ -154,4 +154,36 @@ fn node_id_is_stable() {
     assert_eq!(id.as_str(), "auth");
     let again: NodeId = serde_json::from_str("\"auth\"").unwrap();
     assert_eq!(id, again);
+}
+
+#[test]
+fn empty_node_id_is_rejected() {
+    // The data model has no legitimate use for an empty id; allowing it
+    // through would silently break HashMap keying and find-by-id.
+    let result: Result<NodeId, _> = serde_json::from_str("\"\"");
+    assert!(
+        result.is_err(),
+        "empty NodeId must be rejected at deserialize time, got: {:?}",
+        result
+    );
+}
+
+#[test]
+fn theme_name_wire_form() {
+    // Single-variant enum; the wire form is the kebab-case name.
+    assert_eq!(
+        serde_json::to_string(&ThemeName::Default).unwrap(),
+        "\"default\""
+    );
+}
+
+#[test]
+fn graph_with_no_nodes_parses() {
+    // Matches the lenient handling of `Layout.positions`: a graph with
+    // no `nodes`/`edges` is empty, not corrupt.
+    let json = r#"{ "version": 1 }"#;
+    let parsed: Graph = serde_json::from_str(json).expect("graph with no nodes parses");
+    assert_eq!(parsed.version, 1);
+    assert!(parsed.nodes.is_empty());
+    assert!(parsed.edges.is_empty());
 }
