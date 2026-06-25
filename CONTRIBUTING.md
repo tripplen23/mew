@@ -118,30 +118,7 @@ System prompts are built from named `&'static str` helpers for static sections a
 
 ### Prompt structure
 
-Long prompts sent to a model are organised into named `<TAG>content</TAG>` sections. The tag is the structural unit a reader or downstream consumer can split on; the prose between the opening and closing tag is the content. Use a consistent set across prompts so the structure is recognisable:
-
-- `<ROLE>` — who the agent is and the loop it runs in.
-- `<SOURCES>` — references to read first; sources of truth.
-- `<GUARDRAILS>` — non-negotiable rules; design decisions encoded as constraints.
-- `<TASK>` — the procedure, the loop steps, the work.
-- `<CLEANUP>` — teardown rules (kill processes, delete temp files, etc.).
-- `<VERIFICATION>` — how the model knows it's done; success criteria.
-- `<ESCALATION>` — when to stop and report rather than thrash.
-
-Order them so a reader can skim the tags and understand the shape of the prompt. One tag per major concern; if a section grows past ~50 lines, split it. Canonical example: `docs/architecture-canvas/hermes-loop-prompt.md`.
-
-```rust
-// good
-fn mode_section(mode: Mode) -> &'static str {
-    Mode::Build => "\n\n## Mode: BUILD\n..."
-}
-let mut out = String::new();
-out.push_str(intro());
-out.push_str(mode_section(mode));
-for d in &descriptors {
-    let _ = writeln!(out, "{}", format_tool_descriptor(d));
-}
-```
+Long prompts sent to a model are organised into named `<TAG>content</TAG>` sections. The tag is the structural unit a reader or downstream consumer can split on; the prose between the opening and closing tag is the content.
 
 ## Project conventions
 
