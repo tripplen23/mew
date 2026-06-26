@@ -107,23 +107,25 @@ source, plus [Langfuse v4 FAQ][langfuse-v4]):
    delays". The langfuse crate's `exporter.rs` only injects
    `Authorization`, not this header. **Fixed:** `.with_header("x-langfuse-ingestion-version", "4")`
    on the `ExporterBuilder` chain.
-2. **Unconfigured `BatchConfig` defaults.** `main.rs:116` uses
-   defaults (5s tick, 30s export timeout, batch 512, queue 2048).
-   *Not fixed in this PR* — the v4 header is the load-bearing change;
-   `BatchConfig` tuning is a small additional win, can come in a
-   follow-up.
+2. **Unconfigured `BatchConfig` defaults.** `main.rs` uses defaults
+   (5s tick, 30s export timeout, batch 512, queue 2048).
+   **Fixed:** `BatchConfigBuilder` with `scheduled_delay=2s`,
+   `max_export_timeout=10s`, `max_export_batch_size=256`,
+   `max_queue_size=4096` in both `main.rs` and the e2e test's
+   `init_langfuse_tracing`. Worst-case flush window shrinks from
+   ~35s to ~2s.
 3. **No graceful shutdown + no per-turn `force_flush`.** Ctrl-C drops
    in-flight spans; the 5s ticker is the only flush driver.
    *Not fixed in this PR* — separate concern from the 13-min latency;
    the existing `provider.shutdown()` at the end of `main` is
-   sufficient for the e2e test.
+   sufficient for the e2e test. Tracked in #18 (Ctrl-C) and #19
+   (per-turn `force_flush`).
 
 Other items deferred (not in scope for this PR):
 - Wrap `axum::serve` in `with_graceful_shutdown(tokio::signal::ctrl_c())`
-  so `provider.shutdown()` is actually reached on Ctrl-C.
+  so `provider.shutdown()` is actually reached on Ctrl-C. Tracked in #18.
 - `force_flush()` at end of `Harness::run_turn` and the chat forwarder.
-- `BatchConfigBuilder` tuning: `scheduled_delay=2s`, `export_timeout=10s`,
-  `batch=256`, `queue=4096`.
+  Tracked in #19.
 
 E2E: `crates/server/tests/agent_tool_e2e.rs` now asserts the trace
 appears in <5s (4 × 1.5s polls, fail-fast on timeout). Header set via

@@ -9,6 +9,7 @@ use opentelemetry::trace::TracerProvider as _;
 use opentelemetry_langfuse::ExporterBuilder;
 use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::runtime::Tokio;
+use opentelemetry_sdk::trace::BatchConfigBuilder;
 use opentelemetry_sdk::trace::SdkTracerProvider;
 use opentelemetry_sdk::trace::span_processor_with_async_runtime::BatchSpanProcessor;
 use tokio::net::TcpListener;
@@ -114,7 +115,22 @@ fn build_langfuse_provider() -> Option<SdkTracerProvider> {
                     .with_attributes([KeyValue::new("service.name", "mewcode-server")])
                     .build(),
             )
-            .with_span_processor(BatchSpanProcessor::builder(exporter, Tokio).build())
+            .with_span_processor(
+                BatchSpanProcessor::builder(exporter, Tokio)
+                    // Tuned for low-latency Langfuse ingestion: the v4 header
+                    // (above) routes to Fast Preview, and these knobs shrink
+                    // the worst-case flush window from ~35s (defaults) to ~2s.
+                    // Values match PHASES.md §"Phase 17 — Trace ingestion latency".
+                    .with_batch_config(
+                        BatchConfigBuilder::default()
+                            .with_scheduled_delay(Duration::from_secs(2))
+                            .with_max_export_timeout(Duration::from_secs(10))
+                            .with_max_export_batch_size(256)
+                            .with_max_queue_size(4096)
+                            .build(),
+                    )
+                    .build(),
+            )
             .build(),
     )
 }

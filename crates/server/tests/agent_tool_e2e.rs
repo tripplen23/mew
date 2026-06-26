@@ -39,6 +39,7 @@ use opentelemetry::trace::TracerProvider as _;
 use opentelemetry_langfuse::ExporterBuilder;
 use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::runtime::Tokio;
+use opentelemetry_sdk::trace::BatchConfigBuilder;
 use opentelemetry_sdk::trace::SdkTracerProvider;
 use opentelemetry_sdk::trace::span_processor_with_async_runtime::BatchSpanProcessor;
 
@@ -74,7 +75,18 @@ fn init_langfuse_tracing() -> Option<SdkTracerProvider> {
                 .with_attributes([KeyValue::new("service.name", "mewcode-e2e-test")])
                 .build(),
         )
-        .with_span_processor(BatchSpanProcessor::builder(exporter, Tokio).build())
+        .with_span_processor(
+            BatchSpanProcessor::builder(exporter, Tokio)
+                .with_batch_config(
+                    BatchConfigBuilder::default()
+                        .with_scheduled_delay(Duration::from_secs(2))
+                        .with_max_export_timeout(Duration::from_secs(10))
+                        .with_max_export_batch_size(256)
+                        .with_max_queue_size(4096)
+                        .build(),
+                )
+                .build(),
+        )
         .build();
 
     let tracer = provider.tracer("mewcode-e2e-test");
