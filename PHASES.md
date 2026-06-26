@@ -37,7 +37,7 @@ The full design is in `docs/architecture-canvas/`:
 
 | M  | Name              | Outcome                                                                                          | Status |
 |----|-------------------|--------------------------------------------------------------------------------------------------|--------|
-| M1 | Promptable canvas | Render `graph.json` as boxes + edges; mouse select/pan; prompt bar where the agent mutates the graph and the canvas redraws live. **No codegen, no drift detection in M1.** | ⬜ (active on `wtf-bby-im-lit`; T1 = PR #13) |
+| M1 | Promptable canvas | Render `graph.json` as boxes + edges; mouse select/pan; prompt bar where the agent mutates the graph and the canvas redraws live. **No codegen, no drift detection in M1.** | ⬜ (T1 ✅ via PR #13; T2-T7 ⬜) |
 | M2 | Manual editing    | Mouse create/connect/rename nodes; `layout.json` drag-to-move; undo/redo.                        | ⬜      |
 | M3 | Forward codegen   | `canvas_gen_code`: graph → crate/module/trait/struct skeleton (contracts, not bodies).            | ⬜      |
 | M4 | Drift detection   | `canvas_check_drift`: parse bound symbols with `syn`, diff signatures vs `contract`, report divergence read-only. | ⬜      |
