@@ -6,4 +6,5 @@
 //! already-pinned node positions, [`layout::auto_layout`] fills in
 //! the rest as a deterministic row-major grid.
 
+pub mod io;
 pub mod layout;
