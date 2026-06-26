@@ -92,14 +92,16 @@ Subsumed by mewdraw milestones. Component breakdown:
 
 ## Phase 17 — Trace ingestion latency
 
-**Status:** fixed by setting `x-langfuse-ingestion-version: 4` on the OTEL
-exporter. See PR that adds the header in `crates/server/src/main.rs:96-100`
-and `crates/server/tests/agent_tool_e2e.rs:63-67`; tightens the e2e
-timing loop to assert trace appears in <5s (was implicit 8s budget).
+**Status:** SDK-side fixed. The 13-min latency had three root causes
+that are all addressed in code (PR #16 v4 header, PR #20 BatchConfig
+tuning, #18/#19 graceful shutdown + per-turn force_flush). **End-to-end
+visibility is no longer consistently sub-5s on Langfuse Fast Preview.**
+See "Measured end-to-end latency" below for the current state.
 
-Traces used to take ~13 min to appear in Langfuse. Three confirmed root causes
-(verified against `opentelemetry_sdk-0.31.0` / `opentelemetry-langfuse-0.6.1`
-source, plus [Langfuse v4 FAQ][langfuse-v4]):
+Traces used to take ~13 min to appear in Langfuse. Three confirmed root
+causes we own and fixed in code (verified against
+`opentelemetry_sdk-0.31.0` / `opentelemetry-langfuse-0.6.1` source,
+plus [Langfuse v4 FAQ][langfuse-v4]):
 
 1. **Missing `x-langfuse-ingestion-version: 4` header.** Langfuse's
    Fast Preview path needs this; without it traces land in the S3
@@ -107,13 +109,17 @@ source, plus [Langfuse v4 FAQ][langfuse-v4]):
    delays". The langfuse crate's `exporter.rs` only injects
    `Authorization`, not this header. **Fixed:** `.with_header("x-langfuse-ingestion-version", "4")`
    on the `ExporterBuilder` chain.
-2. **Unconfigured `BatchConfig` defaults.** `main.rs` uses defaults
+2. **Unconfigured `BatchConfig` defaults.** `main.rs` used defaults
    (5s tick, 30s export timeout, batch 512, queue 2048).
    **Fixed:** `BatchConfigBuilder` with `scheduled_delay=2s`,
    `max_export_timeout=10s`, `max_export_batch_size=256`,
    `max_queue_size=4096` in both `main.rs` and the e2e test's
-   `init_langfuse_tracing`. Worst-case flush window shrinks from
-   ~35s to ~2s.
+   `init_langfuse_tracing`. The SDK-side worst-case flush window
+   shrinks from ~35s to ~2s. **This is the SDK's export-to-HTTP
+   bound only** — it does not include Langfuse's own ingestion
+   indexing time, which we don't control. PR #20's body described
+   this as a ~2s end-to-end number; that was an overclaim, corrected
+   here.
 3. **No graceful shutdown + no per-turn `force_flush`.** Ctrl-C drops
    in-flight spans; the 5s ticker is the only flush driver.
    *Not fixed in this PR* — separate concern from the 13-min latency;
@@ -127,11 +133,8 @@ Other items deferred (not in scope for this PR):
 - `force_flush()` at end of `Harness::run_turn` and the chat forwarder.
   Tracked in #19.
 
-E2E: `crates/server/tests/agent_tool_e2e.rs` now asserts the trace
-appears in <5s (4 × 1.5s polls, fail-fast on timeout). Header set via
-`ExporterBuilder::with_header` in the e2e test's `init_langfuse_tracing`.
-
 [langfuse-v4]: https://langfuse.com/faq/all/explore-observations-in-v4
+[langfuse-status]: https://status.langfuse.com/
 
 ## Open strategic questions (tracked in #14)
 
