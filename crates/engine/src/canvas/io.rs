@@ -43,6 +43,20 @@ pub fn save_layout(project_root: impl AsRef<Path>, layout: &Layout) -> io::Resul
     write_pretty(&path, layout)
 }
 
+/// Read the graph from `.mewcode/canvas/graph.json`. Returns
+/// the protocol's empty default when the file is missing, so
+/// first-run projects never see an error here.
+pub fn read_graph(project_root: impl AsRef<Path>) -> io::Result<Graph> {
+    read_graph_or_default(project_root.as_ref())
+}
+
+/// Read the layout from `.mewcode/canvas/layout.json`. Returns
+/// the protocol's empty default when the file is missing, so
+/// first-run projects never see an error here.
+pub fn read_layout(project_root: impl AsRef<Path>) -> io::Result<Layout> {
+    read_layout_or_default(project_root.as_ref())
+}
+
 fn read_graph_or_default(project_root: &Path) -> io::Result<Graph> {
     let path = canvas_path(project_root, GRAPH_FILE);
     match fs::read(&path) {

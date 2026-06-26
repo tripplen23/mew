@@ -5,7 +5,7 @@
 
 use axum::Json;
 use axum::extract::State;
-use mewcode_engine::canvas;
+use mewcode_engine::canvas::io;
 use mewcode_protocol::canvas::{Graph, Layout};
 use serde::Serialize;
 
@@ -24,8 +24,8 @@ use crate::AppState;
     ),
 )]
 pub async fn get_graph(State(state): State<AppState>) -> Result<Json<Graph>, AppError> {
-    let (graph, _layout) = canvas::io::load(state.config.canvas_project_root())
-        .map_err(|e| AppError::Internal(format!("canvas load failed: {e}")))?;
+    let graph = io::read_graph(state.config.canvas_project_root())
+        .map_err(|e| AppError::Internal(format!("canvas graph load failed: {e}")))?;
     Ok(Json(graph))
 }
 
@@ -43,8 +43,8 @@ pub async fn get_graph(State(state): State<AppState>) -> Result<Json<Graph>, App
     ),
 )]
 pub async fn get_layout(State(state): State<AppState>) -> Result<Json<Layout>, AppError> {
-    let (_graph, layout) = canvas::io::load(state.config.canvas_project_root())
-        .map_err(|e| AppError::Internal(format!("canvas load failed: {e}")))?;
+    let layout = io::read_layout(state.config.canvas_project_root())
+        .map_err(|e| AppError::Internal(format!("canvas layout load failed: {e}")))?;
     Ok(Json(layout))
 }
 

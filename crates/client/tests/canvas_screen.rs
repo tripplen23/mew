@@ -171,3 +171,30 @@ fn canvas_loaded_ignored_when_user_left_screen() {
     // longer exists).
     assert_eq!(app.toast.is_none(), toast_was_none_before);
 }
+
+/// `Esc` on the canvas screen must take the user back to Home
+/// and re-fire the session list load. Without this, a stuck
+/// `Cmd::LoadCanvas` would trap the user on a black screen —
+/// the CodeRabbit review caught this exact regression.
+#[test]
+fn esc_on_canvas_returns_to_home_and_refetches_sessions() {
+    let mut app = App::new();
+    // Put the user on the canvas.
+    app.screen = Screen::Canvas(CanvasState::loading());
+
+    let cmd = update(&mut app, Msg::Key(key(KeyCode::Esc)));
+
+    // Screen is now Home, in its initial loading state.
+    match &app.screen {
+        Screen::Home(h) => {
+            assert!(h.loading, "Home should re-enter loading state on Esc");
+            assert!(h.sessions.is_empty());
+        }
+        other => panic!("expected Screen::Home after Esc, got {other:?}"),
+    }
+    // And the side effect is a session list refetch.
+    assert!(matches!(
+        cmd,
+        mewcode_client::runtime::model::Cmd::LoadSessions
+    ));
+}

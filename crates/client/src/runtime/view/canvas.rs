@@ -38,7 +38,14 @@ fn color_for_kind(kind: mewcode_protocol::canvas::NodeKind) -> Color {
 
 /// Draw the canvas screen: title bar, node cards, edge lines, and
 /// a status row at the bottom.
-pub(super) fn render_canvas(frame: &mut Frame, area: Rect, c: &mut CanvasState) {
+///
+/// Takes `&CanvasState` because the render is read-only — the
+/// resolved-position grid is rebuilt each frame from
+/// `state.layout.positions` and the engine's auto-layout rules.
+/// T5 (canvas navigation) will switch this back to `&mut` once
+/// hit-testing persists selection state and viewport pan/zoom
+/// back into `CanvasState`.
+pub(super) fn render_canvas(frame: &mut Frame, area: Rect, c: &CanvasState) {
     let chunks = TuLayout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -140,6 +147,12 @@ fn render_node(frame: &mut Frame, rect: Rect, node: &Node) {
 /// Minimal edge render: a vertical line at column `a.x` from
 /// `a.y` to `b.y`, then a horizontal connector at `b.y` to
 /// `b.x` with an arrowhead at the target.
+///
+/// All `cell_mut` calls use `if let Some(...)` so a node placed
+/// off-canvas (e.g. by a hand-written `graph.json` with a
+/// huge `Point`) does not panic the render. The vertical and
+/// horizontal loops each check `y` and `x` against the area
+/// bounds before drawing.
 fn render_edge(frame: &mut Frame, area: Rect, a: Point, b: Point) {
     let (left, right) = if a.x <= b.x { (a, b) } else { (b, a) };
     let col = area.x.saturating_add(left.x.max(0) as u16);
@@ -148,19 +161,31 @@ fn render_edge(frame: &mut Frame, area: Rect, a: Point, b: Point) {
     }
     let y_top = area.y.saturating_add(left.y.max(0) as u16);
     let y_bot = area.y.saturating_add(right.y.max(0) as u16);
+    let area_bottom = area.y.saturating_add(area.height);
+    let area_right = area.x.saturating_add(area.width).saturating_sub(1);
     for y in y_top.min(y_bot)..=y_top.max(y_bot) {
-        if y < area.y.saturating_add(area.height) {
-            let cell = frame.buffer_mut().cell_mut((col, y)).unwrap();
-            cell.set_symbol("│");
-            cell.set_style(Style::default().fg(Color::DarkGray));
+        if y < area_bottom {
+            if let Some(cell) = frame.buffer_mut().cell_mut((col, y)) {
+                cell.set_symbol("│");
+                cell.set_style(Style::default().fg(Color::DarkGray));
+            }
         }
     }
+    // The horizontal connector only draws inside the canvas
+    // height. `y_bot` may exceed the area when the target
+    // node's y is off-screen — clamp to the area in that
+    // case so we still draw the line at the bottom edge.
+    let y_draw = y_bot.min(area_bottom.saturating_sub(1));
+    if y_draw < area.y {
+        return;
+    }
     let x_end = area.x.saturating_add(right.x.max(0) as u16);
-    for x in col..=x_end.min(area.x.saturating_add(area.width).saturating_sub(1)) {
-        let cell = frame.buffer_mut().cell_mut((x, y_bot)).unwrap();
-        let sym = if x == x_end { "▶" } else { "─" };
-        cell.set_symbol(sym);
-        cell.set_style(Style::default().fg(Color::DarkGray));
+    for x in col..=x_end.min(area_right) {
+        if let Some(cell) = frame.buffer_mut().cell_mut((x, y_draw)) {
+            let sym = if x == x_end { "▶" } else { "─" };
+            cell.set_symbol(sym);
+            cell.set_style(Style::default().fg(Color::DarkGray));
+        }
     }
 }
 

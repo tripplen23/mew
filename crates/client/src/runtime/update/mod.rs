@@ -44,7 +44,7 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
             Screen::Home(_) => on_home_key(screen, should_quit, key),
             Screen::NewSession(_) => on_new_session_key(screen, toast, key),
             Screen::Session(_) => on_session_key(screen, toast, key),
-            Screen::Canvas(c) => on_canvas_key(c, key),
+            Screen::Canvas(_) => on_canvas_key(screen, key),
         },
         // Mouse events arrive at the event loop (T3 enabled them) but
         // no screen consumes them yet. T5 (canvas navigation) will

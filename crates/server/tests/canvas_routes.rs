@@ -145,3 +145,68 @@ async fn written_graph_is_returned_unchanged() {
     assert_eq!(body["nodes"][1]["kind"], "container");
     assert_eq!(body["edges"][0]["kind"], "depends");
 }
+
+/// Per-file decoupling: a malformed `graph.json` must not poison
+/// `GET /canvas/layout`, and a malformed `layout.json` must not
+/// poison `GET /canvas/graph`. Each route reads only its own
+/// file. This is the regression test for the CodeRabbit finding
+/// that both routes called `canvas::io::load` and were coupled.
+#[tokio::test]
+async fn malformed_graph_does_not_break_layout_route() {
+    let tmp = TempDir::new().unwrap();
+    let canvas_dir = tmp.path().join(".mewcode").join("canvas");
+    std::fs::create_dir_all(&canvas_dir).unwrap();
+    // graph.json is broken JSON
+    std::fs::write(canvas_dir.join("graph.json"), b"{ this is not valid json").unwrap();
+    // layout.json is a valid empty Layout
+    std::fs::write(
+        canvas_dir.join("layout.json"),
+        br#"{"version":1,"positions":{}}"#,
+    )
+    .unwrap();
+
+    let (status, body) = body_json(
+        app(tmp.path())
+            .oneshot(
+                Request::builder()
+                    .uri(CANVAS_LAYOUT)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["positions"], serde_json::json!({}));
+}
+
+#[tokio::test]
+async fn malformed_layout_does_not_break_graph_route() {
+    let tmp = TempDir::new().unwrap();
+    let canvas_dir = tmp.path().join(".mewcode").join("canvas");
+    std::fs::create_dir_all(&canvas_dir).unwrap();
+    // graph.json is a valid empty Graph
+    std::fs::write(
+        canvas_dir.join("graph.json"),
+        br#"{"version":1,"nodes":[],"edges":[]}"#,
+    )
+    .unwrap();
+    // layout.json is broken JSON
+    std::fs::write(canvas_dir.join("layout.json"), b"{ broken").unwrap();
+
+    let (status, body) = body_json(
+        app(tmp.path())
+            .oneshot(
+                Request::builder()
+                    .uri(CANVAS_GRAPH)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["nodes"], serde_json::json!([]));
+}
