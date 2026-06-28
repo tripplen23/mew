@@ -13,4 +13,4 @@ expression: terminal.backend().to_string()
 "│                                                          │"
 "│                                                          │"
 "└──────────────────────────────────────────────────────────┘"
-"n new  •  ↑/↓ select  •  Enter open  •  q quit              "
+"n new  •  c canvas  •  ↑/↓ select  •  Enter open  •  q quit "

@@ -42,7 +42,10 @@ pub(super) fn render_home(frame: &mut Frame, area: Rect, h: &HomeState) {
         frame.render_stateful_widget(list, chunks[0], &mut state);
     }
 
-    let footer = Paragraph::new("n new  •  ↑/↓ select  •  Enter open  •  q quit")
+    // The `c` binding is on the update side (`update/home.rs:18`) but
+    // not advertised on older branches; keep the footer honest about
+    // every key the user can press on Home.
+    let footer = Paragraph::new("n new  •  c canvas  •  ↑/↓ select  •  Enter open  •  q quit")
         .style(Style::default().fg(Color::DarkGray));
     frame.render_widget(footer, chunks[1]);
 }

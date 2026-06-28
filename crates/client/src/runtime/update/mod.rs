@@ -20,7 +20,7 @@ mod new_session;
 mod session;
 mod stream;
 
-use canvas::{apply_canvas_loaded, on_canvas_key};
+use canvas::{apply_canvas_loaded, on_canvas_key, on_canvas_mouse};
 use home::on_home_key;
 use new_session::on_new_session_key;
 use session::on_session_key;
@@ -46,10 +46,13 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
             Screen::Session(_) => on_session_key(screen, toast, key),
             Screen::Canvas(_) => on_canvas_key(screen, key),
         },
-        // Mouse events arrive at the event loop (T3 enabled them) but
-        // no screen consumes them yet. T5 (canvas navigation) will
-        // attach handlers in a follow-up PR.
-        Msg::Mouse(_) => Cmd::None,
+        // Mouse events arrive at the event loop. T5 wires
+        // `Screen::Canvas` to consume them for click-select
+        // and pan; other screens still ignore them.
+        Msg::Mouse(mouse) => match screen {
+            Screen::Canvas(c) => on_canvas_mouse(c, mouse),
+            _ => Cmd::None,
+        },
 
         Msg::Tick => Cmd::None,
 
