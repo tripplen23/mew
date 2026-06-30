@@ -29,17 +29,17 @@ pub mod model;
 pub mod update;
 pub mod view;
 
-pub use model::{
-    App, Cmd, HomeState, Msg, NewSessionField, NewSessionState, Overlay, Screen, SessionState,
-    StreamMsg,
-};
+pub use model::{App, Cmd, Msg, Overlay, Screen, SessionState, StreamMsg};
 pub use update::update;
 
 use std::io::{self, Stdout};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use crossterm::event::{self, Event, KeyEventKind};
+use crossterm::event::{
+    self, Event, KeyEventKind, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
+    PushKeyboardEnhancementFlags,
+};
 use crossterm::execute;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
@@ -60,11 +60,10 @@ const CHANNEL_CAPACITY: usize = 256;
 const TICK_INTERVAL: Duration = Duration::from_millis(50);
 const INPUT_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
-/// RAII guard owning the terminal in raw mode + alternate screen.
-///
-/// Construction enters raw mode and the alternate screen; [`Drop`] restores
-/// both. Because restoration happens in `Drop`, an early `?`-return or an
-/// unwinding panic still leaves the user's terminal usable.
+/// RAII guard over the terminal: raw mode, the alternate screen, and (on
+/// supporting terminals) the Kitty keyboard flags that make auto-repeat
+/// visible to the input reader. [`Drop`] reverses each step, so a panic
+/// or an early `?`-return always leaves a usable prompt behind.
 struct TerminalGuard {
     terminal: Terminal<CrosstermBackend<Stdout>>,
 }
@@ -78,11 +77,23 @@ impl TerminalGuard {
             let _ = disable_raw_mode();
             return Err(e).context("entering alternate screen");
         }
+        // Two flags, no-ops on terminals that don't speak the protocol.
+        // `REPORT_ALL_KEYS_AS_ESCAPE_CODES` upgrades plain text keys to
+        // CSI-u so unmodified chars get distinct Press/Repeat/Release;
+        // `REPORT_EVENT_TYPES` does the same for modified keys.
+        let _ = execute!(
+            stdout,
+            PushKeyboardEnhancementFlags(
+                KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES
+                    | KeyboardEnhancementFlags::REPORT_EVENT_TYPES
+            )
+        );
         let terminal = match Terminal::new(CrosstermBackend::new(stdout)) {
             Ok(t) => t,
             Err(e) => {
                 // Clean up before propagating: raw mode and alternate screen
                 // are both active at this point.
+                let _ = execute!(io::stdout(), PopKeyboardEnhancementFlags);
                 let _ = disable_raw_mode();
                 let _ = execute!(io::stdout(), LeaveAlternateScreen);
                 return Err(e).context("initialising terminal");
@@ -96,6 +107,7 @@ impl Drop for TerminalGuard {
     /// Best-effort restore: nothing here may panic or early-return, since we
     /// might already be unwinding. Errors are intentionally swallowed.
     fn drop(&mut self) {
+        let _ = execute!(io::stdout(), PopKeyboardEnhancementFlags);
         let _ = disable_raw_mode();
         let _ = execute!(io::stdout(), LeaveAlternateScreen);
         let _ = self.terminal.show_cursor();
@@ -118,7 +130,6 @@ pub async fn run(config: ClientConfig) -> Result<()> {
 
     spawn_input_reader(tx.clone());
     spawn_ticker(tx.clone());
-    dispatch(Cmd::LoadSessions, &api, &tx); // initial Home fetch
 
     loop {
         // Render the current model before blocking on the next event so the
@@ -142,19 +153,18 @@ pub async fn run(config: ClientConfig) -> Result<()> {
 }
 
 /// Spawn the blocking input reader: it polls crossterm for events and forwards
-/// each key press as a [`Msg::Key`]. Key *release* events are dropped so an
-/// action never fires twice on platforms that report both.
+/// each key press as a [`Msg::Key`].
 fn spawn_input_reader(tx: mpsc::Sender<Msg>) {
     tokio::task::spawn_blocking(move || {
         loop {
             match event::poll(INPUT_POLL_INTERVAL) {
                 Ok(true) => match event::read() {
-                    Ok(Event::Key(key)) if key.kind != KeyEventKind::Release => {
+                    Ok(Event::Key(key)) if key.kind == KeyEventKind::Press => {
                         if tx.blocking_send(Msg::Key(key)).is_err() {
                             break; // loop gone
                         }
                     }
-                    Ok(_) => {} // resize, mouse, focus, paste, key-release: ignored
+                    Ok(_) => {} // resize, mouse, focus, paste, repeat, release: ignored
                     Err(_) => break,
                 },
                 // Timed out with no event: stop if the loop has shut down.
@@ -188,22 +198,6 @@ fn spawn_ticker(tx: mpsc::Sender<Msg>) {
 fn dispatch(cmd: Cmd, api: &ApiClient, tx: &mpsc::Sender<Msg>) {
     match cmd {
         Cmd::None => {}
-        Cmd::LoadSessions => {
-            let api = api.clone();
-            let tx = tx.clone();
-            tokio::spawn(async move {
-                let result = api.list_sessions().await.map_err(|e| e.to_string());
-                let _ = tx.send(Msg::SessionsLoaded(result)).await;
-            });
-        }
-        Cmd::LoadModels => {
-            let api = api.clone();
-            let tx = tx.clone();
-            tokio::spawn(async move {
-                let result = api.models().await.map_err(|e| e.to_string());
-                let _ = tx.send(Msg::ModelsLoaded(result)).await;
-            });
-        }
         Cmd::CreateSession(req) => {
             let api = api.clone();
             let tx = tx.clone();
@@ -213,14 +207,6 @@ fn dispatch(cmd: Cmd, api: &ApiClient, tx: &mpsc::Sender<Msg>) {
                     .await
                     .map_err(create_error_from_net);
                 let _ = tx.send(Msg::SessionCreated(result)).await;
-            });
-        }
-        Cmd::OpenSession(id) => {
-            let api = api.clone();
-            let tx = tx.clone();
-            tokio::spawn(async move {
-                let result = api.get_session(id).await.map_err(|e| e.to_string());
-                let _ = tx.send(Msg::SessionOpened(result)).await;
             });
         }
         Cmd::StartChat(req) => {

@@ -2,7 +2,7 @@ use uuid::Uuid;
 
 use crossterm::event::KeyEvent;
 
-use crate::net::{ModelEntry, Session, SessionSummary};
+use crate::net::Session;
 
 /// Messages that drive the [`super::App`] through `update`.
 #[derive(Debug)]
@@ -11,23 +11,19 @@ pub enum Msg {
     Key(KeyEvent),
     /// A periodic tick (for animations / elapsed time).
     Tick,
-    /// The session list finished loading.
-    SessionsLoaded(Result<Vec<SessionSummary>, String>),
-    /// The model registry finished loading.
-    ModelsLoaded(Result<Vec<ModelEntry>, String>),
     /// A new session finished being created.
     SessionCreated(Result<Session, CreateError>),
-    /// A session finished being opened/hydrated.
-    SessionOpened(Result<Session, String>),
     /// A streaming event arrived.
     Stream(StreamMsg),
 }
 
 /// Why a `POST /sessions` failed.
 ///
-/// Distinguishes the empty-title client error (keep focus + hint) from every
-/// other failure (persistent error, retain input) so `update` can branch
-/// without re-deriving HTTP semantics.
+/// Distinguishes the empty-title server error from every other failure so
+/// `update` can branch without re-deriving HTTP semantics. In the
+/// chat-first flow the title is always derived from a non-empty first
+/// message, so `EmptyTitle` is effectively unreachable — kept for
+/// forward-compat.
 #[derive(Debug)]
 pub enum CreateError {
     /// The server rejected the request because the title was empty.

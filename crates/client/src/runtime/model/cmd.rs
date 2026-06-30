@@ -1,5 +1,3 @@
-use uuid::Uuid;
-
 use crate::net::CreateSessionRequest;
 use mewcode_protocol::event::ChatRequest;
 
@@ -8,14 +6,10 @@ use mewcode_protocol::event::ChatRequest;
 pub enum Cmd {
     /// Do nothing.
     None,
-    /// Fetch the session list.
-    LoadSessions,
-    /// Fetch the model registry.
-    LoadModels,
-    /// Create a new session.
+    /// Create a new session. Used when the user sends their first message
+    /// in the chat-first flow; the result is auto-routed into the session
+    /// view via `Msg::SessionCreated`.
     CreateSession(CreateSessionRequest),
-    /// Open/hydrate a session by id.
-    OpenSession(Uuid),
     /// Start a chat turn.
     StartChat(ChatRequest),
 }

@@ -3,25 +3,38 @@ use tui_textarea::TextArea;
 use uuid::Uuid;
 
 use mewcode_protocol::event::ChatRequest;
-use mewcode_protocol::{Message, MessagePart};
+use mewcode_protocol::{Message, MessagePart, Mode};
 
-use super::super::model::{Cmd, HomeState, Overlay, Screen, SessionState, StreamingState, Toast};
+use crate::net::CreateSessionRequest;
+
+use super::super::model::{Cmd, Overlay, SessionState, StreamingState, Toast};
 use super::key_to_input;
 
-/// Session screen: input editing, submit, slash commands, and back-navigation.
-pub(super) fn on_session_key(screen: &mut Screen, toast: &mut Option<Toast>, key: KeyEvent) -> Cmd {
-    let Screen::Session(s) = screen else {
-        return Cmd::None;
-    };
-
+/// Session screen: input editing, submit, slash commands.
+pub(super) fn on_session_key(
+    s: &mut SessionState,
+    app_quit: &mut bool,
+    toast: &mut Option<Toast>,
+    key: KeyEvent,
+) -> Cmd {
     if key.code == KeyCode::Esc {
-        // Close an open overlay first; only leave the session on a second Esc.
+        // Close an open overlay first; once everything's closed, Esc is a
+        // no-op (the chat has nowhere to go back to without a session list).
         if s.overlay != Overlay::None {
             s.overlay = Overlay::None;
-            return Cmd::None;
         }
-        *screen = Screen::Home(HomeState::loading());
-        return Cmd::LoadSessions;
+        return Cmd::None;
+    }
+
+    if key.code == KeyCode::Char('q') && s.overlay == Overlay::None && !s.creating {
+        *app_quit = true;
+        return Cmd::None;
+    }
+
+    if s.creating {
+        // A `POST /sessions` is in flight for `pending_chat`; ignore
+        // everything else so the user can't double-submit.
+        return Cmd::None;
     }
 
     match key.code {
@@ -61,7 +74,9 @@ fn scroll_by(s: &mut SessionState, delta: i32) {
     s.follow = next >= s.max_scroll;
 }
 
-/// Handle `Enter` in the Session input bar: slash command, send, or no-op.
+/// Handle `Enter` in the Session input bar: slash command, or — if no
+/// session exists yet — create one with the typed text as the seed, or
+/// send the chat into the existing session.
 pub(super) fn on_session_submit(s: &mut SessionState, toast: &mut Option<Toast>) -> Cmd {
     let text = s.input.lines().join("\n");
     let trimmed = text.trim();
@@ -88,20 +103,56 @@ pub(super) fn on_session_submit(s: &mut SessionState, toast: &mut Option<Toast>)
         return Cmd::None;
     }
 
-    s.input = TextArea::default();
+    let user_text = trimmed.to_string();
     let user_msg = Message::user(vec![MessagePart::Text {
-        text: trimmed.to_string(),
+        text: user_text.clone(),
     }]);
-    s.session.messages.push(user_msg);
-    // Snap back to the latest line so the user watches the reply stream in.
-    s.follow = true;
-    // `Uuid::nil()` here is intentional: the real id arrives with the SSE
-    // `Started` event; we need a placeholder so the `StreamingState` is Some.
-    s.streaming = Some(StreamingState::new(Uuid::nil()));
-    Cmd::StartChat(ChatRequest {
-        session_id: s.session.id,
-        model: s.session.model,
-        mode: s.session.mode,
-        messages: s.session.messages.clone(),
-    })
+
+    if let Some(session) = s.session.as_mut() {
+        session.messages.push(user_msg);
+        // Snap back to the latest line so the user watches the reply stream in.
+        s.follow = true;
+        // `Uuid::nil()` here is intentional: the real id arrives with the SSE
+        // `Started` event; we need a placeholder so the `StreamingState` is Some.
+        s.streaming = Some(StreamingState::new(Uuid::nil()));
+        // Clear the composer now that the message is committed to history.
+        s.input = TextArea::default();
+        Cmd::StartChat(ChatRequest {
+            session_id: session.id,
+            model: session.model,
+            mode: session.mode,
+            messages: session.messages.clone(),
+        })
+    } else {
+        // No session yet — buffer the text in the composer too so the user
+        // can retry on a create failure. The `Msg::SessionCreated` handler
+        // will clear it once the message is committed as the first turn.
+        s.pending_chat = Some(user_text.clone());
+        s.creating = true;
+        s.creation_started_at = Some(std::time::Instant::now());
+        Cmd::CreateSession(CreateSessionRequest {
+            title: derive_title(&user_text),
+            model: None,
+            mode: Some(Mode::default()),
+        })
+    }
+}
+
+/// Cap the auto-generated session title at a sane length and collapse
+/// newlines so a multiline first message still produces a single-line
+/// title. Used only when there is no session yet.
+fn derive_title(text: &str) -> String {
+    const MAX_TITLE_LEN: usize = 60;
+    let first_line = text.lines().next().unwrap_or(text);
+    let collapsed: String = first_line.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.chars().count() <= MAX_TITLE_LEN {
+        collapsed
+    } else {
+        collapsed
+            .chars()
+            .take(MAX_TITLE_LEN)
+            .collect::<String>()
+            .trim_end()
+            .to_string()
+    }
 }

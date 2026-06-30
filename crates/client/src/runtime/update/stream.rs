@@ -43,8 +43,10 @@ pub(super) fn apply_stream_event(s: &mut SessionState, ev: StreamMsg) -> Option<
         }
         StreamMsg::Finished { .. } => {
             if let Some(st) = s.streaming.take() {
-                let model = s.session.model;
-                s.session.messages.push(commit_assistant_message(st, model));
+                if let Some(session) = s.session.as_mut() {
+                    let model = session.model;
+                    session.messages.push(commit_assistant_message(st, model));
+                }
             }
             None
         }

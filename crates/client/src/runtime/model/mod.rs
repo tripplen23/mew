@@ -1,9 +1,10 @@
 //! The application model for the Elm-style runtime.
 //!
-//! > Idiom: make illegal states unrepresentable. Each [`Screen`] variant owns
-//! > its own state, so the chat view ([`Screen::Session`]) can never exist
-//! > without a hydrated [`crate::net::Session`] — the compiler guarantees it,
-//! > and there are no `Option` fields to forget to populate.
+//! > Idiom: make illegal states unrepresentable. The TUI has a single screen
+//! > ([`Screen::Session`]) whose `session` field is `Option<Session>` — the
+//! > chat screen is the only place to be, and the placeholder-before-first-
+//! > message and the loaded-with-history states are spelled out by the type
+//! > so neither can be forgotten.
 
 mod cmd;
 mod msg;
@@ -12,6 +13,5 @@ mod states;
 pub use cmd::Cmd;
 pub use msg::{CreateError, Msg, StreamMsg};
 pub use states::{
-    App, HomeState, ModelPicker, NewSessionField, NewSessionState, Overlay, Screen, SessionState,
-    StreamingState, Toast, ToastKind, ToolCallView,
+    App, Overlay, Screen, SessionState, StreamingState, Toast, ToastKind, ToolCallView,
 };

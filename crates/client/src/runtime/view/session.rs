@@ -4,17 +4,24 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Paragraph, Wrap};
 
-use mewcode_protocol::{MessagePart, Role};
+use mewcode_protocol::Mode;
+use mewcode_protocol::{MessagePart, ModelId, Role};
 
 use super::super::model::{Overlay, SessionState};
 use super::markdown::render_markdown;
 use super::overlay::{render_overlay, skills_lines, tools_lines};
+use super::park_cursor_in_field;
 use super::spinner::spinner_frame;
 use super::tool_card::{
     render_tool_call_header, render_tool_result_body, render_tool_result_header,
 };
 
 /// Session: scrollable transcript, input bar, status bar, plus overlays.
+///
+/// When `s.session` is `None` (the entry state, before the user has sent
+/// their first message), the transcript shows a one-line "type to start"
+/// hint and the status bar reflects the placeholder. Once a session is
+/// created, the real title/model/mode are used.
 pub(super) fn render_session(frame: &mut Frame, area: Rect, s: &mut SessionState) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -26,9 +33,23 @@ pub(super) fn render_session(frame: &mut Frame, area: Rect, s: &mut SessionState
         .split(area);
 
     let mut lines: Vec<Line> = Vec::new();
-    for msg in &s.session.messages {
-        lines.extend(render_message(msg));
-        lines.push(Line::from(""));
+    match &s.session {
+        Some(session) => {
+            for msg in &session.messages {
+                lines.extend(render_message(msg));
+                lines.push(Line::from(""));
+            }
+        }
+        None => {
+            lines.push(Line::from(Span::styled(
+                if let Some(started) = s.creation_started_at {
+                    format!("{} starting session…", spinner_frame(started.elapsed()))
+                } else {
+                    "Type a message to start a new session.".to_string()
+                },
+                Style::default().fg(Color::DarkGray),
+            )));
+        }
     }
     if let Some(st) = &s.streaming {
         lines.push(Line::from(Span::styled(
@@ -40,7 +61,12 @@ pub(super) fn render_session(frame: &mut Frame, area: Rect, s: &mut SessionState
         }
     }
 
-    let block = Block::bordered().title(format!(" {} ", s.session.title));
+    let title = s
+        .session
+        .as_ref()
+        .map(|sess| sess.title.as_str())
+        .unwrap_or(" mewcode ");
+    let block = Block::bordered().title(title);
     let inner = block.inner(chunks[0]);
 
     // Measure the wrapped height at the inner width (the same width the text is
@@ -65,23 +91,32 @@ pub(super) fn render_session(frame: &mut Frame, area: Rect, s: &mut SessionState
         .wrap(Wrap { trim: false });
     frame.render_widget(input, chunks[1]);
 
-    let status = if s.streaming.is_some() {
-        format!(
+    let status = match (s.streaming.is_some(), &s.session) {
+        (true, Some(session)) => format!(
             "{}  {:?}  •  streaming…",
-            s.session.model.display_name(),
-            s.session.mode
-        )
-    } else {
-        format!(
-            "{}  {:?}  •  PgUp/PgDn scroll  •  /tools  /skills  •  Esc back",
-            s.session.model.display_name(),
-            s.session.mode
-        )
+            session.model.display_name(),
+            session.mode
+        ),
+        (false, Some(session)) => format!(
+            "{}  {:?}  •  PgUp/PgDn scroll  •  /tools  /skills  •  q quit",
+            session.model.display_name(),
+            session.mode
+        ),
+        (true, None) => "starting session…".to_string(),
+        (false, None) => format!(
+            "{}  {}  •  /tools  /skills",
+            ModelId::default().display_name(),
+            Mode::default().as_str()
+        ),
     };
     frame.render_widget(
         Paragraph::new(status).style(Style::default().fg(Color::DarkGray)),
         chunks[2],
     );
+
+    if s.overlay == Overlay::None {
+        park_cursor_in_field(frame, chunks[1], &s.input);
+    }
 
     match s.overlay {
         Overlay::None => {}

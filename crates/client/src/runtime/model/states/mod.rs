@@ -7,12 +7,8 @@
 
 use std::time::Instant;
 
-mod home;
-mod new_session;
 mod session;
 
-pub use home::HomeState;
-pub use new_session::{ModelPicker, NewSessionField, NewSessionState};
 pub use session::{Overlay, SessionState, StreamingState, ToolCallView};
 
 /// The whole application state.
@@ -30,10 +26,11 @@ pub struct App {
 }
 
 impl App {
-    /// Build a fresh app sitting on a loading Home screen.
+    /// Build a fresh app sitting on a blank session screen. The first
+    /// message the user sends will create a new session on the server.
     pub fn new() -> Self {
         Self {
-            screen: Screen::Home(HomeState::loading()),
+            screen: Screen::Session(SessionState::empty()),
             toast: None,
             should_quit: false,
         }
@@ -47,14 +44,10 @@ impl Default for App {
 }
 
 /// The set of screens the TUI can show. Data lives inside each variant so
-/// illegal states (e.g. a session view with no session) are unrepresentable.
+/// illegal states are unrepresentable.
 #[derive(Debug)]
 pub enum Screen {
-    /// Session list / launcher.
-    Home(HomeState),
-    /// New-session creation form.
-    NewSession(NewSessionState),
-    /// An open chat session.
+    /// An open chat session — may or may not yet have a session on the server.
     Session(SessionState),
 }
 

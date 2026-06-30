@@ -8,19 +8,17 @@
 //! > quiet and the function is trivially unit-testable.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use tui_textarea::{Input, Key};
+use tui_textarea::{Input, Key, TextArea};
+use uuid::Uuid;
 
-use super::model::{
-    App, Cmd, CreateError, ModelPicker, Msg, NewSessionField, Screen, SessionState, Toast,
-};
+use mewcode_protocol::event::ChatRequest;
+use mewcode_protocol::{Message, MessagePart};
 
-mod home;
-mod new_session;
+use super::model::{App, Cmd, CreateError, Msg, Screen, StreamingState, Toast};
+
 mod session;
 mod stream;
 
-use home::on_home_key;
-use new_session::on_new_session_key;
 use session::on_session_key;
 use stream::apply_stream_event;
 
@@ -36,89 +34,65 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
         should_quit,
         ..
     } = app;
+    let Screen::Session(s) = screen;
 
     match msg {
-        Msg::Key(key) => match screen {
-            Screen::Home(_) => on_home_key(screen, should_quit, key),
-            Screen::NewSession(_) => on_new_session_key(screen, toast, key),
-            Screen::Session(_) => on_session_key(screen, toast, key),
-        },
+        Msg::Key(key) => on_session_key(s, should_quit, toast, key),
 
         Msg::Tick => Cmd::None,
 
-        Msg::SessionsLoaded(result) => {
-            if let Screen::Home(h) = screen {
-                match result {
-                    Ok(list) => {
-                        h.sessions = list;
-                        h.loading = false;
-                        if h.selected >= h.sessions.len() {
-                            h.selected = 0;
-                        }
-                    }
-                    Err(e) => {
-                        h.sessions.clear();
-                        h.selected = 0;
-                        h.loading = false;
-                        *toast = Some(Toast::error(e));
-                    }
-                }
-            }
-            Cmd::None
-        }
-
-        Msg::ModelsLoaded(result) => {
-            if let Screen::NewSession(n) = screen {
-                let (picker, err) = ModelPicker::from_registry(result);
-                n.model = picker;
-                n.error = err;
-            }
-            Cmd::None
-        }
-
         Msg::SessionCreated(result) => match result {
             Ok(session) => {
-                // Land in the new session, which starts with empty history.
-                *screen = Screen::Session(SessionState::new(session));
-                Cmd::None
-            }
-            // The server rejected an empty title — keep focus on Title,
-            // retain the entered values, and show the required-title hint.
-            Err(CreateError::EmptyTitle(_)) => {
-                if let Screen::NewSession(n) = screen {
-                    n.submitting = false;
-                    n.field = NewSessionField::Title;
-                    n.error = Some(new_session::REQUIRED_TITLE_HINT.to_string());
+                // Adopt the new session. If the user already typed a
+                // message -> commit it as the first turn.
+                let pending = s.pending_chat.take();
+                s.session = Some(session.clone());
+                s.creating = false;
+                s.creation_started_at = None;
+                if let Some(text) = pending {
+                    let user_msg = Message::user(vec![MessagePart::Text { text: text.clone() }]);
+                    s.session.as_mut().unwrap().messages.push(user_msg);
+                    s.follow = true;
+                    s.streaming = Some(StreamingState::new(Uuid::nil()));
+                    // The composer is cleared now that the first turn
+                    // has been committed.
+                    s.input = TextArea::default();
+                    // The local `session` is the pre-push server clone —
+                    // read from the model, which has the user message.
+                    let live = s.session.as_ref().unwrap();
+                    return Cmd::StartChat(ChatRequest {
+                        session_id: live.id,
+                        model: live.model,
+                        mode: live.mode,
+                        messages: live.messages.clone(),
+                    });
                 }
                 Cmd::None
             }
-            // Any other failure — stay on NewSession, retain title/model/
-            // mode, clear the in-flight flag, and set the persistent error.
+            // Create failed; surface the error. The composer keeps the
+            // typed text so the user can retry; `pending_chat` is dropped
+            // so a retry rebuilds it from the still-present input.
             Err(CreateError::Other(message)) => {
-                if let Screen::NewSession(n) = screen {
-                    n.submitting = false;
-                    n.error = Some(message);
-                }
+                s.creating = false;
+                s.creation_started_at = None;
+                s.pending_chat = None;
+                *toast = Some(Toast::error(message));
                 Cmd::None
             }
-        },
-
-        Msg::SessionOpened(result) => match result {
-            Ok(session) => {
-                *screen = Screen::Session(SessionState::new(session));
-                Cmd::None
-            }
-            Err(e) => {
-                *toast = Some(Toast::error(e));
+            Err(CreateError::EmptyTitle(_)) => {
+                // The title comes from the first message, so this arm
+                // is unreachable. Treat as a generic failure if it ever fires.
+                s.creating = false;
+                s.creation_started_at = None;
+                s.pending_chat = None;
+                *toast = Some(Toast::error("could not create session: empty title"));
                 Cmd::None
             }
         },
 
         Msg::Stream(ev) => {
-            if let Screen::Session(s) = screen {
-                if let Some(t) = apply_stream_event(s, ev) {
-                    *toast = Some(t);
-                }
+            if let Some(t) = apply_stream_event(s, ev) {
+                *toast = Some(t);
             }
             Cmd::None
         }
@@ -134,8 +108,8 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
 /// event ourselves — mirroring tui-textarea's own mapping. Ceiling: this
 /// must stay in sync with tui-textarea's conversion; upgrade path is deleting
 /// it once tui-textarea publishes a crossterm-0.29 release. Key-release
-/// events are filtered by the input reader upstream (`runtime::mod`), so
-/// this fn never sees them.
+/// and key-repeat events are filtered by the input reader upstream
+/// (`runtime::mod`), so this fn never sees them.
 pub(super) fn key_to_input(key: KeyEvent) -> Input {
     let code = match key.code {
         KeyCode::Char(c) => Key::Char(c),

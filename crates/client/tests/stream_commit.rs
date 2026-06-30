@@ -18,12 +18,9 @@ use mewcode_client::runtime::update;
 use mewcode_protocol::{Mode, ModelId, Role};
 
 /// A blank app whose current screen is a hydrated, empty `Session`.
-///
-/// Reaching the Session screen goes through the real `update` path
-/// (`Msg::SessionOpened`), so the test never reaches into private state.
 fn session_app() -> App {
     let mut app = App::new();
-    let session = Session {
+    app.screen = Screen::Session(SessionState::new(Session {
         id: Uuid::new_v4(),
         title: "demo".to_string(),
         model: ModelId::default(),
@@ -31,9 +28,7 @@ fn session_app() -> App {
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
         messages: vec![],
-    };
-    update(&mut app, Msg::SessionOpened(Ok(session)));
-    assert!(matches!(app.screen, Screen::Session(_)));
+    }));
     app
 }
 
@@ -48,17 +43,23 @@ fn start_turn(app: &mut App) {
 fn session_state(app: &App) -> &SessionState {
     match &app.screen {
         Screen::Session(s) => s,
-        _ => panic!("expected Session screen"),
     }
 }
 
 fn message_count(app: &App) -> usize {
-    session_state(app).session.messages.len()
+    session_state(app)
+        .session
+        .as_ref()
+        .expect("test fixture should have a hydrated session")
+        .messages
+        .len()
 }
 
 fn assistant_count(app: &App) -> usize {
     session_state(app)
         .session
+        .as_ref()
+        .expect("test fixture should have a hydrated session")
         .messages
         .iter()
         .filter(|m| m.role == Role::Assistant)
@@ -165,7 +166,13 @@ fn finish_commits_buffered_text() {
 
     let s = session_state(&app);
     assert!(s.streaming.is_none());
-    let last = s.session.messages.last().expect("a committed message");
+    let last = s
+        .session
+        .as_ref()
+        .unwrap()
+        .messages
+        .last()
+        .expect("a committed message");
     assert_eq!(last.role, Role::Assistant);
     assert_eq!(
         last.parts,

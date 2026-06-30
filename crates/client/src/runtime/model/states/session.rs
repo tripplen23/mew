@@ -18,12 +18,28 @@ pub enum Overlay {
 }
 
 /// State backing [`super::Screen::Session`].
+///
+/// The TUI always opens here. `session` is `None` until the user sends
+/// their first message, at which point the runtime `POST /sessions` to
+/// create one and lifts the result into this field. The `pending_chat`
+/// text is what triggered the create; it becomes the first user message
+/// once the session lands. `creating` is true while that POST is in
+/// flight so the input can be disabled and a spinner can be shown.
 #[derive(Debug)]
 pub struct SessionState {
-    /// The hydrated session, including history. Cannot be omitted.
-    pub session: Session,
+    /// The hydrated session, including history.
+    pub session: Option<Session>,
     /// The message composer.
     pub input: TextArea<'static>,
+    /// First message of a not-yet-created session, kept so it can be sent
+    /// as the user message the moment `SessionCreated` arrives.
+    pub pending_chat: Option<String>,
+    /// `true` while a `POST /sessions` is in flight for `pending_chat`.
+    pub creating: bool,
+    /// When `creating` was set true; used by the view to drive the
+    /// "starting session…" spinner. `None` while not creating so a stale
+    /// instant is never shown.
+    pub creation_started_at: Option<Instant>,
     /// Vertical scroll offset of the transcript, in wrapped lines from the top.
     pub scroll: u16,
     /// When `true`, the transcript stays pinned to its latest line.
@@ -42,17 +58,29 @@ pub struct SessionState {
 }
 
 impl SessionState {
-    /// Open a session view for an already-hydrated [`Session`].
-    pub fn new(session: Session) -> Self {
+    /// A blank session screen: no session, no pending chat, no streaming.
+    /// This is the entry state the TUI launches into.
+    pub fn empty() -> Self {
         Self {
-            session,
+            session: None,
             input: TextArea::default(),
+            pending_chat: None,
+            creating: false,
+            creation_started_at: None,
             scroll: 0,
             follow: true,
             max_scroll: 0,
             viewport: 0,
             streaming: None,
             overlay: Overlay::None,
+        }
+    }
+
+    /// Open a session view for an already-hydrated [`Session`].
+    pub fn new(session: Session) -> Self {
+        Self {
+            session: Some(session),
+            ..Self::empty()
         }
     }
 }

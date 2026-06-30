@@ -67,7 +67,6 @@ fn press_until(app: &mut App, code: KeyCode, done: impl Fn(&SessionState) -> boo
 fn session(app: &App) -> &SessionState {
     match &app.screen {
         Screen::Session(s) => s,
-        other => panic!("expected Session, got {other:?}"),
     }
 }
 
