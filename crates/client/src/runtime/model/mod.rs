@@ -10,7 +10,7 @@ mod cmd;
 mod msg;
 mod states;
 
-pub use cmd::Cmd;
+pub use cmd::{Cmd, QUIT_COMMAND};
 pub use msg::{CreateError, Msg, StreamMsg};
 pub use states::{
     App, Overlay, Screen, SessionState, StreamingState, Toast, ToastKind, ToolCallView,

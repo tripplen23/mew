@@ -1,6 +1,9 @@
 use crate::net::CreateSessionRequest;
 use mewcode_protocol::event::ChatRequest;
 
+/// Text the user types to exit the TUI.
+pub const QUIT_COMMAND: &str = "quit";
+
 /// Side effects the runtime should perform after an `update`.
 #[derive(Debug)]
 pub enum Cmd {
@@ -12,4 +15,6 @@ pub enum Cmd {
     CreateSession(CreateSessionRequest),
     /// Start a chat turn.
     StartChat(ChatRequest),
+    /// Exit the TUI. Triggered when the user types [`QUIT_COMMAND`].
+    Quit,
 }

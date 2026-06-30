@@ -28,16 +28,11 @@ use stream::apply_stream_event;
 /// fields are borrowed independently (a split borrow) so a single arm can both
 /// transition the screen and raise a toast without fighting the borrow checker.
 pub fn update(app: &mut App, msg: Msg) -> Cmd {
-    let App {
-        screen,
-        toast,
-        should_quit,
-        ..
-    } = app;
+    let App { screen, toast, .. } = app;
     let Screen::Session(s) = screen;
 
     match msg {
-        Msg::Key(key) => on_session_key(s, should_quit, toast, key),
+        Msg::Key(key) => on_session_key(s, toast, key),
 
         Msg::Tick => Cmd::None,
 
@@ -107,9 +102,12 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
 /// [ratatui](https://docs.rs/ratatui/latest/ratatui/) 0.30), so we map the
 /// event ourselves — mirroring tui-textarea's own mapping. Ceiling: this
 /// must stay in sync with tui-textarea's conversion; upgrade path is deleting
-/// it once tui-textarea publishes a crossterm-0.29 release. Key-release
-/// and key-repeat events are filtered by the input reader upstream
-/// (`runtime::mod`), so this fn never sees them.
+/// it once tui-textarea publishes a crossterm-0.29 release.
+///
+/// The input reader upstream (`runtime::mod`) only forwards `Press`,
+/// `Repeat`, and `Release`-on-space; everything else is dropped there, so
+/// this fn does not need to filter on `kind` — a `Release` arriving here
+/// for any other key would have been dropped upstream.
 pub(super) fn key_to_input(key: KeyEvent) -> Input {
     let code = match key.code {
         KeyCode::Char(c) => Key::Char(c),

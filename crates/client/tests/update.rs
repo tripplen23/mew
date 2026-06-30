@@ -264,11 +264,60 @@ fn type_into_session(text: &str) -> App {
     app
 }
 
+/// Pressing `q` alone no longer quits — `q` is just a regular char
+/// in the textarea now. (Test left here as a regression marker so the
+/// old behaviour doesn't sneak back in.)
 #[test]
-fn q_quits_from_session() {
+fn q_no_longer_quits_from_session() {
     let mut app = on_session();
-    assert!(matches!(update(&mut app, char_key('q')), Cmd::None));
-    assert!(app.should_quit);
+    let cmd = update(&mut app, char_key('q'));
+    assert!(
+        !matches!(cmd, Cmd::Quit),
+        "typing a bare `q` must not produce Cmd::Quit"
+    );
+}
+
+/// The text command `quit` (case-insensitive, exact match) is the new
+/// way to exit. Surrounding whitespace is allowed; substrings like
+/// "I want to quit" or "quit now" still go to the LLM.
+#[test]
+fn quit_command_exits_app() {
+    let mut app = on_session();
+    for c in "quit".chars() {
+        update(&mut app, char_key(c));
+    }
+    let cmd = update(&mut app, key(KeyCode::Enter));
+    assert!(
+        matches!(cmd, Cmd::Quit),
+        "typing `quit` + Enter must produce Cmd::Quit; got {cmd:?}"
+    );
+}
+
+#[test]
+fn quit_command_is_case_insensitive() {
+    for variant in ["QUIT", "Quit", "qUiT"] {
+        let mut app = on_session();
+        for c in variant.chars() {
+            update(&mut app, char_key(c));
+        }
+        let cmd = update(&mut app, key(KeyCode::Enter));
+        assert!(matches!(cmd, Cmd::Quit), "{variant:?} should quit");
+    }
+}
+
+#[test]
+fn quit_must_be_exact_match_not_substring() {
+    for variant in ["I want to quit", "quit now", "quitting", "qu"] {
+        let mut app = on_session();
+        for c in variant.chars() {
+            update(&mut app, char_key(c));
+        }
+        let cmd = update(&mut app, key(KeyCode::Enter));
+        assert!(
+            !matches!(cmd, Cmd::Quit),
+            "{variant:?} should be sent as a normal message, not quit"
+        );
+    }
 }
 
 #[test]

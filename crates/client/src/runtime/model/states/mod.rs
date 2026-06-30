@@ -14,15 +14,15 @@ pub use session::{Overlay, SessionState, StreamingState, ToolCallView};
 /// The whole application state.
 ///
 /// The current view is held solely as a single [`Screen`] value; there is no
-/// screen-specific data outside its variant.
+/// screen-specific data outside its variant. Quitting is signalled by the
+/// `Cmd::Quit` variant returned from `update`; the model doesn't carry
+/// any quit flag of its own.
 #[derive(Debug)]
 pub struct App {
     /// The screen currently being shown, owning its own state.
     pub screen: Screen,
     /// Transient status message, if any.
     pub toast: Option<Toast>,
-    /// Set once the user has asked to quit; the event loop checks this.
-    pub should_quit: bool,
 }
 
 impl App {
@@ -32,7 +32,6 @@ impl App {
         Self {
             screen: Screen::Session(SessionState::empty()),
             toast: None,
-            should_quit: false,
         }
     }
 }

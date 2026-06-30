@@ -16,19 +16,41 @@ use super::tool_card::{
     render_tool_call_header, render_tool_result_body, render_tool_result_header,
 };
 
+/// Maximum height (rows) the input field may grow to. Wrapped text beyond
+/// this still wraps, but the input box stops expanding so the transcript
+/// can't be swallowed.
+const MAX_INPUT_HEIGHT: u16 = 10;
+
 /// Session: scrollable transcript, input bar, status bar, plus overlays.
 ///
 /// When `s.session` is `None` (the entry state, before the user has sent
 /// their first message), the transcript shows a one-line "type to start"
 /// hint and the status bar reflects the placeholder. Once a session is
 /// created, the real title/model/mode are used.
+///
+/// The input bar's height is computed from the wrapped text — long inputs
+/// grow it (up to [`MAX_INPUT_HEIGHT`]) and shrink back when cleared, while
+/// the transcript fills the rest.
 pub(super) fn render_session(frame: &mut Frame, area: Rect, s: &mut SessionState) {
+    // The input spans the full width, so its inner width is `area.width - 2`
+    // (one cell of border on each side). We measure wrapped lines against
+    // that before splitting so the constraint can use the real count.
+    let inner_input_width = area.width.saturating_sub(2);
+    let input_text = s.input.lines().join("\n");
+    let input_wrap = Paragraph::new(input_text.as_str()).wrap(Wrap { trim: false });
+    let input_lines = input_wrap
+        .line_count(inner_input_width)
+        .max(1)
+        .min(u16::MAX as usize) as u16;
+    let max_input = MAX_INPUT_HEIGHT.min(area.height.saturating_sub(2));
+    let input_height = input_lines.saturating_add(2).clamp(3, max_input.max(3));
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Min(1),    // transcript
-            Constraint::Length(3), // input bar
-            Constraint::Length(1), // status bar
+            Constraint::Min(1),               // transcript
+            Constraint::Length(input_height), // input bar (grows with text)
+            Constraint::Length(1),            // status bar
         ])
         .split(area);
 
@@ -85,7 +107,6 @@ pub(super) fn render_session(frame: &mut Frame, area: Rect, s: &mut SessionState
 
     frame.render_widget(para.block(block).scroll((s.scroll, 0)), chunks[0]);
 
-    let input_text = s.input.lines().join("\n");
     let input = Paragraph::new(input_text)
         .block(Block::bordered().title(" message "))
         .wrap(Wrap { trim: false });
@@ -98,13 +119,13 @@ pub(super) fn render_session(frame: &mut Frame, area: Rect, s: &mut SessionState
             session.mode
         ),
         (false, Some(session)) => format!(
-            "{}  {:?}  •  PgUp/PgDn scroll  •  /tools  /skills  •  q quit",
+            "{}  {:?}  •  PgUp/PgDn scroll  •  /tools  /skills  •  type 'quit' to exit",
             session.model.display_name(),
             session.mode
         ),
         (true, None) => "starting session…".to_string(),
         (false, None) => format!(
-            "{}  {}  •  /tools  /skills",
+            "{}  {}  •  /tools  /skills  •  type 'quit' to exit",
             ModelId::default().display_name(),
             Mode::default().as_str()
         ),
