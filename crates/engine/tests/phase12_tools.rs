@@ -511,10 +511,11 @@ async fn bash_handles_large_output_without_deadlock() {
     let project = fresh_project();
     let tool = BashTool::new(ProjectContext::new(project.clone()));
 
-    // Generate ~100KB of output — exceeds the OS pipe buffer (~64KB).
+    // Generate ~200KB of output — exceeds the OS pipe buffer (~64KB).
+
     let result = tool
         .execute(json!({
-            "command": "for i in $(seq 1 2000); do echo \"line $i: $(head -c 50 /dev/zero | tr '\\0' 'x')\"; done",
+            "command": "head -c 200000 /dev/zero",
             "timeout_ms": 10000
         }))
         .await
