@@ -45,6 +45,12 @@ pub(super) fn on_session_key(
                 return Cmd::None;
             }
             KeyCode::Enter => {
+                if s.session.is_none() {
+                    *toast = Some(Toast::error(
+                        "/model: start a session before picking a model",
+                    ));
+                    return Cmd::None;
+                }
                 if let (Some(session), Some(entries)) = (s.session.as_ref(), s.models.as_ref()) {
                     if let Some(entry) = entries.get(s.model_cursor) {
                         if let Ok(model) = entry.id.parse::<ModelId>() {

@@ -187,3 +187,69 @@ async fn patch_whitespace_title_returns_bad_request() {
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
+
+#[tokio::test]
+async fn patch_session_returns_messages_sorted_by_created_at() {
+    use mewcode_protocol::{Message, MessagePart, Role};
+    use mewcode_server::store::SessionStore;
+
+    let fact_store = mewcode_engine::memory::MemoryStore::new(
+        std::env::temp_dir().join(uuid::Uuid::new_v4().to_string()),
+    );
+    let store = Arc::new(MemoryStore::default());
+    let state = AppState::new(test_config(), store.clone(), fact_store);
+    let app = build_app(state);
+
+    let created = create_session_on(&app).await;
+
+    // Append out of order directly through the store. `patch_session`
+    // should hydrate chronologically, matching `get_session`.
+    let now = chrono::Utc::now();
+    store
+        .append_message(
+            created.id,
+            Message {
+                id: uuid::Uuid::new_v4(),
+                role: Role::User,
+                parts: vec![MessagePart::Text {
+                    text: "second".into(),
+                }],
+                model: None,
+                created_at: now + chrono::Duration::seconds(5),
+            },
+        )
+        .await
+        .unwrap();
+    store
+        .append_message(
+            created.id,
+            Message {
+                id: uuid::Uuid::new_v4(),
+                role: Role::User,
+                parts: vec![MessagePart::Text {
+                    text: "first".into(),
+                }],
+                model: None,
+                created_at: now,
+            },
+        )
+        .await
+        .unwrap();
+
+    let (status, bytes) = send(
+        app,
+        patch_session(&created.id, json!({ "title": "renamed" })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let session: Session = serde_json::from_slice(&bytes).expect("patch body is a Session");
+    let texts: Vec<String> = session
+        .messages
+        .iter()
+        .map(|m| match &m.parts[0] {
+            MessagePart::Text { text } => text.clone(),
+            _ => panic!("expected text part"),
+        })
+        .collect();
+    assert_eq!(texts, vec!["first", "second"]);
+}

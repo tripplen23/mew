@@ -158,7 +158,8 @@ impl SessionStore for MemoryStore {
         }
         row.updated_at = Utc::now();
         let snapshot = row.clone();
-        let messages = guard.messages.get(&id).cloned().unwrap_or_default();
+        let mut messages = guard.messages.get(&id).cloned().unwrap_or_default();
+        messages.sort_by_key(|m| m.created_at);
         Ok(snapshot.to_session(messages))
     }
 

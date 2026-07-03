@@ -311,7 +311,12 @@ impl SessionStore for FsStore {
         }
         meta.updated_at = Utc::now();
         Self::write_meta_atomic(&dir, &meta)?;
-        let messages = read_messages(&dir.join(MESSAGES_FILE))?;
+        let mut messages = read_messages(&dir.join(MESSAGES_FILE))?;
+        // Sort ascending by `created_at` to match `get_session` and the
+        // Pg `(session_id, created_at)` index ordering — out-of-order
+        // appends would otherwise show up wrong after a rename/model
+        // switch refresh.
+        messages.sort_by_key(|m| m.created_at);
         Ok(meta.to_session(messages))
     }
 
