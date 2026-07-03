@@ -184,3 +184,29 @@ for d in &descriptors {
 - Body: 2–3 sentences on *why*. If you're fixing a bug, link the issue.
 - Run `cargo test` and `cargo clippy` before opening.
 - If you change the public protocol (`protocol::` types, `StreamEvent`, etc.), call it out in the description — downstream consumers need to know.
+
+### Stacked PRs
+
+When a feature has a clear "first slice" that stands on its own and one or more
+follow-up slices that depend on it, open the slices as stacked PRs instead of
+packing everything into one. The base branch of each follow-up PR is the
+**head branch** of the slice it builds on, not `master`.
+
+**Why** — each PR stays small enough to review in one sitting, and reviewers
+can merge the foundation without re-reading the whole feature.
+
+**Mechanics**
+
+1. **First slice** — base `master`. This slice is mergeable on its own.
+2. **Second slice** — base `<first-slice-branch>`. Title and body should make
+   the dependency explicit ("Builds on #N — rebase once #N merges").
+3. **Third slice and beyond** — same pattern, base the previous head.
+4. After the foundation PR merges, rebase the dependent branch onto `master`
+   locally, force-push, then change the base branch on GitHub to `master` so
+   the dependency can be unwound before merge.
+
+**In this repo** the slash-command TUI work followed this pattern: the first
+PR (`feat(tui): /model and /session slash commands`) ships the picker
+overlays and `PATCH /sessions`, and the follow-up (`@-mention` popover)
+branches off that first PR's head because the mention picker needs the
+picker-overlay machinery the first slice introduced.
