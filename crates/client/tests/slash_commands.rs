@@ -38,6 +38,10 @@ fn press_enter() -> Msg {
     Msg::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
 }
 
+fn press_esc() -> Msg {
+    Msg::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+}
+
 fn active_state(app: &mut App) -> &mut SessionState {
     let Screen::Session(s) = &mut app.screen;
     s
@@ -397,4 +401,36 @@ fn plain_text_is_chat_not_command() {
         s.session.as_ref().unwrap().messages[0].parts[0],
         MessagePart::Text { .. }
     ));
+}
+
+// --- Esc on rename discards the draft ------------------------------------
+
+#[test]
+fn esc_on_rename_clears_composer_draft() {
+    let mut app = test_app();
+    seed_active_session(active_state(&mut app));
+    {
+        let s = active_state(&mut app);
+        type_text(s, "/session rename");
+    }
+    let _ = update(&mut app, press_enter());
+    // The rename overlay seeds `s.input` with the current title.
+    assert_eq!(active_state(&mut app).overlay, Overlay::RenameSession);
+    assert!(!active_state(&mut app).input.lines().is_empty());
+
+    // Type some new characters into the composer to make it a draft.
+    {
+        let s = active_state(&mut app);
+        type_text(s, "EDIT");
+    }
+
+    // Esc should close the overlay AND clear the draft.
+    let _ = update(&mut app, press_esc());
+    let s = active_state(&mut app);
+    assert_eq!(s.overlay, Overlay::None);
+    let draft = s.input.lines().join("\n");
+    assert!(
+        draft.trim().is_empty(),
+        "Esc should discard the rename draft, not leave it in the composer (got {draft:?})"
+    );
 }

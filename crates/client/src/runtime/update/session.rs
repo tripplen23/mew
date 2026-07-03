@@ -20,7 +20,15 @@ pub(super) fn on_session_key(
         // Close an open overlay first; once everything's closed, Esc is a
         // no-op (the chat has nowhere to go back to without a session list).
         if s.overlay != Overlay::None {
+            // `Overlay::RenameSession` seeds `s.input` with the current
+            // session title so the user can edit it in place. Esc should
+            // discard the draft — otherwise the next Enter sends the
+            // half-edited title as a chat message.
+            let was_rename = s.overlay == Overlay::RenameSession;
             s.overlay = Overlay::None;
+            if was_rename {
+                s.input = TextArea::default();
+            }
         }
         return Cmd::None;
     }
