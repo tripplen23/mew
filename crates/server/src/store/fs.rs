@@ -22,7 +22,10 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-use super::{Backend, NewSession, Session, SessionPatch, SessionStore, SessionSummary, StoreError};
+use super::{
+    Backend, NewSession, Session, SessionPatch, SessionStore, SessionSummary, StoreError,
+    validate_title,
+};
 
 /// Name of the sessions subdirectory under the data dir.
 const SESSIONS_SUBDIR: &str = "sessions";
@@ -298,11 +301,7 @@ impl SessionStore for FsStore {
         let dir = self.session_dir(id);
         let mut meta = read_meta(&dir.join(META_FILE))?;
         if let Some(title) = patch.title {
-            let trimmed = title.trim();
-            if trimmed.is_empty() {
-                return Err(StoreError::Invalid("title cannot be empty".into()));
-            }
-            meta.title = trimmed.to_owned();
+            meta.title = validate_title(&title)?;
         }
         if let Some(model) = patch.model {
             meta.model = model;

@@ -2,7 +2,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::{Block, Clear, Paragraph};
+use ratatui::widgets::{Block, Clear, Paragraph, Wrap};
 
 use mewcode_protocol::ModelId;
 use mewcode_protocol::tool::ToolName;
@@ -127,7 +127,12 @@ pub(super) fn render_overlay(frame: &mut Frame, area: Rect, title: &str, body: V
     let block = Block::bordered()
         .title(format!(" {title}  (Esc to close) "))
         .border_style(Style::default().fg(Color::Cyan));
-    frame.render_widget(Paragraph::new(Text::from(body)).block(block), rect);
+    frame.render_widget(
+        Paragraph::new(Text::from(body))
+            .wrap(Wrap { trim: false })
+            .block(block),
+        rect,
+    );
 }
 
 fn centered_rect(area: Rect, percent_x: u16, percent_y: u16) -> Rect {

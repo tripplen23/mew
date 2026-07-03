@@ -127,6 +127,16 @@ pub struct SessionPatch {
     pub mode: Option<Mode>,
 }
 
+/// Trim a session title and reject empty/whitespace-only input. Shared by
+/// the in-memory and filesystem backends so validation stays consistent.
+pub(crate) fn validate_title(title: &str) -> Result<String, StoreError> {
+    let trimmed = title.trim();
+    if trimmed.is_empty() {
+        return Err(StoreError::Invalid("title cannot be empty".into()));
+    }
+    Ok(trimmed.to_owned())
+}
+
 /// Storage abstraction over session persistence.
 ///
 /// Implementations must be object-safe so they can be held behind

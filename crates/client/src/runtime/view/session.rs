@@ -121,13 +121,13 @@ pub(super) fn render_session(frame: &mut Frame, area: Rect, s: &mut SessionState
             session.mode
         ),
         (false, Some(session)) => format!(
-            "{}  {:?}  •  PgUp/PgDn scroll  •  /tools  /skills  •  type 'quit' to exit",
+            "{}  {:?}  •  PgUp/PgDn scroll  •  /model  /session  /tools  /skills  •  type 'quit' to exit",
             session.model.display_name(),
             session.mode
         ),
         (true, None) => "starting session…".to_string(),
         (false, None) => format!(
-            "{}  {}  •  /tools  /skills  •  type 'quit' to exit",
+            "{}  {}  •  /model  /session  /tools  /skills  •  type 'quit' to exit",
             ModelId::default().display_name(),
             Mode::default().as_str()
         ),

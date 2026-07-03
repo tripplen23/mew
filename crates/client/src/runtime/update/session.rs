@@ -7,7 +7,7 @@ use mewcode_protocol::{Message, MessagePart, Mode, ModelId};
 
 use crate::net::{CreateSessionRequest, SessionPatch};
 
-use super::super::model::{Cmd, Overlay, SessionState, StreamingState, Toast, QUIT_COMMAND};
+use super::super::model::{Cmd, Overlay, QUIT_COMMAND, SessionState, StreamingState, Toast};
 use super::key_to_input;
 
 /// Session screen: input editing, submit, slash commands.

@@ -162,6 +162,10 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
                     if s.session.as_ref().map(|sess| sess.id) == Some(id) {
                         s.session = None;
                     }
+                    let len = s.session_summaries.len();
+                    if s.session_cursor >= len {
+                        s.session_cursor = len.saturating_sub(1);
+                    }
                 }
                 Err(e) => {
                     *toast = Some(Toast::error(format!("/session delete: {e}")));

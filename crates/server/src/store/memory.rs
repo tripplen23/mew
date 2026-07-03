@@ -13,7 +13,10 @@ use mewcode_protocol::Message;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use super::{Backend, NewSession, Session, SessionPatch, SessionStore, SessionSummary, StoreError};
+use super::{
+    Backend, NewSession, Session, SessionPatch, SessionStore, SessionSummary, StoreError,
+    validate_title,
+};
 
 /// In-memory session store, guarded by a single async `RwLock`.
 #[derive(Debug, Default)]
@@ -145,11 +148,7 @@ impl SessionStore for MemoryStore {
             .find(|s| s.id == id)
             .ok_or(StoreError::NotFound)?;
         if let Some(title) = patch.title {
-            let trimmed = title.trim();
-            if trimmed.is_empty() {
-                return Err(StoreError::Invalid("title cannot be empty".into()));
-            }
-            row.title = trimmed.to_owned();
+            row.title = validate_title(&title)?;
         }
         if let Some(model) = patch.model {
             row.model = model;
