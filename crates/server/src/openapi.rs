@@ -9,7 +9,7 @@ use serde::Serialize;
 use utoipa::OpenApi;
 
 use crate::routes;
-use crate::store::{NewSession, Session, SessionSummary};
+use crate::store::{NewSession, Session, SessionPatch, SessionSummary};
 
 /// Wire shape of every error response.
 ///
@@ -41,6 +41,7 @@ pub struct ErrorResponse {
         routes::sessions::get_one,
         routes::sessions::create,
         routes::sessions::delete,
+        routes::sessions::patch,
         routes::chat::chat_stream,
     ),
     components(
@@ -49,6 +50,7 @@ pub struct ErrorResponse {
             NewSession,
             Session,
             SessionSummary,
+            SessionPatch,
             crate::routes::health::HealthResponse,
             crate::routes::models::ModelEntry,
             crate::routes::sessions::CreateSessionRequest,

@@ -3,7 +3,7 @@ use std::time::Instant;
 use tui_textarea::TextArea;
 use uuid::Uuid;
 
-use crate::net::Session;
+use crate::net::{ModelEntry, Session, SessionSummary};
 
 /// An overlay panel layered over the session view.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -15,6 +15,15 @@ pub enum Overlay {
     Tools,
     /// The skills list overlay.
     Skills,
+    /// The model picker: lists `GET /models` entries and applies the
+    /// selected one to the active session via `PATCH /sessions/{id}`.
+    ModelPicker,
+    /// The session list: lists every saved session and lets the user
+    /// open or delete one. `d` deletes the highlighted session; `Enter`
+    /// opens it.
+    SessionList,
+    /// Rename the active session; the input bar takes the new title.
+    RenameSession,
 }
 
 /// State backing [`super::Screen::Session`].
@@ -55,6 +64,15 @@ pub struct SessionState {
     pub streaming: Option<StreamingState>,
     /// Which overlay (if any) is showing.
     pub overlay: Overlay,
+    /// Cached model registry for the [`Overlay::ModelPicker`] overlay.
+    /// `None` while the `GET /models` request is in flight or has failed.
+    pub models: Option<Vec<ModelEntry>>,
+    /// Highlighted row in the model picker (0-based).
+    pub model_cursor: usize,
+    /// Cached session summaries for the [`Overlay::SessionList`] overlay.
+    pub session_summaries: Vec<SessionSummary>,
+    /// Highlighted row in the session list (0-based).
+    pub session_cursor: usize,
 }
 
 impl SessionState {
@@ -73,6 +91,10 @@ impl SessionState {
             viewport: 0,
             streaming: None,
             overlay: Overlay::None,
+            models: None,
+            model_cursor: 0,
+            session_summaries: Vec::new(),
+            session_cursor: 0,
         }
     }
 

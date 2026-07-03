@@ -13,7 +13,7 @@ pub const MODELS: &str = "/models";
 /// `GET/POST /sessions` — list and create sessions.
 pub const SESSIONS: &str = "/sessions";
 
-/// `GET /sessions/{id}` — single-session detail.
+/// `GET/PATCH /sessions/{id}` — single-session detail or partial update.
 pub const SESSION_BY_ID: &str = "/sessions/{id}";
 
 /// `POST /chat` — SSE chat stream.

@@ -112,6 +112,21 @@ pub struct NewSession {
     pub mode: Mode,
 }
 
+/// Partial update for a session. Each `Some` field is applied to the
+/// stored session; `None` fields are left unchanged.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct SessionPatch {
+    /// New title. `None` keeps the current title.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// New model. `None` keeps the current model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<ModelId>,
+    /// New mode. `None` keeps the current mode.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<Mode>,
+}
+
 /// Storage abstraction over session persistence.
 ///
 /// Implementations must be object-safe so they can be held behind
@@ -137,6 +152,15 @@ pub trait SessionStore: Send + Sync {
 
     /// Create a new session and return it.
     async fn create_session(&self, new: NewSession) -> Result<Session, StoreError>;
+
+    /// Apply a partial update to a session. `None` fields are left unchanged.
+    /// Returns the refreshed session, or [`StoreError::NotFound`] if the id
+    /// does not exist.
+    async fn patch_session(
+        &self,
+        id: uuid::Uuid,
+        patch: SessionPatch,
+    ) -> Result<Session, StoreError>;
 
     /// Delete a session by id.
     async fn delete_session(&self, id: uuid::Uuid) -> Result<(), StoreError>;

@@ -64,7 +64,9 @@ pub fn build_app(state: AppState) -> Router {
         )
         .route(
             SESSION_BY_ID,
-            axum::routing::get(routes::sessions::get_one).delete(routes::sessions::delete),
+            axum::routing::get(routes::sessions::get_one)
+                .patch(routes::sessions::patch)
+                .delete(routes::sessions::delete),
         )
         .route(CHAT, axum::routing::post(routes::chat::chat_stream))
         .route(STORAGE_STATUS, axum::routing::get(routes::storage::status))

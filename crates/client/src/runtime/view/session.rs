@@ -145,6 +145,21 @@ pub(super) fn render_session(frame: &mut Frame, area: Rect, s: &mut SessionState
         Overlay::None => {}
         Overlay::Tools => render_overlay(frame, area, "Tools", tools_lines()),
         Overlay::Skills => render_overlay(frame, area, "Skills", skills_lines()),
+        Overlay::ModelPicker => {
+            render_overlay(frame, area, "Model", super::overlay::model_picker_lines(s))
+        }
+        Overlay::SessionList => render_overlay(
+            frame,
+            area,
+            "Sessions",
+            super::overlay::session_list_lines(s),
+        ),
+        Overlay::RenameSession => render_overlay(
+            frame,
+            area,
+            "Rename session",
+            super::overlay::rename_session_lines(s),
+        ),
     }
 }
 

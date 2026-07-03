@@ -14,7 +14,7 @@ use uuid::Uuid;
 use mewcode_protocol::event::ChatRequest;
 use mewcode_protocol::{Message, MessagePart};
 
-use super::model::{App, Cmd, CreateError, Msg, Screen, StreamingState, Toast};
+use super::model::{App, Cmd, CreateError, Msg, Overlay, Screen, StreamingState, Toast};
 
 mod session;
 mod stream;
@@ -88,6 +88,84 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
         Msg::Stream(ev) => {
             if let Some(t) = apply_stream_event(s, ev) {
                 *toast = Some(t);
+            }
+            Cmd::None
+        }
+
+        Msg::ModelsFetched(result) => {
+            match result {
+                Ok(entries) => {
+                    s.models = Some(entries);
+                    let len = s.models.as_ref().map(Vec::len).unwrap_or(0);
+                    if s.model_cursor >= len {
+                        s.model_cursor = len.saturating_sub(1);
+                    }
+                }
+                Err(e) => {
+                    s.overlay = Overlay::None;
+                    *toast = Some(Toast::error(format!("/model: {e}")));
+                }
+            }
+            Cmd::None
+        }
+
+        Msg::SessionsFetched(result) => {
+            match result {
+                Ok(summaries) => {
+                    s.session_summaries = summaries;
+                    let len = s.session_summaries.len();
+                    if s.session_cursor >= len {
+                        s.session_cursor = len.saturating_sub(1);
+                    }
+                }
+                Err(e) => {
+                    s.overlay = Overlay::None;
+                    *toast = Some(Toast::error(format!("/session: {e}")));
+                }
+            }
+            Cmd::None
+        }
+
+        Msg::SessionPatched(result) => {
+            match result {
+                Ok(session) => {
+                    s.session = Some(session);
+                    s.overlay = Overlay::None;
+                    s.input = TextArea::default();
+                }
+                Err(e) => {
+                    *toast = Some(Toast::error(format!("/session patch: {e}")));
+                }
+            }
+            Cmd::None
+        }
+
+        Msg::SessionOpened(result) => {
+            match result {
+                Ok(session) => {
+                    s.session = Some(session);
+                    s.overlay = Overlay::None;
+                    s.follow = true;
+                }
+                Err(e) => {
+                    s.overlay = Overlay::None;
+                    *toast = Some(Toast::error(format!("/session open: {e}")));
+                }
+            }
+            Cmd::None
+        }
+
+        Msg::SessionDeleted(result) => {
+            match result {
+                Ok(id) => {
+                    s.session_summaries.retain(|sess| sess.id != id);
+                    if s.session.as_ref().map(|sess| sess.id) == Some(id) {
+                        s.session = None;
+                    }
+                }
+                Err(e) => {
+                    *toast = Some(Toast::error(format!("/session delete: {e}")));
+                }
             }
             Cmd::None
         }
