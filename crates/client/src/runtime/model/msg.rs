@@ -20,7 +20,9 @@ pub enum Msg {
     /// The session list was fetched (or failed).
     SessionsFetched(Result<Vec<SessionSummary>, String>),
     /// A `PATCH /sessions/{id}` returned a refreshed session (or failed).
-    SessionPatched(Result<Session, String>),
+    /// `from_rename` is `true` when the request originated from
+    /// `/session rename` so the update loop can clear the rename draft.
+    SessionPatched(Result<Session, String>, bool),
     /// A single session was hydrated (or failed). Used after `/session switch`.
     SessionOpened(Result<Session, String>),
     /// A `DELETE /sessions/{id}` completed (or failed).

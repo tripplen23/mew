@@ -219,7 +219,7 @@ fn slash_session_rename_in_rename_overlay_commits_patch_on_enter() {
     let cmd = update(&mut app, press_enter());
 
     match cmd {
-        Cmd::PatchSession { id, patch } => {
+        Cmd::PatchSession { id, patch, .. } => {
             assert_eq!(id, active_state(&mut app).session.as_ref().unwrap().id);
             assert_eq!(patch.title.as_deref(), Some("Renamed"));
             assert!(patch.model.is_none());
@@ -281,7 +281,7 @@ fn model_picker_enter_emits_patch_session_cmd() {
     let cmd = update(&mut app, press_enter());
 
     match cmd {
-        Cmd::PatchSession { id, patch } => {
+        Cmd::PatchSession { id, patch, .. } => {
             assert_eq!(id, active_state(&mut app).session.as_ref().unwrap().id);
             assert_eq!(patch.model, Some(ModelId::MiniMaxM3));
         }
@@ -497,9 +497,10 @@ fn slash_session_unknown_subcommand_toasts() {
 
 #[test]
 fn session_patched_after_overlay_closed_does_not_clear_composer() {
-    // Simulates a late `Msg::SessionPatched(Ok(...))` arriving after the
-    // user has already Esc'd out of the rename overlay and started
-    // typing a chat message. The handler must not clobber the draft.
+    // Simulates a late `Msg::SessionPatched(Ok(...), false)` arriving
+    // after the user has already Esc'd out of the rename overlay and
+    // started typing a chat message. The handler must not clobber the
+    // draft.
     use mewcode_client::net::Session;
     let mut app = test_app();
     seed_active_session(active_state(&mut app));
@@ -510,7 +511,9 @@ fn session_patched_after_overlay_closed_does_not_clear_composer() {
         type_text(s, "hi there");
     }
 
-    // A late PATCH result lands — overlay is None, input is "hi there".
+    // A late model-picker PATCH result lands — overlay is None, input
+    // is "hi there". `from_rename: false` signals this is not the
+    // rename flow, so the composer must not be cleared.
     let new_session = Session {
         id: uuid::Uuid::new_v4(),
         title: "renamed".into(),
@@ -520,7 +523,10 @@ fn session_patched_after_overlay_closed_does_not_clear_composer() {
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
     };
-    let _ = update(&mut app, Msg::SessionPatched(Ok(new_session.clone())));
+    let _ = update(
+        &mut app,
+        Msg::SessionPatched(Ok(new_session.clone()), false),
+    );
 
     let s = active_state(&mut app);
     // The session adopts the patch (it's still the active session), but
@@ -528,6 +534,58 @@ fn session_patched_after_overlay_closed_does_not_clear_composer() {
     assert_eq!(s.session.as_ref().unwrap().title, "renamed");
     let draft = s.input.lines().join("\n");
     assert_eq!(draft, "hi there", "stale PATCH must not clear the draft");
+}
+
+#[test]
+fn session_patched_from_rename_clears_draft_even_if_overlay_already_closed() {
+    // A successful rename PATCH must always clear the title draft,
+    // even if the user Esc'd out of the rename screen while the
+    // request was in flight.
+    use mewcode_client::net::Session;
+    let mut app = test_app();
+    seed_active_session(active_state(&mut app));
+
+    // User hit /session rename, the overlay is still open and the
+    // input is seeded with the current title.
+    {
+        let s = active_state(&mut app);
+        type_text(s, "/session rename");
+    }
+    let _ = update(&mut app, press_enter());
+    assert_eq!(active_state(&mut app).overlay, Overlay::RenameSession);
+    assert!(!active_state(&mut app).input.lines().is_empty());
+
+    // User Esc's out (this is also the moment we need to fix: Esc
+    // already cleared the draft in the previous fix).
+    let _ = update(&mut app, press_esc());
+    assert_eq!(active_state(&mut app).overlay, Overlay::None);
+
+    // User starts typing a chat message.
+    {
+        let s = active_state(&mut app);
+        type_text(s, "hi");
+    }
+
+    // The late rename PATCH returns successfully. With `from_rename:
+    // true`, the draft from the previous turn is cleared so the
+    // in-flight PATCH still wins — the title got renamed, so the
+    // rename draft is no longer the user's intent.
+    let new_session = Session {
+        id: active_state(&mut app).session.as_ref().unwrap().id,
+        title: "renamed".into(),
+        model: ModelId::MiniMaxM3,
+        mode: Mode::Build,
+        messages: vec![],
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+    };
+    let _ = update(&mut app, Msg::SessionPatched(Ok(new_session), true));
+
+    let s = active_state(&mut app);
+    assert_eq!(s.session.as_ref().unwrap().title, "renamed");
+    // Rename PATCH clears the composer so the rename is the final word.
+    let draft = s.input.lines().join("\n");
+    assert!(draft.is_empty(), "rename PATCH must clear the draft");
 }
 
 #[test]

@@ -68,6 +68,7 @@ pub(super) fn on_session_key(
                                     model: Some(model),
                                     ..Default::default()
                                 },
+                                from_rename: false,
                             };
                         }
                     }
@@ -113,6 +114,7 @@ pub(super) fn on_session_key(
                                 title: Some(title),
                                 ..Default::default()
                             },
+                            from_rename: true,
                         };
                     }
                 }

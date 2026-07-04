@@ -27,6 +27,11 @@ pub enum Cmd {
         id: uuid::Uuid,
         /// The fields to change.
         patch: SessionPatch,
+        /// `true` when the request originated from `/session rename`.
+        /// The handler uses this to know it is allowed to clear the
+        /// rename draft and dismiss the overlay, even if the user
+        /// has since Esc'd out of the rename screen.
+        from_rename: bool,
     },
     /// Switch the active session to `id`; hydrates it via `GET /sessions/{id}`.
     OpenSession(uuid::Uuid),

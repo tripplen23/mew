@@ -136,24 +136,21 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
             Cmd::None
         }
 
-        Msg::SessionPatched(result) => {
-            // `s.input = TextArea::default()` is safe to run only while
-            // the rename overlay is still active — otherwise a late
-            // PATCH could blow away text the user started typing as a
-            // chat message.
-            let was_rename = s.overlay == Overlay::RenameSession;
+        Msg::SessionPatched(result, from_rename) => {
+            // The `/session rename` flow needs to clear the composer
+            // and dismiss the overlay even if the user Esc'd out
+            // before the PATCH returned. Model-picker patches
+            // (`from_rename: false`) only adopt the refreshed session.
             match result {
                 Ok(session) => {
                     s.session = Some(session);
                     s.overlay = Overlay::None;
-                    if was_rename {
+                    if from_rename {
                         s.input = TextArea::default();
                     }
                 }
                 Err(e) => {
-                    if was_rename {
-                        *toast = Some(Toast::error(format!("/session rename: {e}")));
-                    }
+                    *toast = Some(Toast::error(format!("/session patch: {e}")));
                 }
             }
             Cmd::None

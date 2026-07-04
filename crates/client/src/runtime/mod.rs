@@ -230,7 +230,11 @@ fn dispatch(cmd: Cmd, api: &ApiClient, tx: &mpsc::Sender<Msg>) {
                 let _ = tx.send(Msg::SessionsFetched(result)).await;
             });
         }
-        Cmd::PatchSession { id, patch } => {
+        Cmd::PatchSession {
+            id,
+            patch,
+            from_rename,
+        } => {
             let api = api.clone();
             let tx = tx.clone();
             tokio::spawn(async move {
@@ -238,7 +242,7 @@ fn dispatch(cmd: Cmd, api: &ApiClient, tx: &mpsc::Sender<Msg>) {
                     .patch_session(id, &patch)
                     .await
                     .map_err(|e| e.to_string());
-                let _ = tx.send(Msg::SessionPatched(result)).await;
+                let _ = tx.send(Msg::SessionPatched(result, from_rename)).await;
             });
         }
         Cmd::OpenSession(id) => {
