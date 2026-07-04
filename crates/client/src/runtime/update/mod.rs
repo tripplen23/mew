@@ -93,6 +93,11 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
         }
 
         Msg::ModelsFetched(result) => {
+            // The /model picker is fire-and-forget: the user can Esc out
+            // before the registry returns. If the overlay has already
+            // changed (e.g. user opened /tools or sent a chat), keep the
+            // cached registry silently and skip the error toast so we
+            // don't clobber whatever state the user moved on to.
             match result {
                 Ok(entries) => {
                     s.models = Some(entries);
@@ -102,14 +107,18 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
                     }
                 }
                 Err(e) => {
-                    s.overlay = Overlay::None;
-                    *toast = Some(Toast::error(format!("/model: {e}")));
+                    if s.overlay == Overlay::ModelPicker {
+                        *toast = Some(Toast::error(format!("/model: {e}")));
+                    }
                 }
             }
             Cmd::None
         }
 
         Msg::SessionsFetched(result) => {
+            // The session list is fire-and-forget too: only surface the
+            // error toast if the /session overlay is still the one the
+            // user is looking at.
             match result {
                 Ok(summaries) => {
                     s.session_summaries = summaries;
@@ -119,37 +128,55 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
                     }
                 }
                 Err(e) => {
-                    s.overlay = Overlay::None;
-                    *toast = Some(Toast::error(format!("/session: {e}")));
+                    if s.overlay == Overlay::SessionList {
+                        *toast = Some(Toast::error(format!("/session: {e}")));
+                    }
                 }
             }
             Cmd::None
         }
 
         Msg::SessionPatched(result) => {
+            // `s.input = TextArea::default()` is safe to run only while
+            // the rename overlay is still active — otherwise a late
+            // PATCH could blow away text the user started typing as a
+            // chat message.
+            let was_rename = s.overlay == Overlay::RenameSession;
             match result {
                 Ok(session) => {
                     s.session = Some(session);
                     s.overlay = Overlay::None;
-                    s.input = TextArea::default();
+                    if was_rename {
+                        s.input = TextArea::default();
+                    }
                 }
                 Err(e) => {
-                    *toast = Some(Toast::error(format!("/session patch: {e}")));
+                    if was_rename {
+                        *toast = Some(Toast::error(format!("/session rename: {e}")));
+                    }
                 }
             }
             Cmd::None
         }
 
         Msg::SessionOpened(result) => {
+            // Only adopt the session if /session is still the active
+            // overlay — otherwise a stale fetch (e.g. user already
+            // started a new chat) would clobber the in-flight state.
+            let was_session_list = s.overlay == Overlay::SessionList;
             match result {
                 Ok(session) => {
-                    s.session = Some(session);
-                    s.overlay = Overlay::None;
-                    s.follow = true;
+                    if was_session_list {
+                        s.session = Some(session);
+                        s.overlay = Overlay::None;
+                        s.follow = true;
+                    }
                 }
                 Err(e) => {
-                    s.overlay = Overlay::None;
-                    *toast = Some(Toast::error(format!("/session open: {e}")));
+                    if was_session_list {
+                        s.overlay = Overlay::None;
+                        *toast = Some(Toast::error(format!("/session open: {e}")));
+                    }
                 }
             }
             Cmd::None

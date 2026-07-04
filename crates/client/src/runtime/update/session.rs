@@ -296,11 +296,12 @@ fn on_model_command(s: &mut SessionState) -> Cmd {
     }
 }
 
-/// Handle `/session`: open the list overlay (default) or start a rename
-/// (`/session rename`). Switching and deleting rows are handled in
-/// `on_session_key`. Always fetches the list — the empty cache is
-/// indistinguishable from "never fetched", and a fresh `/session` open
-/// should reflect any sessions created since the last view.
+/// Handle `/session`: open the list overlay (default), start a rename
+/// (`/session rename`), or create a new session (`/session new <title>`).
+/// Switching and deleting rows are handled in `on_session_key`. Always
+/// fetches the list — the empty cache is indistinguishable from "never
+/// fetched", and a fresh `/session` open should reflect any sessions
+/// created since the last view.
 fn on_session_command(s: &mut SessionState, args: &[&str], toast: &mut Option<Toast>) -> Cmd {
     match args.first().copied() {
         Some("rename") => {
@@ -313,6 +314,41 @@ fn on_session_command(s: &mut SessionState, args: &[&str], toast: &mut Option<To
             // title from `s.input`.
             s.input = TextArea::new(vec![session.title.clone()]);
             s.overlay = Overlay::RenameSession;
+            Cmd::None
+        }
+        Some("new") => {
+            // `/session new <title...>` — `<title>` is everything after the
+            // subcommand, multi-word allowed.
+            let title = args
+                .get(1..)
+                .map(|rest| rest.join(" "))
+                .unwrap_or_default()
+                .trim()
+                .to_string();
+            if title.is_empty() {
+                *toast = Some(Toast::error("/session new needs a title"));
+                return Cmd::None;
+            }
+            if s.creating {
+                *toast = Some(Toast::error("a session is already being created"));
+                return Cmd::None;
+            }
+            // Mirror the chat-first creation flow so a `Msg::SessionCreated`
+            // result routes the new session into the session view.
+            s.creating = true;
+            s.creation_started_at = Some(std::time::Instant::now());
+            s.input = TextArea::default();
+            Cmd::CreateSession(CreateSessionRequest {
+                title,
+                model: None,
+                mode: Some(Mode::default()),
+            })
+        }
+        Some(other) => {
+            *toast = Some(Toast::error(format!(
+                "/session: unknown subcommand `/{}`",
+                other
+            )));
             Cmd::None
         }
         _ => {

@@ -434,3 +434,137 @@ fn esc_on_rename_clears_composer_draft() {
         "Esc should discard the rename draft, not leave it in the composer (got {draft:?})"
     );
 }
+
+// --- /session new <title> ------------------------------------------------
+
+#[test]
+fn slash_session_new_with_title_emits_create_session_cmd() {
+    let mut app = test_app();
+    {
+        let s = active_state(&mut app);
+        type_text(s, "/session new my plan");
+    }
+    let cmd = update(&mut app, press_enter());
+
+    match cmd {
+        Cmd::CreateSession(req) => {
+            assert_eq!(req.title, "my plan");
+            assert!(req.model.is_none(), "/session new should not force a model");
+        }
+        other => panic!("expected Cmd::CreateSession, got {other:?}"),
+    }
+    let s = active_state(&mut app);
+    // The chat-first flow flags `creating` so a duplicate submit is
+    // ignored until `Msg::SessionCreated` lands.
+    assert!(s.creating);
+    assert_eq!(s.overlay, Overlay::None);
+}
+
+#[test]
+fn slash_session_new_without_title_toasts() {
+    let mut app = test_app();
+    {
+        let s = active_state(&mut app);
+        type_text(s, "/session new");
+    }
+    let cmd = update(&mut app, press_enter());
+
+    assert!(matches!(cmd, Cmd::None));
+    let s = active_state(&mut app);
+    assert_eq!(s.overlay, Overlay::None);
+    assert!(!s.creating, "no session should be created without a title");
+    assert!(app.toast.is_some());
+}
+
+#[test]
+fn slash_session_unknown_subcommand_toasts() {
+    let mut app = test_app();
+    {
+        let s = active_state(&mut app);
+        type_text(s, "/session frobnicate");
+    }
+    let cmd = update(&mut app, press_enter());
+
+    assert!(matches!(cmd, Cmd::None));
+    let s = active_state(&mut app);
+    // Unknown subcommands surface an error instead of silently opening
+    // the list, so the user is told their `/session <arg>` was wrong.
+    assert_eq!(s.overlay, Overlay::None);
+    assert!(app.toast.is_some());
+}
+
+// --- stale async completions ---------------------------------------------
+
+#[test]
+fn session_patched_after_overlay_closed_does_not_clear_composer() {
+    // Simulates a late `Msg::SessionPatched(Ok(...))` arriving after the
+    // user has already Esc'd out of the rename overlay and started
+    // typing a chat message. The handler must not clobber the draft.
+    use mewcode_client::net::Session;
+    let mut app = test_app();
+    seed_active_session(active_state(&mut app));
+
+    // User has typed a draft chat message.
+    {
+        let s = active_state(&mut app);
+        type_text(s, "hi there");
+    }
+
+    // A late PATCH result lands — overlay is None, input is "hi there".
+    let new_session = Session {
+        id: uuid::Uuid::new_v4(),
+        title: "renamed".into(),
+        model: ModelId::MiniMaxM3,
+        mode: Mode::Build,
+        messages: vec![],
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+    };
+    let _ = update(&mut app, Msg::SessionPatched(Ok(new_session.clone())));
+
+    let s = active_state(&mut app);
+    // The session adopts the patch (it's still the active session), but
+    // the composer draft is preserved.
+    assert_eq!(s.session.as_ref().unwrap().title, "renamed");
+    let draft = s.input.lines().join("\n");
+    assert_eq!(draft, "hi there", "stale PATCH must not clear the draft");
+}
+
+#[test]
+fn session_opened_after_overlay_closed_does_not_adopt_session() {
+    // The /session list triggers `Cmd::OpenSession`. If the user has
+    // since moved on (overlay is None and they sent a chat), a late
+    // `Msg::SessionOpened` must not stomp the in-flight state.
+    use mewcode_client::net::Session;
+    let mut app = test_app();
+    seed_active_session(active_state(&mut app));
+
+    // User already closed the list and is composing a chat.
+    active_state(&mut app).overlay = Overlay::None;
+    {
+        let s = active_state(&mut app);
+        type_text(s, "draft");
+    }
+    let original_id = active_state(&mut app).session.as_ref().unwrap().id;
+
+    // Late completion arrives with a different session id.
+    let other = Session {
+        id: uuid::Uuid::new_v4(),
+        title: "other".into(),
+        model: ModelId::MiniMaxM3,
+        mode: Mode::Build,
+        messages: vec![],
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+    };
+    let _ = update(&mut app, Msg::SessionOpened(Ok(other)));
+
+    let s = active_state(&mut app);
+    assert_eq!(
+        s.session.as_ref().unwrap().id,
+        original_id,
+        "stale SessionOpened must not replace the active session"
+    );
+    let draft = s.input.lines().join("\n");
+    assert_eq!(draft, "draft", "stale SessionOpened must not clobber input");
+}
