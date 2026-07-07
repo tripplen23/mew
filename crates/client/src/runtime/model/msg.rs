@@ -2,7 +2,7 @@ use uuid::Uuid;
 
 use crossterm::event::KeyEvent;
 
-use crate::net::Session;
+use crate::net::{ModelEntry, Session, SessionSummary};
 
 /// Messages that drive the [`super::App`] through `update`.
 #[derive(Debug)]
@@ -15,6 +15,18 @@ pub enum Msg {
     SessionCreated(Result<Session, CreateError>),
     /// A streaming event arrived.
     Stream(StreamMsg),
+    /// The model registry was fetched (or failed).
+    ModelsFetched(Result<Vec<ModelEntry>, String>),
+    /// The session list was fetched (or failed).
+    SessionsFetched(Result<Vec<SessionSummary>, String>),
+    /// A `PATCH /sessions/{id}` returned a refreshed session (or failed).
+    /// `from_rename` is `true` when the request originated from
+    /// `/session rename` so the update loop can clear the rename draft.
+    SessionPatched(Result<Session, String>, bool),
+    /// A single session was hydrated (or failed). Used after `/session switch`.
+    SessionOpened(Result<Session, String>),
+    /// A `DELETE /sessions/{id}` completed (or failed).
+    SessionDeleted(Result<uuid::Uuid, String>),
 }
 
 /// Why a `POST /sessions` failed.

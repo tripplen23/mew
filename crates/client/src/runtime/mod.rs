@@ -214,6 +214,57 @@ fn dispatch(cmd: Cmd, api: &ApiClient, tx: &mpsc::Sender<Msg>) {
             let tx = tx.clone();
             tokio::spawn(run_chat_stream(api, req, tx));
         }
+        Cmd::FetchModels => {
+            let api = api.clone();
+            let tx = tx.clone();
+            tokio::spawn(async move {
+                let result = api.models().await.map_err(|e| e.to_string());
+                let _ = tx.send(Msg::ModelsFetched(result)).await;
+            });
+        }
+        Cmd::FetchSessions => {
+            let api = api.clone();
+            let tx = tx.clone();
+            tokio::spawn(async move {
+                let result = api.list_sessions().await.map_err(|e| e.to_string());
+                let _ = tx.send(Msg::SessionsFetched(result)).await;
+            });
+        }
+        Cmd::PatchSession {
+            id,
+            patch,
+            from_rename,
+        } => {
+            let api = api.clone();
+            let tx = tx.clone();
+            tokio::spawn(async move {
+                let result = api
+                    .patch_session(id, &patch)
+                    .await
+                    .map_err(|e| e.to_string());
+                let _ = tx.send(Msg::SessionPatched(result, from_rename)).await;
+            });
+        }
+        Cmd::OpenSession(id) => {
+            let api = api.clone();
+            let tx = tx.clone();
+            tokio::spawn(async move {
+                let result = api.get_session(id).await.map_err(|e| e.to_string());
+                let _ = tx.send(Msg::SessionOpened(result)).await;
+            });
+        }
+        Cmd::DeleteSession(id) => {
+            let api = api.clone();
+            let tx = tx.clone();
+            tokio::spawn(async move {
+                let result = api
+                    .delete_session(id)
+                    .await
+                    .map(|()| id)
+                    .map_err(|e| e.to_string());
+                let _ = tx.send(Msg::SessionDeleted(result)).await;
+            });
+        }
     }
 }
 

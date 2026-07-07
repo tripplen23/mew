@@ -1,20 +1,17 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::{Line, Span, Text};
+use ratatui::style::{Color, Style};
 use ratatui::widgets::{Block, Paragraph, Wrap};
 
 use mewcode_protocol::Mode;
-use mewcode_protocol::{MessagePart, ModelId, Role};
 
 use super::super::model::{Overlay, SessionState};
-use super::markdown::render_markdown;
-use super::overlay::{render_overlay, skills_lines, tools_lines};
-use super::park_cursor_in_field;
-use super::spinner::spinner_frame;
-use super::tool_card::{
-    render_tool_call_header, render_tool_result_body, render_tool_result_header,
+use super::overlay::{
+    centered_rect, render_overlay, render_scrolled_overlay, render_slash_picker, skills_lines,
+    tools_lines,
 };
+use super::park_cursor_in_field;
+use super::transcript::render_transcript;
 
 /// Maximum height (rows) the input field may grow to. Wrapped text beyond
 /// this still wraps, but the input box stops expanding so the transcript
@@ -34,18 +31,8 @@ const MAX_INPUT_HEIGHT: u16 = 10;
 /// grow it (up to [`MAX_INPUT_HEIGHT`]) and shrink back when cleared, while
 /// the transcript fills the rest.
 pub(super) fn render_session(frame: &mut Frame, area: Rect, s: &mut SessionState) {
-    // The input spans the full width, so its inner width is `area.width - 2`
-    // (one cell of border on each side). We measure wrapped lines against
-    // that before splitting so the constraint can use the real count.
-    let inner_input_width = area.width.saturating_sub(2);
     let input_text = s.input.lines().join("\n");
-    let input_wrap = Paragraph::new(input_text.as_str()).wrap(Wrap { trim: false });
-    let input_lines = input_wrap
-        .line_count(inner_input_width)
-        .max(1)
-        .min(u16::MAX as usize) as u16;
-    let max_input = MAX_INPUT_HEIGHT.min(area.height.saturating_sub(2));
-    let input_height = input_lines.saturating_add(2).clamp(3, max_input.max(3));
+    let input_height = input_height(area, &input_text);
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -56,140 +43,110 @@ pub(super) fn render_session(frame: &mut Frame, area: Rect, s: &mut SessionState
         ])
         .split(area);
 
-    let mut lines: Vec<Line> = Vec::new();
-    match &s.session {
-        Some(session) => {
-            for msg in &session.messages {
-                lines.extend(render_message(msg));
-                lines.push(Line::from(""));
-            }
-        }
-        None => {
-            lines.push(Line::from(Span::styled(
-                if let Some(started) = s.creation_started_at {
-                    format!("{} starting session…", spinner_frame(started.elapsed()))
-                } else {
-                    "Type a message to start a new session.".to_string()
-                },
-                Style::default().fg(Color::DarkGray),
-            )));
-        }
-    }
-    if let Some(st) = &s.streaming {
-        lines.push(Line::from(Span::styled(
-            format!("{} assistant", spinner_frame(st.started_at.elapsed())),
-            Style::default().fg(Color::Yellow),
-        )));
-        if !st.buffer.is_empty() {
-            lines.extend(render_markdown(&st.buffer));
-        }
-    }
+    render_transcript(frame, chunks[0], s);
+    render_input(frame, chunks[1], &input_text);
+    render_status(frame, chunks[2], s);
 
-    let title = s
-        .session
-        .as_ref()
-        .map(|sess| sess.title.as_str())
-        .unwrap_or(" mewcode ");
-    let block = Block::bordered().title(title);
-    let inner = block.inner(chunks[0]);
+    park_cursor_in_field(frame, chunks[1], &s.input);
+    render_active_overlay(frame, area, s);
+}
 
-    // Measure the wrapped height at the inner width (the same width the text is
-    // rendered into below), so "the bottom" is computed exactly. `line_count`
-    // is the ratatui-unstable API enabled in Cargo.toml.
-    let para = Paragraph::new(Text::from(lines)).wrap(Wrap { trim: false });
-    let total = para.line_count(inner.width).min(u16::MAX as usize) as u16;
+fn input_height(area: Rect, input_text: &str) -> u16 {
+    let input_wrap = Paragraph::new(input_text).wrap(Wrap { trim: false });
+    let input_lines = input_wrap
+        .line_count(area.width.saturating_sub(2))
+        .max(1)
+        .min(u16::MAX as usize) as u16;
+    let max_input = MAX_INPUT_HEIGHT.min(area.height.saturating_sub(2));
+    input_lines.saturating_add(2).clamp(3, max_input.max(3))
+}
 
-    s.viewport = inner.height;
-    s.max_scroll = total.saturating_sub(inner.height);
-    if s.follow {
-        s.scroll = s.max_scroll;
-    } else {
-        s.scroll = s.scroll.min(s.max_scroll);
-    }
-
-    frame.render_widget(para.block(block).scroll((s.scroll, 0)), chunks[0]);
-
+fn render_input(frame: &mut Frame, chunk: Rect, input_text: &str) {
     let input = Paragraph::new(input_text)
         .block(Block::bordered().title(" message "))
         .wrap(Wrap { trim: false });
-    frame.render_widget(input, chunks[1]);
+    frame.render_widget(input, chunk);
+}
 
+fn render_status(frame: &mut Frame, chunk: Rect, s: &SessionState) {
     let status = match (s.streaming.is_some(), &s.session) {
         (true, Some(session)) => format!(
             "{}  {:?}  •  streaming…",
             session.model.display_name(),
             session.mode
         ),
-        (false, Some(session)) => format!(
-            "{}  {:?}  •  PgUp/PgDn scroll  •  /tools  /skills  •  type 'quit' to exit",
-            session.model.display_name(),
-            session.mode
-        ),
+        (false, Some(session)) => format!("{}  {:?}", session.model.display_name(), session.mode),
         (true, None) => "starting session…".to_string(),
         (false, None) => format!(
-            "{}  {}  •  /tools  /skills  •  type 'quit' to exit",
-            ModelId::default().display_name(),
+            "{}  {}",
+            s.pending_model.unwrap_or_default().display_name(),
             Mode::default().as_str()
         ),
     };
     frame.render_widget(
         Paragraph::new(status).style(Style::default().fg(Color::DarkGray)),
-        chunks[2],
+        chunk,
     );
+}
 
-    if s.overlay == Overlay::None {
-        park_cursor_in_field(frame, chunks[1], &s.input);
-    }
-
+fn render_active_overlay(frame: &mut Frame, area: Rect, s: &mut SessionState) {
     match s.overlay {
         Overlay::None => {}
         Overlay::Tools => render_overlay(frame, area, "Tools", tools_lines()),
         Overlay::Skills => render_overlay(frame, area, "Skills", skills_lines()),
-    }
-}
-
-/// Render one persisted message, preserving the arrival order of its parts.
-/// Text is markdown; tool calls and results are summarised inline.
-fn render_message(msg: &mewcode_protocol::Message) -> Vec<Line<'static>> {
-    let (label, label_style) = match msg.role {
-        Role::User => ("you", Style::default().fg(Color::Green)),
-        Role::Assistant => ("assistant", Style::default().fg(Color::Cyan)),
-        Role::Tool => ("tool", Style::default().fg(Color::Magenta)),
-    };
-    let mut out = vec![Line::from(Span::styled(
-        label.to_string(),
-        label_style.add_modifier(Modifier::BOLD),
-    ))];
-
-    // Tracks the id of the most recent `ToolCall` part seen.
-    let mut last_tool_call_id: Option<&str> = None;
-
-    for part in &msg.parts {
-        match part {
-            MessagePart::Text { text } => {
-                last_tool_call_id = None;
-                out.extend(render_markdown(text));
-            }
-            MessagePart::ToolCall(call) => {
-                last_tool_call_id = Some(&call.id);
-                out.push(render_tool_call_header(call));
-            }
-            MessagePart::ToolResult(res) => {
-                let paired = last_tool_call_id == Some(&res.call_id);
-                last_tool_call_id = None;
-                if !paired {
-                    out.push(render_tool_result_header(res));
-                }
-                out.extend(render_tool_result_body(res));
-            }
-            MessagePart::FileMention { path } => {
-                last_tool_call_id = None;
-                out.push(Line::from(Span::styled(
-                    format!("@{path}"),
-                    Style::default().fg(Color::Blue),
-                )));
+        Overlay::ModelPicker => {
+            // Compute the overlay rect first so the row builder knows
+            // the inner width and can truncate each model to a single
+            // line — otherwise a long name wraps and the cursor
+            // (one per model) desyncs from the visual highlight (one
+            // per wrapped line).
+            let rect = centered_rect(area, 60, 60);
+            let inner_w = rect.width.saturating_sub(2) as usize;
+            let body = super::overlay::model_picker_lines(s, inner_w);
+            render_scrolled_overlay(
+                frame,
+                area,
+                "Model",
+                "Esc close",
+                body,
+                s.model_picker.models.as_ref().map(Vec::len).unwrap_or(0),
+                s.model_picker.scroll,
+                s.model_picker.cursor,
+                &mut s.model_picker.viewport,
+            );
+            // Track the largest viewport the view has ever reported so
+            // a transient 0 (first frame, resize) doesn't make the
+            // clamp think there's no room and leave the cursor
+            // off-screen.
+            if s.model_picker.viewport > s.model_picker.viewport_max {
+                s.model_picker.viewport_max = s.model_picker.viewport;
             }
         }
+        Overlay::SessionList => {
+            let rect = centered_rect(area, 60, 60);
+            let inner_w = rect.width.saturating_sub(2) as usize;
+            let body = super::overlay::session_list_lines(s, inner_w);
+            render_scrolled_overlay(
+                frame,
+                area,
+                "Sessions",
+                "Esc close, d delete",
+                body,
+                s.session_list.summaries.len(),
+                s.session_list.scroll,
+                s.session_list.cursor,
+                &mut s.session_list.viewport,
+            );
+            if s.session_list.viewport > s.session_list.viewport_max {
+                s.session_list.viewport_max = s.session_list.viewport;
+            }
+        }
+        Overlay::RenameSession => render_overlay(
+            frame,
+            area,
+            "Rename session",
+            super::overlay::rename_session_lines(s),
+        ),
+        Overlay::SlashPicker => render_slash_picker(frame, area, s),
     }
-    out
 }

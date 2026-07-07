@@ -22,7 +22,10 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-use super::{Backend, NewSession, Session, SessionStore, SessionSummary, StoreError};
+use super::{
+    Backend, NewSession, Session, SessionPatch, SessionStore, SessionSummary, StoreError,
+    validate_title,
+};
 
 /// Name of the sessions subdirectory under the data dir.
 const SESSIONS_SUBDIR: &str = "sessions";
@@ -291,6 +294,30 @@ impl SessionStore for FsStore {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(StoreError::NotFound),
             Err(e) => Err(StoreError::Io(e)),
         }
+    }
+
+    async fn patch_session(&self, id: Uuid, patch: SessionPatch) -> Result<Session, StoreError> {
+        let _guard = self.write_lock.lock().await;
+        let dir = self.session_dir(id);
+        let mut meta = read_meta(&dir.join(META_FILE))?;
+        if let Some(title) = patch.title {
+            meta.title = validate_title(&title)?;
+        }
+        if let Some(model) = patch.model {
+            meta.model = model;
+        }
+        if let Some(mode) = patch.mode {
+            meta.mode = mode;
+        }
+        meta.updated_at = Utc::now();
+        Self::write_meta_atomic(&dir, &meta)?;
+        let mut messages = read_messages(&dir.join(MESSAGES_FILE))?;
+        // Sort ascending by `created_at` to match `get_session` and the
+        // Pg `(session_id, created_at)` index ordering — out-of-order
+        // appends would otherwise show up wrong after a rename/model
+        // switch refresh.
+        messages.sort_by_key(|m| m.created_at);
+        Ok(meta.to_session(messages))
     }
 
     async fn append_message(&self, id: Uuid, message: Message) -> Result<(), StoreError> {

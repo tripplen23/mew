@@ -30,6 +30,13 @@ mod session;
 mod spinner;
 mod toast;
 mod tool_card;
+mod transcript;
+
+/// Re-exported for integration tests so they can assert on the row
+/// builder directly (e.g. "every model fits on one line"). The overlay
+/// module itself stays private; only these two line builders are part
+/// of the test surface.
+pub use overlay::{model_picker_lines, session_list_lines};
 
 pub use markdown::highlight_code_block;
 pub use spinner::spinner_frame;

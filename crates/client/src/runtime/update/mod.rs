@@ -14,11 +14,14 @@ use uuid::Uuid;
 use mewcode_protocol::event::ChatRequest;
 use mewcode_protocol::{Message, MessagePart};
 
-use super::model::{App, Cmd, CreateError, Msg, Screen, StreamingState, Toast};
+use super::model::{App, Cmd, CreateError, Msg, Overlay, Screen, StreamingState, Toast};
 
+mod picker;
 mod session;
+mod slash;
 mod stream;
 
+use picker::{clamp_model_picker_scroll, clamp_session_list_scroll};
 use session::on_session_key;
 use stream::apply_stream_event;
 
@@ -44,6 +47,7 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
                 s.session = Some(session.clone());
                 s.creating = false;
                 s.creation_started_at = None;
+                s.pending_model = None;
                 if let Some(text) = pending {
                     let user_msg = Message::user(vec![MessagePart::Text { text: text.clone() }]);
                     s.session.as_mut().unwrap().messages.push(user_msg);
@@ -88,6 +92,115 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
         Msg::Stream(ev) => {
             if let Some(t) = apply_stream_event(s, ev) {
                 *toast = Some(t);
+            }
+            Cmd::None
+        }
+
+        Msg::ModelsFetched(result) => {
+            // The /model picker is fire-and-forget: the user can Esc out
+            // before the registry returns. If the overlay has already
+            // changed (e.g. user opened /tools or sent a chat), keep the
+            // cached registry silently and skip the error toast so we
+            // don't clobber whatever state the user moved on to.
+            match result {
+                Ok(entries) => {
+                    s.model_picker.models = Some(entries);
+                    let len = s.model_picker.models.as_ref().map(Vec::len).unwrap_or(0);
+                    if s.model_picker.cursor >= len {
+                        s.model_picker.cursor = len.saturating_sub(1);
+                    }
+                    clamp_model_picker_scroll(s);
+                }
+                Err(e) => {
+                    if s.overlay == Overlay::ModelPicker {
+                        *toast = Some(Toast::error(format!("/model: {e}")));
+                    }
+                }
+            }
+            Cmd::None
+        }
+
+        Msg::SessionsFetched(result) => {
+            // The session list is fire-and-forget too: only surface the
+            // error toast if the /session overlay is still the one the
+            // user is looking at.
+            match result {
+                Ok(summaries) => {
+                    s.session_list.summaries = summaries;
+                    let len = s.session_list.summaries.len();
+                    if s.session_list.cursor >= len {
+                        s.session_list.cursor = len.saturating_sub(1);
+                    }
+                    clamp_session_list_scroll(s);
+                }
+                Err(e) => {
+                    if s.overlay == Overlay::SessionList {
+                        *toast = Some(Toast::error(format!("/session: {e}")));
+                    }
+                }
+            }
+            Cmd::None
+        }
+
+        Msg::SessionPatched(result, from_rename) => {
+            // The `/session rename` flow needs to clear the composer
+            // and dismiss the overlay even if the user Esc'd out
+            // before the PATCH returned. Model-picker patches
+            // (`from_rename: false`) only adopt the refreshed session.
+            match result {
+                Ok(session) => {
+                    s.session = Some(session);
+                    s.overlay = Overlay::None;
+                    if from_rename {
+                        s.input = TextArea::default();
+                    }
+                }
+                Err(e) => {
+                    *toast = Some(Toast::error(format!("/session patch: {e}")));
+                }
+            }
+            Cmd::None
+        }
+
+        Msg::SessionOpened(result) => {
+            // Only adopt the session if /session is still the active
+            // overlay — otherwise a stale fetch (e.g. user already
+            // started a new chat) would clobber the in-flight state.
+            let was_session_list = s.overlay == Overlay::SessionList;
+            match result {
+                Ok(session) => {
+                    if was_session_list {
+                        s.session = Some(session);
+                        s.overlay = Overlay::None;
+                        s.follow = true;
+                    }
+                }
+                Err(e) => {
+                    if was_session_list {
+                        s.overlay = Overlay::None;
+                        *toast = Some(Toast::error(format!("/session open: {e}")));
+                    }
+                }
+            }
+            Cmd::None
+        }
+
+        Msg::SessionDeleted(result) => {
+            match result {
+                Ok(id) => {
+                    s.session_list.summaries.retain(|sess| sess.id != id);
+                    if s.session.as_ref().map(|sess| sess.id) == Some(id) {
+                        s.session = None;
+                    }
+                    let len = s.session_list.summaries.len();
+                    if s.session_list.cursor >= len {
+                        s.session_list.cursor = len.saturating_sub(1);
+                    }
+                    clamp_session_list_scroll(s);
+                }
+                Err(e) => {
+                    *toast = Some(Toast::error(format!("/session delete: {e}")));
+                }
             }
             Cmd::None
         }

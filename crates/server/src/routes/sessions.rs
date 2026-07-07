@@ -9,7 +9,7 @@ use serde::Deserialize;
 
 use crate::AppError;
 use crate::AppState;
-use crate::store::{NewSession, Session, SessionSummary};
+use crate::store::{NewSession, Session, SessionPatch, SessionSummary};
 
 /// Request body for `POST /sessions`.
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
@@ -116,4 +116,31 @@ pub async fn delete(
 ) -> Result<StatusCode, AppError> {
     state.store.delete_session(id).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// `PATCH /sessions/{id}` — apply a partial update (title, model, mode).
+/// Fields set to `null` in the body are left unchanged. Returns the
+/// refreshed session.
+#[utoipa::path(
+    patch,
+    path = "/sessions/{id}",
+    tag = "sessions",
+    params(
+        ("id" = uuid::Uuid, Path, description = "Session id"),
+    ),
+    request_body = SessionPatch,
+    responses(
+        (status = 200, description = "Session updated", body = Session),
+        (status = 400, description = "Empty or whitespace title", body = crate::openapi::ErrorResponse),
+        (status = 404, description = "Session not found", body = crate::openapi::ErrorResponse),
+        (status = 500, description = "Internal error", body = crate::openapi::ErrorResponse),
+    ),
+)]
+pub async fn patch(
+    State(state): State<AppState>,
+    Path(id): Path<uuid::Uuid>,
+    Json(body): Json<SessionPatch>,
+) -> Result<Json<Session>, AppError> {
+    let session = state.store.patch_session(id, body).await?;
+    Ok(Json(session))
 }

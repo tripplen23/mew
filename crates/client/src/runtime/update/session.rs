@@ -5,40 +5,90 @@ use uuid::Uuid;
 use mewcode_protocol::event::ChatRequest;
 use mewcode_protocol::{Message, MessagePart, Mode};
 
-use crate::net::CreateSessionRequest;
+use crate::net::{CreateSessionRequest, SessionPatch};
 
 use super::super::model::{Cmd, Overlay, QUIT_COMMAND, SessionState, StreamingState, Toast};
 use super::key_to_input;
+use super::picker::{on_model_picker_key, on_session_list_key};
+use super::slash::{
+    SlashPickerResult, on_slash_picker_key, open_slash_picker, slash_default_cursor,
+};
 
 /// Session screen: input editing, submit, slash commands.
-///
-/// The TUI launches here with `session == None`. The first non-slash
-/// message the user sends triggers a `POST /sessions`; the response is
-/// lifted into the model in `Msg::SessionCreated`, which then auto-fires
-/// the chat that started the create.
-///
-/// Quitting: Typing `quit` in the input and pressing Enter sends `Cmd::Quit`
 pub(super) fn on_session_key(
     s: &mut SessionState,
     toast: &mut Option<Toast>,
     key: KeyEvent,
 ) -> Cmd {
     if key.code == KeyCode::Esc {
-        // Close an open overlay first; once everything's closed, Esc is a
-        // no-op (the chat has nowhere to go back to without a session list).
+        // Close an open overlay first
         if s.overlay != Overlay::None {
+            // `Overlay::RenameSession` seeds `s.input` with the current
+            // session title so the user can edit it in place.
+            let was_rename = s.overlay == Overlay::RenameSession;
+            let was_slash = s.overlay == Overlay::SlashPicker;
             s.overlay = Overlay::None;
+            if was_rename {
+                s.input = TextArea::default();
+            }
+            if was_slash {
+                // The picker only opens when the composer starts with `/`,
+                s.input = TextArea::default();
+            }
         }
         return Cmd::None;
     }
 
     if s.creating {
-        // A `POST /sessions` is in flight for `pending_chat`; ignore
-        // everything else so the user can't double-submit.
+        // A `POST /sessions` is in flight for `pending_chat`
         return Cmd::None;
     }
 
+    // Overlay-specific key handling: Up/Down move the cursor, Enter applies
+    // the highlighted row, `d` deletes (session list only).
+    match s.overlay {
+        Overlay::SlashPicker => match on_slash_picker_key(s, key) {
+            SlashPickerResult::Cmd(cmd) => return cmd,
+            SlashPickerResult::Submit => return on_session_submit(s, toast),
+        },
+        Overlay::ModelPicker => return on_model_picker_key(s, key),
+        Overlay::SessionList => return on_session_list_key(s, key),
+        Overlay::RenameSession => {
+            if key.code == KeyCode::Enter {
+                if let Some(session) = s.session.as_ref() {
+                    let title = s.input.lines().join("\n").trim().to_string();
+                    if title.is_empty() {
+                        *toast = Some(Toast::error("title cannot be empty"));
+                    } else {
+                        s.overlay = Overlay::None;
+                        return Cmd::PatchSession {
+                            id: session.id,
+                            patch: SessionPatch {
+                                title: Some(title),
+                                ..Default::default()
+                            },
+                            from_rename: true,
+                        };
+                    }
+                }
+                return Cmd::None;
+            }
+            // Any other key falls through to the input bar so the user can
+            // type the new title.
+        }
+        Overlay::None | Overlay::Tools | Overlay::Skills => {}
+    }
+
     match key.code {
+        // Typing `/` in an empty composer (or right after backspacing back
+        // to one) opens the slash-command picker.
+        KeyCode::Char('/') => {
+            s.input.input(key_to_input(key));
+            if slash_default_cursor(&s.input.lines().join("\n")).is_some() {
+                open_slash_picker(s);
+            }
+            Cmd::None
+        }
         KeyCode::Enter => on_session_submit(s, toast),
         // Transcript scrollback. Up/PageUp release auto-follow; scrolling back
         // to the bottom re-engages it. `max_scroll`/`viewport` come from the
@@ -100,14 +150,25 @@ pub(super) fn on_session_submit(s: &mut SessionState, toast: &mut Option<Toast>)
 
     if let Some(rest) = trimmed.strip_prefix('/') {
         s.input = TextArea::default();
-        match rest.split_whitespace().next().unwrap_or("") {
-            "tools" => s.overlay = Overlay::Tools,
-            "skills" => s.overlay = Overlay::Skills,
+        let mut parts = rest.split_whitespace();
+        let cmd = parts.next().unwrap_or("");
+        let args: Vec<&str> = parts.collect();
+        return match cmd {
+            "tools" => {
+                s.overlay = Overlay::Tools;
+                Cmd::None
+            }
+            "skills" => {
+                s.overlay = Overlay::Skills;
+                Cmd::None
+            }
+            "model" => on_model_command(s),
+            "session" => on_session_command(s, &args, toast),
             other => {
                 *toast = Some(Toast::error(format!("unknown command: /{other}")));
+                Cmd::None
             }
-        }
-        return Cmd::None;
+        };
     }
 
     let user_text = trimmed.to_string();
@@ -139,7 +200,7 @@ pub(super) fn on_session_submit(s: &mut SessionState, toast: &mut Option<Toast>)
         s.creation_started_at = Some(std::time::Instant::now());
         Cmd::CreateSession(CreateSessionRequest {
             title: derive_title(&user_text),
-            model: None,
+            model: s.pending_model,
             mode: Some(Mode::default()),
         })
     }
@@ -161,5 +222,81 @@ fn derive_title(text: &str) -> String {
             .collect::<String>()
             .trim_end()
             .to_string()
+    }
+}
+
+/// Handle `/model`: open the picker overlay, fetching the registry on
+/// demand. Picking a row (Enter in the overlay) is handled in
+/// `on_session_key`; this function only opens the dialog.
+fn on_model_command(s: &mut SessionState) -> Cmd {
+    s.overlay = Overlay::ModelPicker;
+    s.model_picker.cursor = 0;
+    if s.model_picker.models.is_none() {
+        Cmd::FetchModels
+    } else {
+        Cmd::None
+    }
+}
+
+/// Handle `/session`: open the list overlay (default), start a rename
+/// (`/session rename`), or create a new session (`/session new <title>`).
+/// Switching and deleting rows are handled in `on_session_key`. Always
+/// fetches the list — the empty cache is indistinguishable from "never
+/// fetched", and a fresh `/session` open should reflect any sessions
+/// created since the last view.
+fn on_session_command(s: &mut SessionState, args: &[&str], toast: &mut Option<Toast>) -> Cmd {
+    match args.first().copied() {
+        Some("rename") => {
+            let Some(session) = s.session.as_ref() else {
+                *toast = Some(Toast::error("/session rename needs an active session"));
+                return Cmd::None;
+            };
+            // Seed the input bar with the current title so the user can edit
+            // it in place. Enter in `Overlay::RenameSession` reads the new
+            // title from `s.input`.
+            s.input = TextArea::new(vec![session.title.clone()]);
+            s.overlay = Overlay::RenameSession;
+            Cmd::None
+        }
+        Some("new") => {
+            // `/session new <title...>` — `<title>` is everything after the
+            // subcommand, multi-word allowed.
+            let title = args
+                .get(1..)
+                .map(|rest| rest.join(" "))
+                .unwrap_or_default()
+                .trim()
+                .to_string();
+            if title.is_empty() {
+                *toast = Some(Toast::error("/session new needs a title"));
+                return Cmd::None;
+            }
+            if s.creating {
+                *toast = Some(Toast::error("a session is already being created"));
+                return Cmd::None;
+            }
+            // Mirror the chat-first creation flow so a `Msg::SessionCreated`
+            // result routes the new session into the session view.
+            s.creating = true;
+            s.creation_started_at = Some(std::time::Instant::now());
+            s.input = TextArea::default();
+            Cmd::CreateSession(CreateSessionRequest {
+                title,
+                model: s.pending_model,
+                mode: Some(Mode::default()),
+            })
+        }
+        Some(other) => {
+            *toast = Some(Toast::error(format!(
+                "/session: unknown subcommand `/{}`",
+                other
+            )));
+            Cmd::None
+        }
+        _ => {
+            s.overlay = Overlay::SessionList;
+            s.session_list.cursor = 0;
+            Cmd::FetchSessions
+        }
     }
 }

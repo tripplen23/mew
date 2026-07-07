@@ -109,6 +109,21 @@ pub struct CreateSessionRequest {
     pub mode: Option<Mode>,
 }
 
+/// Partial update for a session. Mirrors the server's `SessionPatch`: each
+/// `Some` field is applied; `None` fields are left unchanged.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct SessionPatch {
+    /// New title. `None` keeps the current title.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// New model. `None` keeps the current model.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<ModelId>,
+    /// New mode. `None` keeps the current mode.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mode: Option<Mode>,
+}
+
 impl ApiClient {
     /// Build a new client. `base_url` should not have a trailing slash.
     pub fn new(base_url: impl Into<String>) -> Self {
@@ -179,6 +194,44 @@ impl ApiClient {
             .await?;
         let bytes = ensure_success(resp)?.bytes().await?;
         Ok(serde_json::from_slice(&bytes)?)
+    }
+
+    /// `PATCH /sessions/{id}` — apply a partial update and return the
+    /// refreshed session.
+    ///
+    /// A per-request 10 s timeout matches [`Self::models`] so a hung server
+    /// response surfaces as an error rather than wedging the rename/model
+    /// switch overlay open.
+    pub async fn patch_session(
+        &self,
+        id: uuid::Uuid,
+        patch: &SessionPatch,
+    ) -> Result<Session, NetError> {
+        let path = SESSION_BY_ID.replace("{id}", &id.to_string());
+        let resp = self
+            .inner
+            .patch(format!("{}{}", self.base_url, path))
+            .json(patch)
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await?;
+        let bytes = ensure_success(resp)?.bytes().await?;
+        Ok(serde_json::from_slice(&bytes)?)
+    }
+
+    /// `DELETE /sessions/{id}` — delete a session. A 10 s timeout matches
+    /// [`Self::models`] so a hung server response surfaces as an error
+    /// rather than wedging the session list overlay open.
+    pub async fn delete_session(&self, id: uuid::Uuid) -> Result<(), NetError> {
+        let path = SESSION_BY_ID.replace("{id}", &id.to_string());
+        let resp = self
+            .inner
+            .delete(format!("{}{}", self.base_url, path))
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await?;
+        let _ = ensure_success(resp)?.bytes().await?;
+        Ok(())
     }
 
     /// `POST /chat` — open the SSE chat stream.

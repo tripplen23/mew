@@ -13,7 +13,10 @@ use mewcode_protocol::Message;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use super::{Backend, NewSession, Session, SessionStore, SessionSummary, StoreError};
+use super::{
+    Backend, NewSession, Session, SessionPatch, SessionStore, SessionSummary, StoreError,
+    validate_title,
+};
 
 /// In-memory session store, guarded by a single async `RwLock`.
 #[derive(Debug, Default)]
@@ -135,6 +138,29 @@ impl SessionStore for MemoryStore {
         }
         guard.messages.remove(&id);
         Ok(())
+    }
+
+    async fn patch_session(&self, id: Uuid, patch: SessionPatch) -> Result<Session, StoreError> {
+        let mut guard = self.inner.write().await;
+        let row = guard
+            .sessions
+            .iter_mut()
+            .find(|s| s.id == id)
+            .ok_or(StoreError::NotFound)?;
+        if let Some(title) = patch.title {
+            row.title = validate_title(&title)?;
+        }
+        if let Some(model) = patch.model {
+            row.model = model;
+        }
+        if let Some(mode) = patch.mode {
+            row.mode = mode;
+        }
+        row.updated_at = Utc::now();
+        let snapshot = row.clone();
+        let mut messages = guard.messages.get(&id).cloned().unwrap_or_default();
+        messages.sort_by_key(|m| m.created_at);
+        Ok(snapshot.to_session(messages))
     }
 
     async fn append_message(&self, id: Uuid, message: Message) -> Result<(), StoreError> {
