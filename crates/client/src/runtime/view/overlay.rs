@@ -7,7 +7,7 @@ use ratatui::widgets::{Block, Clear, Paragraph, Wrap};
 use mewcode_protocol::ModelId;
 use mewcode_protocol::tool::ToolName;
 
-use super::super::model::SessionState;
+use super::super::model::{SLASH_COMMANDS, SessionState};
 
 /// The `/tools` overlay body: every tool plus the total count.
 pub(super) fn tools_lines() -> Vec<Line<'static>> {
@@ -33,11 +33,75 @@ pub(super) fn skills_lines() -> Vec<Line<'static>> {
     ))]
 }
 
+pub(super) fn render_slash_picker(frame: &mut Frame, area: Rect, s: &SessionState) {
+    let row_count = SLASH_COMMANDS.len() as u16;
+    let max_height = fallback(area.height.saturating_sub(4), 1);
+    let height = row_count.saturating_add(2).min(max_height.max(3));
+    let input_y = area
+        .y
+        .saturating_add(area.height)
+        .saturating_sub(1)
+        .saturating_sub(3);
+    let panel_y = input_y.saturating_sub(height);
+    let panel = Rect {
+        x: area.x,
+        y: panel_y,
+        width: area.width,
+        height,
+    };
+
+    let block = Block::bordered()
+        .title(" commands  (↑↓ to move, Enter to run, Esc to close) ")
+        .border_style(Style::default().fg(Color::Cyan));
+    let inner = block.inner(panel);
+    frame.render_widget(Clear, panel);
+    frame.render_widget(block, panel);
+
+    let cmd_w = SLASH_COMMANDS
+        .iter()
+        .map(|c| c.command.chars().count())
+        .max()
+        .unwrap_or(0);
+    let lines: Vec<Line> = SLASH_COMMANDS
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            let style = if i == s.slash_cursor {
+                Style::default().fg(Color::Black).bg(Color::Cyan)
+            } else {
+                Style::default()
+            };
+            let cmd = format!("{:<cmd_w$}", c.command);
+            Line::from(Span::styled(format!(" {cmd}  {}", c.description), style))
+        })
+        .collect();
+    frame.render_widget(
+        Paragraph::new(Text::from(lines)).wrap(Wrap { trim: false }),
+        inner,
+    );
+}
+
+fn fallback(value: u16, default: u16) -> u16 {
+    if value == 0 { default } else { value }
+}
+
 /// Body of the `/model` overlay: every entry from `GET /models`, with the
 /// active session's current model tagged and the cursor row highlighted.
-/// `None` `s.models` is the "fetch in flight" / "fetch failed" state.
-pub(super) fn model_picker_lines(s: &SessionState) -> Vec<Line<'static>> {
-    let Some(entries) = s.models.as_ref() else {
+/// `None` `s.model_picker.models` is the "fetch in flight" / "fetch failed" state.
+///
+/// The helper returns the **visible window** of rows (after applying
+/// `s.model_picker.scroll`) so the list scrolls cleanly when there are
+/// more models than the overlay can fit on screen. The cursor highlight
+/// still reflects the full-list index, so the caller doesn't need to
+/// translate between window-local and global rows.
+///
+/// `max_width` is the inner width of the overlay panel; each row is
+/// truncated to fit so the picker never wraps a model onto two visual
+/// lines. Without that, `model_picker.cursor` (one per model) would desync
+/// from the visual-row cursor (one per wrapped line) and the highlight
+/// would drift by the wrap count on every Down press.
+pub fn model_picker_lines(s: &SessionState, max_width: usize) -> Vec<Line<'static>> {
+    let Some(entries) = s.model_picker.models.as_ref() else {
         return vec![Line::from(Span::styled(
             "Loading models...",
             Style::default().fg(Color::DarkGray),
@@ -49,50 +113,134 @@ pub(super) fn model_picker_lines(s: &SessionState) -> Vec<Line<'static>> {
             Style::default().fg(Color::DarkGray),
         ))];
     }
-    let current = s.session.as_ref().map(|sess| sess.model);
+    let current = s
+        .session
+        .as_ref()
+        .map(|sess| sess.model)
+        .or(s.pending_model);
+    let start = s.model_picker.scroll.min(entries.len().saturating_sub(1));
     entries
         .iter()
         .enumerate()
+        .skip(start)
         .map(|(i, m)| {
             let is_current = m.id.parse::<ModelId>().ok() == current;
             let marker = if is_current { "*" } else { " " };
-            let style = if i == s.model_cursor {
+            let style = if i == s.model_picker.cursor {
                 Style::default().fg(Color::Black).bg(Color::Cyan)
             } else {
                 Style::default()
             };
             Line::from(Span::styled(
-                format!("{marker} {} ({})", m.display_name, m.id),
+                format_model_row(marker, &m.display_name, &m.id, max_width),
                 style,
             ))
         })
         .collect()
 }
 
+/// Format a single model-picker row, truncated to fit `max_width` so
+/// the row never wraps. Shows the parenthesised id when there's room;
+/// falls back to the display name alone when the id would push the row
+/// over the limit. The `* ` / `  ` marker is always preserved so the
+/// "current model" indicator stays aligned.
+fn format_model_row(marker: &str, display_name: &str, id: &str, max_width: usize) -> String {
+    const ELLIPSIS: &str = "…";
+    // 2 = marker char + the space after it. Leave 1 cell of slack so
+    // wide CJK glyphs don't accidentally push past the panel.
+    let overhead = marker.chars().count() + 1 + 1;
+    if max_width <= overhead {
+        return marker.to_string();
+    }
+    let budget = max_width - overhead;
+    let id_part = format!(" ({id})");
+    let id_w = id_part.chars().count();
+    if id_w <= budget {
+        let name_budget = budget - id_w;
+        let name = truncate_with_ellipsis(display_name, name_budget, ELLIPSIS);
+        return format!("{marker} {name}{id_part}");
+    }
+    // Not enough room for the id; show just the name, truncated to the
+    // full budget.
+    let name = truncate_with_ellipsis(display_name, budget, ELLIPSIS);
+    format!("{marker} {name}")
+}
+
+/// Truncate `s` so it occupies at most `max_width` display cells.
+/// Replaces the tail with `ellipsis` when truncation is needed.
+/// If `max_width` is smaller than the ellipsis itself, the ellipsis is
+/// clipped to whatever fits.
+fn truncate_with_ellipsis(s: &str, max_width: usize, ellipsis: &str) -> String {
+    if max_width == 0 {
+        return String::new();
+    }
+    let w = s.chars().count();
+    if w <= max_width {
+        return s.to_string();
+    }
+    let ell_w = ellipsis.chars().count();
+    if max_width <= ell_w {
+        return ellipsis.chars().take(max_width).collect();
+    }
+    let keep = max_width - ell_w;
+    let head: String = s.chars().take(keep).collect();
+    format!("{head}{ellipsis}")
+}
+
 /// Body of the `/session` overlay: every saved session as a one-line
-/// summary, newest-first, with the cursor row highlighted.
-pub(super) fn session_list_lines(s: &SessionState) -> Vec<Line<'static>> {
-    if s.session_summaries.is_empty() {
+/// summary, newest-first, with the cursor row highlighted. Sliced by
+/// `s.session_list.scroll` so long lists stay usable.
+///
+/// `max_width` is the inner width of the overlay panel; each row is
+/// truncated to fit so titles never wrap onto two visual lines (see
+/// [`model_picker_lines`] for the same rationale).
+pub fn session_list_lines(s: &SessionState, max_width: usize) -> Vec<Line<'static>> {
+    if s.session_list.summaries.is_empty() {
         return vec![Line::from(Span::styled(
             "No saved sessions.",
             Style::default().fg(Color::DarkGray),
         ))];
     }
-    s.session_summaries
+    let start = s
+        .session_list
+        .scroll
+        .min(s.session_list.summaries.len().saturating_sub(1));
+    s.session_list
+        .summaries
         .iter()
         .enumerate()
+        .skip(start)
         .map(|(i, summary)| {
-            let style = if i == s.session_cursor {
+            let style = if i == s.session_list.cursor {
                 Style::default().fg(Color::Black).bg(Color::Cyan)
             } else {
                 Style::default()
             };
-            Line::from(Span::styled(
-                format!("  {}  ({})", summary.title, summary.model.as_str()),
-                style,
-            ))
+            let row = format_session_row(&summary.title, summary.model.as_str(), max_width);
+            Line::from(Span::styled(row, style))
         })
         .collect()
+}
+
+fn format_session_row(title: &str, model: &str, max_width: usize) -> String {
+    const ELLIPSIS: &str = "…";
+    // Leading + trailing two-space padding, plus the ` (model)` tail.
+    // When the model doesn't fit, fall back to the title alone.
+    let tail = format!(" ({model})");
+    let tail_w = tail.chars().count();
+    let prefix = 2usize; // leading "  "
+    let suffix = 2usize; // trailing "  "
+    if max_width <= prefix {
+        return String::new();
+    }
+    let budget = max_width - prefix;
+    if tail_w + suffix <= budget {
+        let title_budget = budget - tail_w - suffix;
+        let t = truncate_with_ellipsis(title, title_budget, ELLIPSIS);
+        return format!("  {t}{tail}  ");
+    }
+    let t = truncate_with_ellipsis(title, budget, ELLIPSIS);
+    format!("  {t}  ")
 }
 
 /// Body of the rename overlay: a hint pointing to the input bar where the
@@ -135,7 +283,10 @@ pub(super) fn render_overlay(frame: &mut Frame, area: Rect, title: &str, body: V
     );
 }
 
-fn centered_rect(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
+/// Centred overlay rect, matching the size used by [`render_overlay`].
+/// Exposed so callers that build their own body lines (e.g. to truncate
+/// to the inner width) can render into the same rect.
+pub(super) fn centered_rect(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
     let vertical = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -152,4 +303,67 @@ fn centered_rect(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
             Constraint::Percentage((100 - percent_x) / 2),
         ])
         .split(vertical[1])[1]
+}
+
+/// Like [`render_overlay`] but for a list that may exceed the panel
+/// height. `body` is the slice of rows starting at `scroll`; the
+/// function truncates it to fit the panel, pads to the footer row, and
+/// renders.
+///
+/// `viewport_out` is set to the **number of rows actually available for
+/// list items** (panel inner height minus the footer row). The update
+/// loop reads this back to clamp the scroll offset when the cursor
+/// moves — if the value is wrong (e.g. the raw inner height without
+/// subtracting the footer), the cursor can scroll off the bottom in a
+/// small terminal even though the user is still pressing Down.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn render_scrolled_overlay(
+    frame: &mut Frame,
+    area: Rect,
+    title: &str,
+    hint: &str,
+    body: Vec<Line<'static>>,
+    total_rows: usize,
+    _scroll: usize,
+    cursor: usize,
+    viewport_out: &mut u16,
+) {
+    let rect = centered_rect(area, 60, 60);
+    frame.render_widget(Clear, rect);
+    let inner_height = rect.height.saturating_sub(2);
+    // One row is reserved for the footer; the rest is the list viewport.
+    let visible = inner_height.saturating_sub(1) as usize;
+
+    // Truncate the body to the visible window so the footer row stays
+    // clear and so the model's `viewport` matches what we actually drew.
+    let mut lines: Vec<Line> = body.into_iter().take(visible).collect();
+    // Pad with blank lines so the footer stays anchored at the bottom
+    // even when the list is short.
+    while lines.len() < visible {
+        lines.push(Line::from(""));
+    }
+    // Footer: "<cursor+1>/<total>" so the user can see where the
+    // cursor is, even when the cursor row is scrolled off the top or
+    // bottom.
+    let footer_text = if total_rows == 0 {
+        " — ".to_string()
+    } else {
+        format!(" {}/{} ", cursor + 1, total_rows)
+    };
+    lines.push(Line::from(Span::styled(
+        footer_text,
+        Style::default().fg(Color::DarkGray),
+    )));
+
+    let block = Block::bordered()
+        .title(format!(" {title}  ({hint}) "))
+        .border_style(Style::default().fg(Color::Cyan));
+    // Rows are pre-truncated to the inner width by the caller, so wrap
+    // is unnecessary and would risk re-wrapping a truncated tail onto a
+    // second line.
+    frame.render_widget(Paragraph::new(Text::from(lines)).block(block), rect);
+
+    // Report the *list* viewport, not the raw inner height — the footer
+    // row is not part of the list.
+    *viewport_out = visible as u16;
 }

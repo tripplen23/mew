@@ -7,10 +7,13 @@
 //! - the resulting state mutation (overlay state, model state).
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::Terminal;
+use ratatui::backend::TestBackend;
 use tui_textarea::TextArea;
 
 use mewcode_client::runtime::model::{App, Cmd, Msg, Overlay, Screen, SessionState};
 use mewcode_client::runtime::update;
+use mewcode_client::runtime::view::render;
 use mewcode_protocol::{MessagePart, Mode, ModelId};
 
 fn test_app() -> App {
@@ -70,7 +73,7 @@ fn slash_model_opens_picker_and_fetches_when_uncached() {
     );
     let s = active_state(&mut app);
     assert_eq!(s.overlay, Overlay::ModelPicker);
-    assert_eq!(s.model_cursor, 0);
+    assert_eq!(s.model_picker.cursor, 0);
     assert!(
         s.input.lines().join("\n").is_empty(),
         "input should be cleared after dispatch"
@@ -81,7 +84,7 @@ fn slash_model_opens_picker_and_fetches_when_uncached() {
 fn slash_model_reuses_cached_registry() {
     let mut app = test_app();
     seed_active_session(active_state(&mut app));
-    active_state(&mut app).models = Some(vec![]); // cache the registry
+    active_state(&mut app).model_picker.models = Some(vec![]); // cache the registry
 
     {
         let s = active_state(&mut app);
@@ -128,7 +131,7 @@ fn slash_session_opens_list_and_fetches_when_uncached() {
     );
     let s = active_state(&mut app);
     assert_eq!(s.overlay, Overlay::SessionList);
-    assert_eq!(s.session_cursor, 0);
+    assert_eq!(s.session_list.cursor, 0);
 }
 
 #[test]
@@ -139,7 +142,7 @@ fn slash_session_always_refetches_to_pick_up_new_sessions() {
     // and a fetch fires.
     let mut app = test_app();
     let id = uuid::Uuid::new_v4();
-    active_state(&mut app).session_summaries = vec![mewcode_client::net::SessionSummary {
+    active_state(&mut app).session_list.summaries = vec![mewcode_client::net::SessionSummary {
         id,
         title: "first".into(),
         model: ModelId::Glm51,
@@ -156,7 +159,7 @@ fn slash_session_always_refetches_to_pick_up_new_sessions() {
     assert!(matches!(cmd, Cmd::FetchSessions));
     let s = active_state(&mut app);
     assert_eq!(s.overlay, Overlay::SessionList);
-    assert_eq!(s.session_cursor, 0);
+    assert_eq!(s.session_list.cursor, 0);
 }
 
 #[test]
@@ -266,7 +269,7 @@ fn slash_session_rename_empty_title_toasts() {
 fn model_picker_enter_emits_patch_session_cmd() {
     let mut app = test_app();
     seed_active_session(active_state(&mut app));
-    active_state(&mut app).models = Some(vec![mewcode_client::net::ModelEntry {
+    active_state(&mut app).model_picker.models = Some(vec![mewcode_client::net::ModelEntry {
         id: "minimax-m3".into(),
         display_name: "MiniMax M3".into(),
         kind: mewcode_protocol::ModelKind::OpenAiChatCompletions,
@@ -289,13 +292,65 @@ fn model_picker_enter_emits_patch_session_cmd() {
     }
 }
 
+#[test]
+fn model_picker_before_session_sets_pending_model() {
+    let mut app = test_app();
+    active_state(&mut app).model_picker.models = Some(vec![
+        mewcode_client::net::ModelEntry {
+            id: "minimax-m3".into(),
+            display_name: "MiniMax M3".into(),
+            kind: mewcode_protocol::ModelKind::AnthropicMessages,
+        },
+        mewcode_client::net::ModelEntry {
+            id: "minimax-m2.5".into(),
+            display_name: "MiniMax M2.5".into(),
+            kind: mewcode_protocol::ModelKind::AnthropicMessages,
+        },
+    ]);
+
+    {
+        let s = active_state(&mut app);
+        type_text(s, "/model");
+    }
+    let _ = update(&mut app, press_enter());
+    let _ = update(&mut app, press_arrow(KeyCode::Down));
+    let cmd = update(&mut app, press_enter());
+
+    let s = active_state(&mut app);
+    assert!(matches!(cmd, Cmd::None));
+    assert_eq!(s.overlay, Overlay::None);
+    assert_eq!(s.pending_model, Some(ModelId::MiniMaxM25));
+    assert!(
+        app.toast.is_none(),
+        "choosing a default model should not toast"
+    );
+}
+
+#[test]
+fn first_session_create_uses_pending_model() {
+    let mut app = test_app();
+    active_state(&mut app).pending_model = Some(ModelId::MiniMaxM25);
+    {
+        let s = active_state(&mut app);
+        type_text(s, "hello");
+    }
+
+    match update(&mut app, press_enter()) {
+        Cmd::CreateSession(req) => {
+            assert_eq!(req.title, "hello");
+            assert_eq!(req.model, Some(ModelId::MiniMaxM25));
+        }
+        other => panic!("expected CreateSession, got {other:?}"),
+    }
+}
+
 // --- /session list key nav -----------------------------------------------
 
 #[test]
 fn session_list_enter_emits_open_session_cmd() {
     let mut app = test_app();
     let id = uuid::Uuid::new_v4();
-    active_state(&mut app).session_summaries = vec![mewcode_client::net::SessionSummary {
+    active_state(&mut app).session_list.summaries = vec![mewcode_client::net::SessionSummary {
         id,
         title: "first".into(),
         model: ModelId::Glm51,
@@ -320,7 +375,7 @@ fn session_list_enter_emits_open_session_cmd() {
 fn session_list_d_emits_delete_cmd() {
     let mut app = test_app();
     let id = uuid::Uuid::new_v4();
-    active_state(&mut app).session_summaries = vec![mewcode_client::net::SessionSummary {
+    active_state(&mut app).session_list.summaries = vec![mewcode_client::net::SessionSummary {
         id,
         title: "first".into(),
         model: ModelId::Glm51,
@@ -359,8 +414,8 @@ fn unknown_slash_command_toasts_and_keeps_overlay() {
     let s = active_state(&mut app);
     assert_eq!(s.overlay, Overlay::None);
     // The unknown-command branch should not change any slash-related state.
-    assert!(s.models.is_none());
-    assert!(s.session_summaries.is_empty());
+    assert!(s.model_picker.models.is_none());
+    assert!(s.session_list.summaries.is_empty());
     assert!(app.toast.is_some());
 }
 
@@ -625,4 +680,196 @@ fn session_opened_after_overlay_closed_does_not_adopt_session() {
     );
     let draft = s.input.lines().join("\n");
     assert_eq!(draft, "draft", "stale SessionOpened must not clobber input");
+}
+
+// --- slash-command picker ------------------------------------------------
+
+fn type_char(c: char) -> Msg {
+    Msg::Key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE))
+}
+
+fn press_arrow(code: KeyCode) -> Msg {
+    Msg::Key(KeyEvent::new(code, KeyModifiers::NONE))
+}
+
+#[test]
+fn typing_slash_opens_picker() {
+    let mut app = test_app();
+    let _ = update(&mut app, type_char('/'));
+    let s = active_state(&mut app);
+    assert_eq!(s.overlay, Overlay::SlashPicker);
+    assert_eq!(s.input.lines().join("\n"), "/");
+    assert_eq!(s.slash_cursor, 0, "bare / should highlight the first row");
+}
+
+#[test]
+fn picker_filters_as_user_types() {
+    let mut app = test_app();
+    for c in "/m".chars() {
+        let _ = update(&mut app, type_char(c));
+    }
+    let s = active_state(&mut app);
+    assert_eq!(s.overlay, Overlay::SlashPicker);
+    // `/model` is the only command whose trimmed form starts with "m".
+    assert_eq!(s.slash_cursor, 0);
+}
+
+#[test]
+fn picker_closes_when_prefix_drops_slash() {
+    let mut app = test_app();
+    let _ = update(&mut app, type_char('/'));
+    assert_eq!(active_state(&mut app).overlay, Overlay::SlashPicker);
+    // Backspace away the slash — the picker should close and the input
+    // should be empty.
+    let _ = update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE)),
+    );
+    let s = active_state(&mut app);
+    assert_eq!(s.overlay, Overlay::None);
+    assert_eq!(s.input.lines().join("\n"), "");
+}
+
+#[test]
+fn picker_down_arrow_moves_cursor() {
+    let mut app = test_app();
+    let _ = update(&mut app, type_char('/'));
+    let _ = update(&mut app, press_arrow(KeyCode::Down));
+    let _ = update(&mut app, press_arrow(KeyCode::Down));
+    assert_eq!(active_state(&mut app).slash_cursor, 2);
+    let _ = update(&mut app, press_arrow(KeyCode::Up));
+    assert_eq!(active_state(&mut app).slash_cursor, 1);
+}
+
+#[test]
+fn picker_enter_dispatches_highlighted_command() {
+    let mut app = test_app();
+    seed_active_session(active_state(&mut app));
+    let _ = update(&mut app, type_char('/'));
+    // /model is the first row — pressing Enter opens the model picker.
+    let cmd = update(&mut app, press_enter());
+    let s = active_state(&mut app);
+    assert_eq!(
+        s.overlay,
+        Overlay::ModelPicker,
+        "Enter should dispatch /model"
+    );
+    assert!(matches!(cmd, Cmd::FetchModels));
+    // The composer is cleared by the slash submit path.
+    assert!(s.input.lines().join("\n").is_empty());
+}
+
+#[test]
+fn picker_enter_uses_highlighted_row() {
+    let mut app = test_app();
+    let _ = update(&mut app, type_char('/'));
+    // Navigate to /tools (index 4 in SLASH_COMMANDS).
+    for _ in 0..4 {
+        let _ = update(&mut app, press_arrow(KeyCode::Down));
+    }
+    let _ = update(&mut app, press_enter());
+    assert_eq!(active_state(&mut app).overlay, Overlay::Tools);
+}
+
+#[test]
+fn picker_esc_clears_composer_and_closes() {
+    let mut app = test_app();
+    let _ = update(&mut app, type_char('/'));
+    assert_eq!(active_state(&mut app).overlay, Overlay::SlashPicker);
+    let _ = update(&mut app, press_esc());
+    let s = active_state(&mut app);
+    assert_eq!(s.overlay, Overlay::None);
+    assert!(s.input.lines().join("\n").is_empty());
+}
+
+// --- model / session picker scroll -------------------------------------
+
+fn seed_models(n: usize) -> Vec<mewcode_client::net::ModelEntry> {
+    (0..n)
+        .map(|i| mewcode_client::net::ModelEntry {
+            id: format!("id-{i}"),
+            display_name: format!("Model {i}"),
+            kind: mewcode_protocol::ModelKind::OpenAiChatCompletions,
+        })
+        .collect()
+}
+
+fn draw(app: &mut App, width: u16, height: u16) -> String {
+    let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+    terminal.draw(|frame| render(frame, app)).unwrap();
+    terminal.backend().to_string()
+}
+
+fn open_model_picker(app: &mut App) {
+    // `/model` (typed, then Enter) opens the model picker overlay.
+    {
+        let s = active_state(app);
+        type_text(s, "/model");
+    }
+    let _ = update(app, press_enter());
+}
+
+#[test]
+fn model_picker_rows_fit_on_one_visual_line() {
+    // The picker's cursor is one per model, so the view must
+    // guarantee exactly one visual line per model — otherwise the
+    // highlight drifts by the wrap count on every cursor move. We
+    // assert on the rendered `Line`s: each entry's `Line` must contain
+    // a single span, and that span's text must fit the supplied width
+    // so `Paragraph` never wraps it.
+    use mewcode_client::runtime::view::model_picker_lines;
+    let mut app = test_app();
+    let s = active_state(&mut app);
+    s.session = Some(session());
+    s.model_picker.models = Some(seed_models(5));
+    s.model_picker.cursor = 0;
+    s.model_picker.scroll = 0;
+
+    let max_width = 30; // tight enough to force truncation for long ids
+    let lines = model_picker_lines(s, max_width);
+    assert_eq!(lines.len(), 5);
+    for (i, line) in lines.iter().enumerate() {
+        let text: String = line.spans.iter().map(|sp| sp.content.as_ref()).collect();
+        assert!(
+            !text.contains('\n'),
+            "row {i} should not contain an embedded newline: {text:?}"
+        );
+        // The cursor is on row 0, so that row gets the highlight span.
+        // For the others, the span is a single one carrying the row text.
+        assert_eq!(line.spans.len(), 1, "row {i} should be a single span");
+        let span = &line.spans[0];
+        assert!(
+            span.content.chars().count() <= max_width,
+            "row {i} text {:?} ({} chars) exceeds width {max_width}",
+            span.content,
+            span.content.chars().count()
+        );
+    }
+}
+
+#[test]
+fn model_picker_last_row_is_visible_in_small_terminal() {
+    // Regression for the real TUI bug: the footer must not replace the
+    // last visible model row. In this terminal size the model overlay has
+    // room for 13 model rows + 1 footer row. Moving to 15/15 must scroll
+    // the window and still render Model 14 above the footer.
+    let mut app = test_app();
+    open_model_picker(&mut app);
+    {
+        let s = active_state(&mut app);
+        s.model_picker.models = Some(seed_models(15));
+    }
+    // First draw reports the picker viewport into the model.
+    let _ = draw(&mut app, 100, 28);
+    for _ in 0..14 {
+        let _ = update(&mut app, press_arrow(KeyCode::Down));
+    }
+    let buf = draw(&mut app, 100, 28);
+
+    assert_eq!(active_state(&mut app).model_picker.cursor, 14);
+    assert!(
+        buf.contains("Model 14"),
+        "last cursor row should be visible, not replaced by the footer:\n{buf}"
+    );
+    assert!(buf.contains("15/15"), "footer should still render:\n{buf}");
 }

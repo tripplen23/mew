@@ -4,6 +4,48 @@ use tui_textarea::TextArea;
 use uuid::Uuid;
 
 use crate::net::{ModelEntry, Session, SessionSummary};
+use mewcode_protocol::ModelId;
+
+/// One row in the slash-command picker.
+#[derive(Debug, Clone, Copy)]
+pub struct SlashCommand {
+    /// What to seed the composer with, e.g. `"/model"`.
+    pub command: &'static str,
+    /// Single-line explanation shown next to the row.
+    pub description: &'static str,
+}
+
+/// Catalog of slash commands surfaced in the picker.
+pub const SLASH_COMMANDS: &[SlashCommand] = &[
+    SlashCommand {
+        command: "/model",
+        description: "Switch model",
+    },
+    SlashCommand {
+        command: "/session",
+        description: "List sessions",
+    },
+    SlashCommand {
+        command: "/session new",
+        description: "Create a new session",
+    },
+    SlashCommand {
+        command: "/session rename",
+        description: "Rename current session",
+    },
+    SlashCommand {
+        command: "/tools",
+        description: "List tools",
+    },
+    SlashCommand {
+        command: "/skills",
+        description: "List skills",
+    },
+    SlashCommand {
+        command: "quit",
+        description: "Exit the TUI",
+    },
+];
 
 /// An overlay panel layered over the session view.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -15,15 +57,14 @@ pub enum Overlay {
     Tools,
     /// The skills list overlay.
     Skills,
-    /// The model picker: lists `GET /models` entries and applies the
-    /// selected one to the active session via `PATCH /sessions/{id}`.
+    /// The model picker: lists `GET /models` entries.
     ModelPicker,
-    /// The session list: lists every saved session and lets the user
-    /// open or delete one. `d` deletes the highlighted session; `Enter`
-    /// opens it.
+    /// The session list: lists every saved session
     SessionList,
     /// Rename the active session; the input bar takes the new title.
     RenameSession,
+    /// The slash-command picker shown when the composer starts with `/`.
+    SlashPicker,
 }
 
 /// State backing [`super::Screen::Session`].
@@ -43,6 +84,8 @@ pub struct SessionState {
     /// First message of a not-yet-created session, kept so it can be sent
     /// as the user message the moment `SessionCreated` arrives.
     pub pending_chat: Option<String>,
+    /// Model picked before the first session exists.
+    pub pending_model: Option<ModelId>,
     /// `true` while a `POST /sessions` is in flight for `pending_chat`.
     pub creating: bool,
     /// When `creating` was set true; used by the view to drive the
@@ -64,15 +107,12 @@ pub struct SessionState {
     pub streaming: Option<StreamingState>,
     /// Which overlay (if any) is showing.
     pub overlay: Overlay,
-    /// Cached model registry for the [`Overlay::ModelPicker`] overlay.
-    /// `None` while the `GET /models` request is in flight or has failed.
-    pub models: Option<Vec<ModelEntry>>,
-    /// Highlighted row in the model picker (0-based).
-    pub model_cursor: usize,
-    /// Cached session summaries for the [`Overlay::SessionList`] overlay.
-    pub session_summaries: Vec<SessionSummary>,
-    /// Highlighted row in the session list (0-based).
-    pub session_cursor: usize,
+    /// Model picker overlay state.
+    pub model_picker: ModelPickerState,
+    /// Session list overlay state.
+    pub session_list: SessionListState,
+    /// Highlighted row in the slash-command picker (0-based).
+    pub slash_cursor: usize,
 }
 
 impl SessionState {
@@ -83,6 +123,7 @@ impl SessionState {
             session: None,
             input: TextArea::default(),
             pending_chat: None,
+            pending_model: None,
             creating: false,
             creation_started_at: None,
             scroll: 0,
@@ -91,10 +132,9 @@ impl SessionState {
             viewport: 0,
             streaming: None,
             overlay: Overlay::None,
-            models: None,
-            model_cursor: 0,
-            session_summaries: Vec::new(),
-            session_cursor: 0,
+            model_picker: ModelPickerState::default(),
+            session_list: SessionListState::default(),
+            slash_cursor: 0,
         }
     }
 
@@ -105,6 +145,36 @@ impl SessionState {
             ..Self::empty()
         }
     }
+}
+
+/// State for the model picker overlay.
+#[derive(Debug, Default)]
+pub struct ModelPickerState {
+    /// Cached model registry for the [`Overlay::ModelPicker`] overlay.
+    pub models: Option<Vec<ModelEntry>>,
+    /// Highlighted row in the model picker (0-based).
+    pub cursor: usize,
+    /// Vertical scroll offset (in rows) of the model picker.
+    pub scroll: usize,
+    /// Inner height of the model-picker overlay as last rendered.
+    pub viewport: u16,
+    /// Largest model-picker viewport the view has ever reported.
+    pub viewport_max: u16,
+}
+
+/// State for the session list overlay.
+#[derive(Debug, Default)]
+pub struct SessionListState {
+    /// Cached session summaries for the [`Overlay::SessionList`] overlay.
+    pub summaries: Vec<SessionSummary>,
+    /// Highlighted row in the session list (0-based).
+    pub cursor: usize,
+    /// Vertical scroll offset of the session list.
+    pub scroll: usize,
+    /// Inner height of the session-list overlay as last rendered.
+    pub viewport: u16,
+    /// Largest session-list viewport the view has ever reported.
+    pub viewport_max: u16,
 }
 
 /// A lightweight view of a tool call accumulated during streaming.

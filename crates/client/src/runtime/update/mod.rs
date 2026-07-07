@@ -16,9 +16,12 @@ use mewcode_protocol::{Message, MessagePart};
 
 use super::model::{App, Cmd, CreateError, Msg, Overlay, Screen, StreamingState, Toast};
 
+mod picker;
 mod session;
+mod slash;
 mod stream;
 
+use picker::{clamp_model_picker_scroll, clamp_session_list_scroll};
 use session::on_session_key;
 use stream::apply_stream_event;
 
@@ -44,6 +47,7 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
                 s.session = Some(session.clone());
                 s.creating = false;
                 s.creation_started_at = None;
+                s.pending_model = None;
                 if let Some(text) = pending {
                     let user_msg = Message::user(vec![MessagePart::Text { text: text.clone() }]);
                     s.session.as_mut().unwrap().messages.push(user_msg);
@@ -100,11 +104,12 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
             // don't clobber whatever state the user moved on to.
             match result {
                 Ok(entries) => {
-                    s.models = Some(entries);
-                    let len = s.models.as_ref().map(Vec::len).unwrap_or(0);
-                    if s.model_cursor >= len {
-                        s.model_cursor = len.saturating_sub(1);
+                    s.model_picker.models = Some(entries);
+                    let len = s.model_picker.models.as_ref().map(Vec::len).unwrap_or(0);
+                    if s.model_picker.cursor >= len {
+                        s.model_picker.cursor = len.saturating_sub(1);
                     }
+                    clamp_model_picker_scroll(s);
                 }
                 Err(e) => {
                     if s.overlay == Overlay::ModelPicker {
@@ -121,11 +126,12 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
             // user is looking at.
             match result {
                 Ok(summaries) => {
-                    s.session_summaries = summaries;
-                    let len = s.session_summaries.len();
-                    if s.session_cursor >= len {
-                        s.session_cursor = len.saturating_sub(1);
+                    s.session_list.summaries = summaries;
+                    let len = s.session_list.summaries.len();
+                    if s.session_list.cursor >= len {
+                        s.session_list.cursor = len.saturating_sub(1);
                     }
+                    clamp_session_list_scroll(s);
                 }
                 Err(e) => {
                     if s.overlay == Overlay::SessionList {
@@ -182,14 +188,15 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
         Msg::SessionDeleted(result) => {
             match result {
                 Ok(id) => {
-                    s.session_summaries.retain(|sess| sess.id != id);
+                    s.session_list.summaries.retain(|sess| sess.id != id);
                     if s.session.as_ref().map(|sess| sess.id) == Some(id) {
                         s.session = None;
                     }
-                    let len = s.session_summaries.len();
-                    if s.session_cursor >= len {
-                        s.session_cursor = len.saturating_sub(1);
+                    let len = s.session_list.summaries.len();
+                    if s.session_list.cursor >= len {
+                        s.session_list.cursor = len.saturating_sub(1);
                     }
+                    clamp_session_list_scroll(s);
                 }
                 Err(e) => {
                     *toast = Some(Toast::error(format!("/session delete: {e}")));

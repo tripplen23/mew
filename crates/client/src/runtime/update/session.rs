@@ -3,12 +3,16 @@ use tui_textarea::TextArea;
 use uuid::Uuid;
 
 use mewcode_protocol::event::ChatRequest;
-use mewcode_protocol::{Message, MessagePart, Mode, ModelId};
+use mewcode_protocol::{Message, MessagePart, Mode};
 
 use crate::net::{CreateSessionRequest, SessionPatch};
 
 use super::super::model::{Cmd, Overlay, QUIT_COMMAND, SessionState, StreamingState, Toast};
 use super::key_to_input;
+use super::picker::{on_model_picker_key, on_session_list_key};
+use super::slash::{
+    SlashPickerResult, on_slash_picker_key, open_slash_picker, slash_default_cursor,
+};
 
 /// Session screen: input editing, submit, slash commands.
 pub(super) fn on_session_key(
@@ -17,16 +21,18 @@ pub(super) fn on_session_key(
     key: KeyEvent,
 ) -> Cmd {
     if key.code == KeyCode::Esc {
-        // Close an open overlay first; once everything's closed, Esc is a
-        // no-op (the chat has nowhere to go back to without a session list).
+        // Close an open overlay first
         if s.overlay != Overlay::None {
             // `Overlay::RenameSession` seeds `s.input` with the current
-            // session title so the user can edit it in place. Esc should
-            // discard the draft — otherwise the next Enter sends the
-            // half-edited title as a chat message.
+            // session title so the user can edit it in place.
             let was_rename = s.overlay == Overlay::RenameSession;
+            let was_slash = s.overlay == Overlay::SlashPicker;
             s.overlay = Overlay::None;
             if was_rename {
+                s.input = TextArea::default();
+            }
+            if was_slash {
+                // The picker only opens when the composer starts with `/`,
                 s.input = TextArea::default();
             }
         }
@@ -34,72 +40,19 @@ pub(super) fn on_session_key(
     }
 
     if s.creating {
-        // A `POST /sessions` is in flight for `pending_chat`; ignore
-        // everything else so the user can't double-submit.
+        // A `POST /sessions` is in flight for `pending_chat`
         return Cmd::None;
     }
 
     // Overlay-specific key handling: Up/Down move the cursor, Enter applies
-    // the highlighted row, `d` deletes (session list only). These keys
-    // never reach the input bar while an overlay is open.
+    // the highlighted row, `d` deletes (session list only).
     match s.overlay {
-        Overlay::ModelPicker => match key.code {
-            KeyCode::Up => {
-                cursor_move(s, -1);
-                return Cmd::None;
-            }
-            KeyCode::Down => {
-                cursor_move(s, 1);
-                return Cmd::None;
-            }
-            KeyCode::Enter => {
-                if s.session.is_none() {
-                    *toast = Some(Toast::error(
-                        "/model: start a session before picking a model",
-                    ));
-                    return Cmd::None;
-                }
-                if let (Some(session), Some(entries)) = (s.session.as_ref(), s.models.as_ref()) {
-                    if let Some(entry) = entries.get(s.model_cursor) {
-                        if let Ok(model) = entry.id.parse::<ModelId>() {
-                            return Cmd::PatchSession {
-                                id: session.id,
-                                patch: SessionPatch {
-                                    model: Some(model),
-                                    ..Default::default()
-                                },
-                                from_rename: false,
-                            };
-                        }
-                    }
-                }
-                return Cmd::None;
-            }
-            _ => return Cmd::None,
+        Overlay::SlashPicker => match on_slash_picker_key(s, key) {
+            SlashPickerResult::Cmd(cmd) => return cmd,
+            SlashPickerResult::Submit => return on_session_submit(s, toast),
         },
-        Overlay::SessionList => match key.code {
-            KeyCode::Up => {
-                cursor_move(s, -1);
-                return Cmd::None;
-            }
-            KeyCode::Down => {
-                cursor_move(s, 1);
-                return Cmd::None;
-            }
-            KeyCode::Enter => {
-                if let Some(summary) = s.session_summaries.get(s.session_cursor) {
-                    return Cmd::OpenSession(summary.id);
-                }
-                return Cmd::None;
-            }
-            KeyCode::Char('d') | KeyCode::Char('D') => {
-                if let Some(summary) = s.session_summaries.get(s.session_cursor) {
-                    return Cmd::DeleteSession(summary.id);
-                }
-                return Cmd::None;
-            }
-            _ => return Cmd::None,
-        },
+        Overlay::ModelPicker => return on_model_picker_key(s, key),
+        Overlay::SessionList => return on_session_list_key(s, key),
         Overlay::RenameSession => {
             if key.code == KeyCode::Enter {
                 if let Some(session) = s.session.as_ref() {
@@ -127,6 +80,15 @@ pub(super) fn on_session_key(
     }
 
     match key.code {
+        // Typing `/` in an empty composer (or right after backspacing back
+        // to one) opens the slash-command picker.
+        KeyCode::Char('/') => {
+            s.input.input(key_to_input(key));
+            if slash_default_cursor(&s.input.lines().join("\n")).is_some() {
+                open_slash_picker(s);
+            }
+            Cmd::None
+        }
         KeyCode::Enter => on_session_submit(s, toast),
         // Transcript scrollback. Up/PageUp release auto-follow; scrolling back
         // to the bottom re-engages it. `max_scroll`/`viewport` come from the
@@ -152,28 +114,6 @@ pub(super) fn on_session_key(
             Cmd::None
         }
     }
-}
-
-/// Move the highlight cursor of an open picker overlay by `delta` rows,
-/// clamping into `[0, len - 1]`. A no-op when no overlay is open or the
-/// list is empty.
-fn cursor_move(s: &mut SessionState, delta: i32) {
-    let (len, cursor): (usize, &mut usize) = match s.overlay {
-        Overlay::ModelPicker => match s.models.as_ref() {
-            Some(m) if !m.is_empty() => (m.len(), &mut s.model_cursor),
-            _ => return,
-        },
-        Overlay::SessionList => {
-            if s.session_summaries.is_empty() {
-                return;
-            }
-            (s.session_summaries.len(), &mut s.session_cursor)
-        }
-        _ => return,
-    };
-    let max = (len - 1) as i32;
-    let next = (*cursor as i32 + delta).clamp(0, max) as usize;
-    *cursor = next;
 }
 
 /// Move the transcript scroll offset by `delta` wrapped lines, clamping into
@@ -260,7 +200,7 @@ pub(super) fn on_session_submit(s: &mut SessionState, toast: &mut Option<Toast>)
         s.creation_started_at = Some(std::time::Instant::now());
         Cmd::CreateSession(CreateSessionRequest {
             title: derive_title(&user_text),
-            model: None,
+            model: s.pending_model,
             mode: Some(Mode::default()),
         })
     }
@@ -290,8 +230,8 @@ fn derive_title(text: &str) -> String {
 /// `on_session_key`; this function only opens the dialog.
 fn on_model_command(s: &mut SessionState) -> Cmd {
     s.overlay = Overlay::ModelPicker;
-    s.model_cursor = 0;
-    if s.models.is_none() {
+    s.model_picker.cursor = 0;
+    if s.model_picker.models.is_none() {
         Cmd::FetchModels
     } else {
         Cmd::None
@@ -342,7 +282,7 @@ fn on_session_command(s: &mut SessionState, args: &[&str], toast: &mut Option<To
             s.input = TextArea::default();
             Cmd::CreateSession(CreateSessionRequest {
                 title,
-                model: None,
+                model: s.pending_model,
                 mode: Some(Mode::default()),
             })
         }
@@ -355,7 +295,7 @@ fn on_session_command(s: &mut SessionState, args: &[&str], toast: &mut Option<To
         }
         _ => {
             s.overlay = Overlay::SessionList;
-            s.session_cursor = 0;
+            s.session_list.cursor = 0;
             Cmd::FetchSessions
         }
     }
