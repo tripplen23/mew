@@ -13,14 +13,14 @@
 //!
 //! [`tui-textarea`](https://docs.rs/tui-textarea/latest/tui_textarea/) 0.7
 //! still renders against ratatui 0.29, but the client draws with ratatui 0.30.
-//! Rather than bridge the two `Widget` traits, the editors are rendered by
-//! reading the textarea's `.lines()` and drawing them as a plain ratatui 0.30
-//! `Paragraph`.
+//! Rather than bridge the two `Widget` traits, the editors are rendered by reading
+//! the textarea's `.lines()` and drawing them as a plain ratatui 0.30 `Paragraph`.
 
 use ratatui::Frame;
+use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
+use ratatui::widgets::{Paragraph, Widget, Wrap};
 use tui_textarea::TextArea;
-use unicode_width::UnicodeWidthChar;
 
 use super::model::{App, Screen};
 
@@ -49,6 +49,8 @@ pub use tool_card::{
 use session::render_session;
 use toast::render_toast;
 
+const CURSOR_MARKER: &str = "\u{E000}";
+
 /// Draw the whole application: the active screen, then any toast on top.
 pub fn render(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
@@ -68,17 +70,11 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 /// stays at the end of the last write — the status bar — and the user's
 /// keystrokes appear to land in the wrong place.
 ///
-/// `TextArea::cursor()` returns the cursor position in the **text** (row, col
-/// in unwrapped lines). Since we render the field with `Wrap { trim: false }`,
-/// a long line spans multiple visual rows. We walk the text once to find the
-/// visual row/col the cursor lands on, so the blink lands where the next
-/// character will actually appear — not at the end of the first wrapped
-/// row.
 pub(super) fn park_cursor_in_field(frame: &mut Frame, chunk: Rect, textarea: &TextArea) {
     let (cursor_row, cursor_col) = textarea.cursor();
-    let text = textarea.lines().join("\n");
     let inner_width = chunk.width.saturating_sub(2) as usize;
-    let (visual_row, visual_col) = visual_cursor_pos(&text, cursor_row, cursor_col, inner_width);
+    let (visual_row, visual_col) =
+        visual_cursor_pos(textarea.lines(), cursor_row, cursor_col, inner_width);
 
     let inner_x = chunk.x.saturating_add(1);
     let inner_y = chunk.y.saturating_add(1);
@@ -89,19 +85,9 @@ pub(super) fn park_cursor_in_field(frame: &mut Frame, chunk: Rect, textarea: &Te
     frame.set_cursor_position(Position::new(x, y));
 }
 
-/// Map a (row, col) text cursor into a (row, col) visual cursor at the given
-/// wrap width. Each `\n` advances the text row; a character whose display
-/// width would overflow `width` advances the visual row and resets the visual
-/// column. CJK / combining marks use the Unicode width from
-/// [`unicode_width`] so a wide glyph never lands half-on, half-off a row.
-///
-/// **Note:** this is a *character*-width wrap, not the word-wrap performed
-/// by `Paragraph` for the input box. For typical chat text (short words,
-/// spaces between them) the two algorithms agree. They can diverge when a
-/// word wrap would put a space-then-word on a fresh row but the char-wrap
-/// would not — pin this in `cursor_after_word_wrap_lands_on_new_visual_row`.
-fn visual_cursor_pos(
-    text: &str,
+#[doc(hidden)]
+pub fn visual_cursor_pos(
+    lines: &[String],
     cursor_row: usize,
     cursor_col: usize,
     width: usize,
@@ -110,31 +96,49 @@ fn visual_cursor_pos(
         return (cursor_row, cursor_col);
     }
 
-    let mut visual_row = 0usize;
-    let mut visual_col = 0usize;
-    let mut text_row = 0usize;
-    let mut text_col = 0usize;
+    let width = width.min(u16::MAX as usize) as u16;
+    let text = text_with_cursor_marker(lines, cursor_row, cursor_col);
+    let paragraph = Paragraph::new(text.as_str()).wrap(Wrap { trim: false });
+    let height = paragraph.line_count(width).max(1).min(u16::MAX as usize) as u16;
+    let area = Rect::new(0, 0, width, height);
+    let mut buffer = Buffer::empty(area);
+    Widget::render(paragraph, area, &mut buffer);
 
-    for c in text.chars() {
-        if text_row == cursor_row && text_col == cursor_col {
-            return (visual_row, visual_col);
-        }
-        if c == '\n' {
-            text_row += 1;
-            text_col = 0;
-            visual_row += 1;
-            visual_col = 0;
-        } else {
-            let w = c.width().unwrap_or(1);
-            if visual_col + w > width {
-                visual_row += 1;
-                visual_col = 0;
+    for y in 0..height {
+        for x in 0..width {
+            if buffer[(x, y)].symbol().contains(CURSOR_MARKER) {
+                return (y as usize, x as usize);
             }
-            visual_col += w;
-            text_col += 1;
         }
     }
 
-    // Cursor at or past the end of the text.
-    (visual_row, visual_col)
+    (cursor_row, cursor_col)
+}
+
+fn text_with_cursor_marker(lines: &[String], cursor_row: usize, cursor_col: usize) -> String {
+    let mut text = String::new();
+    let mut inserted = false;
+
+    for (row_idx, line) in lines.iter().enumerate() {
+        if row_idx > 0 {
+            text.push('\n');
+        }
+        for (col_idx, c) in line.chars().enumerate() {
+            if row_idx == cursor_row && col_idx == cursor_col {
+                text.push_str(CURSOR_MARKER);
+                inserted = true;
+            }
+            text.push(c);
+        }
+        if row_idx == cursor_row && !inserted {
+            text.push_str(CURSOR_MARKER);
+            inserted = true;
+        }
+    }
+
+    if !inserted {
+        text.push_str(CURSOR_MARKER);
+    }
+
+    text
 }
