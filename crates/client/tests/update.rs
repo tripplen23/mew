@@ -26,6 +26,10 @@ fn char_key(c: char) -> Msg {
     Msg::Key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE))
 }
 
+fn ctrl_key(c: char) -> Msg {
+    Msg::Key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL))
+}
+
 fn session_with_messages(messages: Vec<mewcode_protocol::Message>) -> Session {
     Session {
         id: Uuid::new_v4(),
@@ -278,6 +282,13 @@ fn quit_command_exits_app() {
         matches!(cmd, Cmd::Quit),
         "typing `quit` + Enter must produce Cmd::Quit; got {cmd:?}"
     );
+}
+
+#[test]
+fn ctrl_c_exits_app() {
+    let mut app = on_session();
+
+    assert!(matches!(update(&mut app, ctrl_key('c')), Cmd::Quit));
 }
 
 #[test]
