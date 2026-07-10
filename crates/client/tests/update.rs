@@ -292,6 +292,56 @@ fn ctrl_c_exits_app() {
 }
 
 #[test]
+fn multiline_paste_is_compacted_in_composer() {
+    let mut app = on_session();
+
+    update(&mut app, Msg::Paste("one\ntwo\nthree".to_string()));
+
+    assert_eq!(sess(&app).input.lines().join("\n"), "[Pasted ~3 lines]");
+}
+
+#[test]
+fn long_single_line_paste_is_compacted_in_composer() {
+    let mut app = on_session();
+
+    update(&mut app, Msg::Paste("x".repeat(121)));
+
+    assert_eq!(sess(&app).input.lines().join("\n"), "[Pasted ~121 chars]");
+}
+
+#[test]
+fn compacted_paste_submits_full_text() {
+    let mut app = on_session();
+
+    update(&mut app, Msg::Paste("one\ntwo\nthree".to_string()));
+    match update(&mut app, key(KeyCode::Enter)) {
+        Cmd::StartChat(req) => match &req.messages.last().unwrap().parts[0] {
+            MessagePart::Text { text } => assert_eq!(text, "one\ntwo\nthree"),
+            other => panic!("expected text message, got {other:?}"),
+        },
+        other => panic!("expected StartChat, got {other:?}"),
+    }
+}
+
+#[test]
+fn compacted_paste_starting_with_slash_is_not_command() {
+    let mut app = on_session();
+
+    update(&mut app, Msg::Paste("//! docs\nfn main() {}".to_string()));
+    type_chars(&mut app, " tell me what file is it");
+
+    match update(&mut app, key(KeyCode::Enter)) {
+        Cmd::StartChat(req) => match &req.messages.last().unwrap().parts[0] {
+            MessagePart::Text { text } => {
+                assert_eq!(text, "//! docs\nfn main() {} tell me what file is it")
+            }
+            other => panic!("expected text message, got {other:?}"),
+        },
+        other => panic!("expected StartChat, got {other:?}"),
+    }
+}
+
+#[test]
 fn quit_command_is_case_insensitive() {
     for variant in ["QUIT", "Quit", "qUiT"] {
         let mut app = on_session();

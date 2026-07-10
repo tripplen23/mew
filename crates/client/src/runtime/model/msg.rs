@@ -9,6 +9,8 @@ use crate::net::{ModelEntry, Session, SessionSummary};
 pub enum Msg {
     /// A key was pressed.
     Key(KeyEvent),
+    /// Text pasted into the terminal.
+    Paste(String),
     /// A periodic tick (for animations / elapsed time).
     Tick,
     /// A new session finished being created.

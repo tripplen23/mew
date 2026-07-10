@@ -70,11 +70,11 @@ fn main() -> anyhow::Result<()> {
             }
             Cmd::Tui => {
                 let config = ClientConfig::load()?;
+                let log_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(&config.log))
+                    .add_directive("tui_markdown=error".parse()?);
                 tracing_subscriber::fmt()
-                    .with_env_filter(
-                        tracing_subscriber::EnvFilter::try_from_default_env()
-                            .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(&config.log)),
-                    )
+                    .with_env_filter(log_filter)
                     .with_target(true)
                     .init();
                 mewcode_client::run(config).await
