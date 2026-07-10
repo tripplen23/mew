@@ -22,7 +22,7 @@ mod slash;
 mod stream;
 
 use picker::{clamp_model_picker_scroll, clamp_session_list_scroll};
-use session::on_session_key;
+use session::{on_session_key, on_session_paste};
 use stream::apply_stream_event;
 
 /// Apply a [`Msg`] to the model, returning the side effect to run next.
@@ -36,6 +36,8 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
 
     match msg {
         Msg::Key(key) => on_session_key(s, toast, key),
+
+        Msg::Paste(text) => on_session_paste(s, text),
 
         Msg::Tick => Cmd::None,
 
@@ -56,6 +58,7 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
                     // The composer is cleared now that the first turn
                     // has been committed.
                     s.input = TextArea::default();
+                    s.pasted.clear();
                     // The local `session` is the pre-push server clone —
                     // read from the model, which has the user message.
                     let live = s.session.as_ref().unwrap();
@@ -153,6 +156,7 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
                     s.overlay = Overlay::None;
                     if from_rename {
                         s.input = TextArea::default();
+                        s.pasted.clear();
                     }
                 }
                 Err(e) => {

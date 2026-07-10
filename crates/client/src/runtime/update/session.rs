@@ -7,12 +7,16 @@ use mewcode_protocol::{Message, MessagePart, Mode};
 
 use crate::net::{CreateSessionRequest, SessionPatch};
 
-use super::super::model::{Cmd, Overlay, QUIT_COMMAND, SessionState, StreamingState, Toast};
+use super::super::model::{
+    Cmd, Overlay, PastedText, QUIT_COMMAND, SessionState, StreamingState, Toast,
+};
 use super::key_to_input;
 use super::picker::{on_model_picker_key, on_session_list_key};
 use super::slash::{
     SlashPickerResult, on_slash_picker_key, open_slash_picker, slash_default_cursor,
 };
+
+const COMPACT_PASTE_CHARS: usize = 120;
 
 /// Session screen: input editing, submit, slash commands.
 pub(super) fn on_session_key(
@@ -34,10 +38,12 @@ pub(super) fn on_session_key(
             s.overlay = Overlay::None;
             if was_rename {
                 s.input = TextArea::default();
+                s.pasted.clear();
             }
             if was_slash {
                 // The picker only opens when the composer starts with `/`,
                 s.input = TextArea::default();
+                s.pasted.clear();
             }
         }
         return Cmd::None;
@@ -120,6 +126,28 @@ pub(super) fn on_session_key(
     }
 }
 
+pub(super) fn on_session_paste(s: &mut SessionState, text: String) -> Cmd {
+    if s.creating {
+        return Cmd::None;
+    }
+
+    let char_count = text.chars().count();
+    let line_count = text.lines().count().max(1);
+    if line_count == 1 && char_count <= COMPACT_PASTE_CHARS {
+        s.input.insert_str(text);
+        return Cmd::None;
+    }
+
+    let marker = if line_count > 1 {
+        format!("[Pasted ~{line_count} lines]")
+    } else {
+        format!("[Pasted ~{char_count} chars]")
+    };
+    s.input.insert_str(&marker);
+    s.pasted.push(PastedText { marker, text });
+    Cmd::None
+}
+
 /// Move the transcript scroll offset by `delta` wrapped lines, clamping into
 /// `[0, max_scroll]`. Scrolling up releases auto-follow; reaching the bottom
 /// re-engages it so new replies keep scrolling into view.
@@ -133,16 +161,17 @@ fn scroll_by(s: &mut SessionState, delta: i32) {
 /// slash commands, or — if no session exists yet — create one with the
 /// typed text as the seed, or send the chat into the existing session.
 pub(super) fn on_session_submit(s: &mut SessionState, toast: &mut Option<Toast>) -> Cmd {
-    let text = s.input.lines().join("\n");
-    let trimmed = text.trim();
+    let visible_text = s.input.lines().join("\n");
+    let visible_trimmed = visible_text.trim();
 
-    if trimmed.is_empty() {
+    if visible_trimmed.is_empty() {
         return Cmd::None;
     }
 
     // Text-based quit.
-    if trimmed.eq_ignore_ascii_case(QUIT_COMMAND) {
+    if visible_trimmed.eq_ignore_ascii_case(QUIT_COMMAND) {
         s.input = TextArea::default();
+        s.pasted.clear();
         return Cmd::Quit;
     }
 
@@ -152,8 +181,9 @@ pub(super) fn on_session_submit(s: &mut SessionState, toast: &mut Option<Toast>)
         return Cmd::None;
     }
 
-    if let Some(rest) = trimmed.strip_prefix('/') {
+    if let Some(rest) = visible_trimmed.strip_prefix('/') {
         s.input = TextArea::default();
+        s.pasted.clear();
         let mut parts = rest.split_whitespace();
         let cmd = parts.next().unwrap_or("");
         let args: Vec<&str> = parts.collect();
@@ -175,6 +205,8 @@ pub(super) fn on_session_submit(s: &mut SessionState, toast: &mut Option<Toast>)
         };
     }
 
+    let text = expand_pastes(s, &visible_text);
+    let trimmed = text.trim();
     let user_text = trimmed.to_string();
     let user_msg = Message::user(vec![MessagePart::Text {
         text: user_text.clone(),
@@ -189,6 +221,7 @@ pub(super) fn on_session_submit(s: &mut SessionState, toast: &mut Option<Toast>)
         s.streaming = Some(StreamingState::new(Uuid::nil()));
         // Clear the composer now that the message is committed to history.
         s.input = TextArea::default();
+        s.pasted.clear();
         Cmd::StartChat(ChatRequest {
             session_id: session.id,
             model: session.model,
@@ -208,6 +241,14 @@ pub(super) fn on_session_submit(s: &mut SessionState, toast: &mut Option<Toast>)
             mode: Some(Mode::default()),
         })
     }
+}
+
+fn expand_pastes(s: &SessionState, text: &str) -> String {
+    let mut expanded = text.to_string();
+    for paste in &s.pasted {
+        expanded = expanded.replace(&paste.marker, &paste.text);
+    }
+    expanded
 }
 
 /// Cap the auto-generated session title at a sane length and collapse

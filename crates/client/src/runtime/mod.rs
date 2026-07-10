@@ -37,8 +37,8 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use crossterm::event::{
-    self, Event, KeyEventKind, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
-    PushKeyboardEnhancementFlags,
+    self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyEventKind,
+    KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
 };
 use crossterm::execute;
 use crossterm::terminal::{
@@ -83,6 +83,7 @@ impl TerminalGuard {
         // `REPORT_EVENT_TYPES` does the same for modified keys.
         let _ = execute!(
             stdout,
+            EnableBracketedPaste,
             PushKeyboardEnhancementFlags(
                 KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES
                     | KeyboardEnhancementFlags::REPORT_EVENT_TYPES
@@ -93,7 +94,11 @@ impl TerminalGuard {
             Err(e) => {
                 // Clean up before propagating: raw mode and alternate screen
                 // are both active at this point.
-                let _ = execute!(io::stdout(), PopKeyboardEnhancementFlags);
+                let _ = execute!(
+                    io::stdout(),
+                    DisableBracketedPaste,
+                    PopKeyboardEnhancementFlags
+                );
                 let _ = disable_raw_mode();
                 let _ = execute!(io::stdout(), LeaveAlternateScreen);
                 return Err(e).context("initialising terminal");
@@ -108,6 +113,7 @@ impl Drop for TerminalGuard {
     /// might already be unwinding. Errors are intentionally swallowed.
     fn drop(&mut self) {
         let _ = execute!(io::stdout(), PopKeyboardEnhancementFlags);
+        let _ = execute!(io::stdout(), DisableBracketedPaste);
         let _ = disable_raw_mode();
         let _ = execute!(io::stdout(), LeaveAlternateScreen);
         let _ = self.terminal.show_cursor();
@@ -153,7 +159,7 @@ pub async fn run(config: ClientConfig) -> Result<()> {
 }
 
 /// Spawn the blocking input reader: it polls crossterm for events and forwards
-/// each key as a [`Msg::Key`].
+/// keys and bracketed paste payloads.
 fn spawn_input_reader(tx: mpsc::Sender<Msg>) {
     tokio::task::spawn_blocking(move || {
         loop {
@@ -164,7 +170,12 @@ fn spawn_input_reader(tx: mpsc::Sender<Msg>) {
                             break; // loop gone
                         }
                     }
-                    Ok(_) => {} // resize, mouse, focus, paste, repeat, release: ignored
+                    Ok(Event::Paste(text)) => {
+                        if tx.blocking_send(Msg::Paste(text)).is_err() {
+                            break; // loop gone
+                        }
+                    }
+                    Ok(_) => {} // resize, mouse, focus, repeat, release: ignored
                     Err(_) => break,
                 },
                 // Timed out with no event: stop if the loop has shut down.

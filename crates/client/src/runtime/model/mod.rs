@@ -13,6 +13,6 @@ mod states;
 pub use cmd::{Cmd, QUIT_COMMAND};
 pub use msg::{CreateError, Msg, StreamMsg};
 pub use states::{
-    App, ModelPickerState, Overlay, SLASH_COMMANDS, Screen, SessionListState, SessionState,
-    SlashCommand, StreamingState, Toast, ToastKind, ToolCallView,
+    App, ModelPickerState, Overlay, PastedText, SLASH_COMMANDS, Screen, SessionListState,
+    SessionState, SlashCommand, StreamingState, Toast, ToastKind, ToolCallView,
 };

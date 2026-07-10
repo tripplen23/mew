@@ -10,8 +10,8 @@ use std::time::Instant;
 mod session;
 
 pub use session::{
-    ModelPickerState, Overlay, SLASH_COMMANDS, SessionListState, SessionState, SlashCommand,
-    StreamingState, ToolCallView,
+    ModelPickerState, Overlay, PastedText, SLASH_COMMANDS, SessionListState, SessionState,
+    SlashCommand, StreamingState, ToolCallView,
 };
 
 /// The whole application state.

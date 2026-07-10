@@ -81,6 +81,8 @@ pub struct SessionState {
     pub session: Option<Session>,
     /// The message composer.
     pub input: TextArea<'static>,
+    /// Full pasted bodies hidden behind short composer markers.
+    pub pasted: Vec<PastedText>,
     /// First message of a not-yet-created session, kept so it can be sent
     /// as the user message the moment `SessionCreated` arrives.
     pub pending_chat: Option<String>,
@@ -122,6 +124,7 @@ impl SessionState {
         Self {
             session: None,
             input: TextArea::default(),
+            pasted: Vec::new(),
             pending_chat: None,
             pending_model: None,
             creating: false,
@@ -145,6 +148,15 @@ impl SessionState {
             ..Self::empty()
         }
     }
+}
+
+/// A multiline paste represented by a short marker in the composer.
+#[derive(Debug, Clone)]
+pub struct PastedText {
+    /// Marker inserted into the visible composer.
+    pub marker: String,
+    /// Original pasted text submitted when the marker is present.
+    pub text: String,
 }
 
 /// State for the model picker overlay.
