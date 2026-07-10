@@ -1,4 +1,4 @@
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use tui_textarea::TextArea;
 use uuid::Uuid;
 
@@ -20,6 +20,10 @@ pub(super) fn on_session_key(
     toast: &mut Option<Toast>,
     key: KeyEvent,
 ) -> Cmd {
+    if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+        return Cmd::Quit;
+    }
+
     if key.code == KeyCode::Esc {
         // Close an open overlay first
         if s.overlay != Overlay::None {
