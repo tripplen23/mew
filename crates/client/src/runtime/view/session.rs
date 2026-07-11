@@ -1,6 +1,7 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::{Color, Style};
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Paragraph, Wrap};
 
 use mewcode_protocol::Mode;
@@ -8,9 +9,10 @@ use mewcode_protocol::Mode;
 use super::super::model::{Overlay, SessionState};
 use super::overlay::{
     centered_rect, render_overlay, render_scrolled_overlay, render_slash_picker, skills_lines,
-    tools_lines,
+    theme_lines, tools_lines,
 };
 use super::park_cursor_in_field;
+use super::theme::{COMPOSER_HORIZONTAL_PAD, COMPOSER_LEFT_PAD, Theme};
 use super::transcript::render_transcript;
 
 /// Maximum height (rows) the input field may grow to. Wrapped text beyond
@@ -30,7 +32,7 @@ const MAX_INPUT_HEIGHT: u16 = 10;
 /// The input bar's height is computed from the wrapped text — long inputs
 /// grow it (up to [`MAX_INPUT_HEIGHT`]) and shrink back when cleared, while
 /// the transcript fills the rest.
-pub(super) fn render_session(frame: &mut Frame, area: Rect, s: &mut SessionState) {
+pub(super) fn render_session(frame: &mut Frame, area: Rect, s: &mut SessionState, theme: Theme) {
     let input_text = s.input.lines().join("\n");
     let input_height = input_height(area, &input_text);
 
@@ -43,9 +45,9 @@ pub(super) fn render_session(frame: &mut Frame, area: Rect, s: &mut SessionState
         ])
         .split(area);
 
-    render_transcript(frame, chunks[0], s);
-    render_input(frame, chunks[1], &input_text);
-    render_status(frame, chunks[2], s);
+    render_transcript(frame, chunks[0], s, theme);
+    render_input(frame, chunks[1], &input_text, theme);
+    render_status(frame, chunks[2], s, theme);
 
     park_cursor_in_field(frame, chunks[1], &s.input);
     render_active_overlay(frame, area, s);
@@ -54,39 +56,108 @@ pub(super) fn render_session(frame: &mut Frame, area: Rect, s: &mut SessionState
 fn input_height(area: Rect, input_text: &str) -> u16 {
     let input_wrap = Paragraph::new(input_text).wrap(Wrap { trim: false });
     let input_lines = input_wrap
-        .line_count(area.width.saturating_sub(2))
+        .line_count(area.width.saturating_sub(COMPOSER_HORIZONTAL_PAD))
         .max(1)
         .min(u16::MAX as usize) as u16;
     let max_input = MAX_INPUT_HEIGHT.min(area.height.saturating_sub(2));
-    input_lines.saturating_add(2).clamp(3, max_input.max(3))
+    input_lines.saturating_add(1).clamp(2, max_input.max(2))
 }
 
-fn render_input(frame: &mut Frame, chunk: Rect, input_text: &str) {
-    let input = Paragraph::new(input_text)
-        .block(Block::bordered().title(" message "))
-        .wrap(Wrap { trim: false });
-    frame.render_widget(input, chunk);
-}
-
-fn render_status(frame: &mut Frame, chunk: Rect, s: &SessionState) {
-    let status = match (s.streaming.is_some(), &s.session) {
-        (true, Some(session)) => format!(
-            "{}  {:?}  •  streaming…",
-            session.model.display_name(),
-            session.mode
-        ),
-        (false, Some(session)) => format!("{}  {:?}", session.model.display_name(), session.mode),
-        (true, None) => "starting session…".to_string(),
-        (false, None) => format!(
-            "{}  {}",
-            s.pending_model.unwrap_or_default().display_name(),
-            Mode::default().as_str()
-        ),
-    };
+fn render_input(frame: &mut Frame, chunk: Rect, input_text: &str, theme: Theme) {
     frame.render_widget(
-        Paragraph::new(status).style(Style::default().fg(Color::DarkGray)),
+        Block::default().style(Style::default().bg(theme.panel_bg)),
         chunk,
     );
+    for offset in 0..chunk.height {
+        frame.render_widget(
+            Paragraph::new("▏").style(Style::default().fg(theme.hot_pink).bg(theme.panel_bg)),
+            Rect::new(
+                chunk.x,
+                chunk.y.saturating_add(offset),
+                1.min(chunk.width),
+                1,
+            ),
+        );
+    }
+
+    let inner = Rect::new(
+        chunk.x.saturating_add(COMPOSER_LEFT_PAD),
+        chunk.y,
+        chunk.width.saturating_sub(COMPOSER_HORIZONTAL_PAD),
+        chunk.height,
+    );
+    let lines = input_text
+        .lines()
+        .map(|line| input_line(line, theme))
+        .collect::<Vec<_>>();
+    let input = Paragraph::new(Text::from(lines))
+        .style(Style::default().fg(theme.text).bg(theme.panel_bg))
+        .wrap(Wrap { trim: false });
+    frame.render_widget(input, inner);
+}
+
+fn render_status(frame: &mut Frame, chunk: Rect, s: &SessionState, theme: Theme) {
+    let (model, mode) = match &s.session {
+        Some(session) => (session.model.display_name(), session.mode.as_str()),
+        None => (
+            s.pending_model.unwrap_or_default().display_name(),
+            Mode::default().as_str(),
+        ),
+    };
+    let mut spans = vec![
+        Span::styled(
+            "  Build",
+            Style::default()
+                .fg(theme.hot_pink)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" · ", Style::default().fg(theme.muted)),
+        Span::styled(model.to_string(), Style::default().fg(Color::Gray)),
+        Span::styled(" · ", Style::default().fg(theme.muted)),
+        Span::styled(
+            mode.to_string(),
+            Style::default()
+                .fg(theme.mew_gold)
+                .add_modifier(Modifier::BOLD),
+        ),
+    ];
+    if s.streaming.is_some() {
+        spans.push(Span::styled(
+            " · streaming...",
+            Style::default().fg(theme.muted),
+        ));
+    }
+    frame.render_widget(Paragraph::new(Line::from(spans)), chunk);
+}
+
+fn input_line(line: &str, theme: Theme) -> Line<'static> {
+    let mut spans = Vec::new();
+    let mut rest = line;
+
+    while let Some(start) = rest.find("[Pasted ~") {
+        if start > 0 {
+            spans.push(Span::raw(rest[..start].to_string()));
+        }
+        let marked = &rest[start..];
+        let Some(end) = marked.find(']') else {
+            spans.push(Span::raw(marked.to_string()));
+            return Line::from(spans);
+        };
+        let end = end + 1;
+        spans.push(Span::styled(
+            marked[..end].to_string(),
+            Style::default()
+                .fg(theme.chip_fg)
+                .bg(theme.lavender)
+                .add_modifier(Modifier::BOLD),
+        ));
+        rest = &marked[end..];
+    }
+
+    if !rest.is_empty() {
+        spans.push(Span::raw(rest.to_string()));
+    }
+    Line::from(spans)
 }
 
 fn render_active_overlay(frame: &mut Frame, area: Rect, s: &mut SessionState) {
@@ -94,6 +165,7 @@ fn render_active_overlay(frame: &mut Frame, area: Rect, s: &mut SessionState) {
         Overlay::None => {}
         Overlay::Tools => render_overlay(frame, area, "Tools", tools_lines()),
         Overlay::Skills => render_overlay(frame, area, "Skills", skills_lines()),
+        Overlay::Theme => render_overlay(frame, area, "Theme", theme_lines()),
         Overlay::ModelPicker => {
             // Compute the overlay rect first so the row builder knows
             // the inner width and can truncate each model to a single

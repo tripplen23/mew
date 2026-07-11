@@ -7,7 +7,7 @@ use ratatui::widgets::{Block, Clear, Paragraph, Wrap};
 use mewcode_protocol::ModelId;
 use mewcode_protocol::tool::ToolName;
 
-use super::super::model::{SLASH_COMMANDS, SessionState};
+use super::super::model::{SLASH_COMMANDS, SessionState, ThemeId};
 
 /// The `/tools` overlay body: every tool plus the total count.
 pub(super) fn tools_lines() -> Vec<Line<'static>> {
@@ -31,6 +31,30 @@ pub(super) fn skills_lines() -> Vec<Line<'static>> {
         "No skills loaded.",
         Style::default().fg(Color::DarkGray),
     ))]
+}
+
+pub(super) fn theme_lines() -> Vec<Line<'static>> {
+    let current = ThemeId::default();
+    vec![
+        Line::from(vec![
+            Span::styled("* ", Style::default().fg(Color::Cyan)),
+            Span::styled(
+                current.as_str().to_string(),
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!("  {}", current.display_name()),
+                Style::default().fg(Color::Gray),
+            ),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled(
+            "More themes can plug into this list later.",
+            Style::default().fg(Color::DarkGray),
+        )),
+    ]
 }
 
 pub(super) fn render_slash_picker(frame: &mut Frame, area: Rect, s: &SessionState) {

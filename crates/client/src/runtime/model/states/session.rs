@@ -42,6 +42,10 @@ pub const SLASH_COMMANDS: &[SlashCommand] = &[
         description: "List skills",
     },
     SlashCommand {
+        command: "/theme",
+        description: "Pick theme",
+    },
+    SlashCommand {
         command: "quit",
         description: "Exit the TUI",
     },
@@ -65,6 +69,8 @@ pub enum Overlay {
     RenameSession,
     /// The slash-command picker shown when the composer starts with `/`.
     SlashPicker,
+    /// Theme picker overlay.
+    Theme,
 }
 
 /// State backing [`super::Screen::Session`].

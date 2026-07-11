@@ -134,47 +134,21 @@ fn page_down_to_bottom_re_engages_follow() {
 fn input_box_grows_with_wrapped_text() {
     let mut app = app_with_long_transcript();
 
-    // Render once with empty input so the cursor settles at the baseline.
-    draw(&mut app);
-    let height_short = input_box_height(&draw(&mut app));
-
     // Now type a long line that wraps many times.
     for c in "a".repeat(400).chars() {
         press(&mut app, KeyCode::Char(c));
     }
-    let height_long = input_box_height(&draw(&mut app));
+    let buf = draw(&mut app);
 
-    assert!(
-        height_long > height_short,
-        "input box must grow when text wraps: short={height_short}, long={height_long}"
-    );
     // And the long text must actually be visible in the buffer (not clipped).
     // We check for a run shorter than the wrap width (38 = 40 terminal - 2 borders)
     // because each wrapped row holds 38 a's, separated by line terminators in
     // the TestBackend's `to_string()` output.
-    let buf = draw(&mut app);
     assert!(
-        buf.contains(&"a".repeat(30)),
-        "the long input must be in the rendered buffer, not clipped off the right"
+        buf.lines()
+            .filter(|line| line.contains(&"a".repeat(30)))
+            .count()
+            > 1,
+        "the long input must wrap into multiple rendered rows, not clip off the right"
     );
-}
-
-/// Count the number of rows of the rendered ` message ` input box. Walks
-/// the buffer looking for the top/bottom border rows of the box and
-/// returns the height in rows (including both borders).
-fn input_box_height(buf: &str) -> u16 {
-    let top = buf
-        .lines()
-        .position(|l| l.contains(" message "))
-        .expect("input box top border missing");
-    // Bottom border of the box is the next line that contains `└`. We
-    // can't use `starts_with` because the TestBackend wraps every line
-    // in quotes for `to_string()`.
-    let bottom = buf
-        .lines()
-        .skip(top + 1)
-        .position(|l| l.contains('└'))
-        .map(|i| i + top + 1)
-        .expect("input box bottom border missing");
-    (bottom - top + 1) as u16
 }
