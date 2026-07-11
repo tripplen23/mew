@@ -14,6 +14,30 @@ pub use session::{
     SlashCommand, StreamingState, ToolCallView,
 };
 
+/// Active TUI theme. More variants can be added without changing render call sites.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum ThemeId {
+    /// Manga/Y2K default theme.
+    #[default]
+    MewY2k,
+}
+
+impl ThemeId {
+    /// Stable command/config name.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ThemeId::MewY2k => "mew-y2k",
+        }
+    }
+
+    /// Human-readable label.
+    pub fn display_name(self) -> &'static str {
+        match self {
+            ThemeId::MewY2k => "Mew Y2K",
+        }
+    }
+}
+
 /// The whole application state.
 ///
 /// The current view is held solely as a single [`Screen`] value; there is no
@@ -24,6 +48,8 @@ pub use session::{
 pub struct App {
     /// The screen currently being shown, owning its own state.
     pub screen: Screen,
+    /// Current visual theme.
+    pub theme: ThemeId,
     /// Transient status message, if any.
     pub toast: Option<Toast>,
 }
@@ -34,6 +60,7 @@ impl App {
     pub fn new() -> Self {
         Self {
             screen: Screen::Session(SessionState::empty()),
+            theme: ThemeId::default(),
             toast: None,
         }
     }

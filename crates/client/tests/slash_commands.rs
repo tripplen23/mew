@@ -435,6 +435,41 @@ fn tools_overlay_still_opens() {
 }
 
 #[test]
+fn slash_theme_opens_theme_overlay() {
+    let mut app = test_app();
+    {
+        let s = active_state(&mut app);
+        type_text(s, "/theme");
+    }
+    let cmd = update(&mut app, press_enter());
+
+    assert!(matches!(cmd, Cmd::None));
+    assert_eq!(active_state(&mut app).overlay, Overlay::Theme);
+}
+
+#[test]
+fn slash_picker_lists_theme_command() {
+    let mut app = test_app();
+    {
+        let s = active_state(&mut app);
+        type_text(s, "/");
+    }
+    update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE)),
+    );
+
+    let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+    terminal.draw(|frame| render(frame, &mut app)).unwrap();
+    let buf = terminal.backend().to_string();
+
+    assert!(
+        buf.contains("/theme"),
+        "slash picker should list /theme:\n{buf}"
+    );
+}
+
+#[test]
 fn plain_text_is_chat_not_command() {
     // Sanity check: an Enter on plain text commits the chat via Cmd::StartChat,
     // and the slash-command arms do not capture it.

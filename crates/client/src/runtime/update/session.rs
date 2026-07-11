@@ -86,7 +86,7 @@ pub(super) fn on_session_key(
             // Any other key falls through to the input bar so the user can
             // type the new title.
         }
-        Overlay::None | Overlay::Tools | Overlay::Skills => {}
+        Overlay::None | Overlay::Tools | Overlay::Skills | Overlay::Theme => {}
     }
 
     match key.code {
@@ -194,6 +194,10 @@ pub(super) fn on_session_submit(s: &mut SessionState, toast: &mut Option<Toast>)
             }
             "skills" => {
                 s.overlay = Overlay::Skills;
+                Cmd::None
+            }
+            "theme" => {
+                s.overlay = Overlay::Theme;
                 Cmd::None
             }
             "model" => on_model_command(s),

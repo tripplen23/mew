@@ -14,5 +14,5 @@ pub use cmd::{Cmd, QUIT_COMMAND};
 pub use msg::{CreateError, Msg, StreamMsg};
 pub use states::{
     App, ModelPickerState, Overlay, PastedText, SLASH_COMMANDS, Screen, SessionListState,
-    SessionState, SlashCommand, StreamingState, Toast, ToastKind, ToolCallView,
+    SessionState, SlashCommand, StreamingState, ThemeId, Toast, ToastKind, ToolCallView,
 };

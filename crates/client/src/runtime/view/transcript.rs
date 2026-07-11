@@ -6,26 +6,32 @@
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::{Block, Paragraph, Wrap};
+use ratatui::widgets::{Block, BorderType, Paragraph, Wrap};
 
 use mewcode_protocol::{MessagePart, Role};
 
 use super::super::model::SessionState;
 use super::markdown::render_markdown;
 use super::spinner::spinner_frame;
+use super::theme::Theme;
 use super::tool_card::{
     render_tool_call_header, render_tool_result_body, render_tool_result_header,
 };
 
 /// Render the transcript panel and update its scroll bounds.
-pub(super) fn render_transcript(frame: &mut Frame, chunk: Rect, s: &mut SessionState) {
+pub(super) fn render_transcript(
+    frame: &mut Frame,
+    chunk: Rect,
+    s: &mut SessionState,
+    theme: Theme,
+) {
     let mut lines: Vec<Line> = Vec::new();
     match &s.session {
         Some(session) => {
             for msg in &session.messages {
-                lines.extend(render_message(msg));
+                lines.extend(render_message(msg, theme));
                 lines.push(Line::from(""));
             }
         }
@@ -36,14 +42,16 @@ pub(super) fn render_transcript(frame: &mut Frame, chunk: Rect, s: &mut SessionS
                 } else {
                     "Type a message to start a new session.".to_string()
                 },
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(theme.muted),
             )));
         }
     }
     if let Some(st) = &s.streaming {
         lines.push(Line::from(Span::styled(
             format!("{} assistant", spinner_frame(st.started_at.elapsed())),
-            Style::default().fg(Color::Yellow),
+            Style::default()
+                .fg(theme.mew_gold)
+                .add_modifier(Modifier::BOLD),
         )));
         if !st.buffer.is_empty() {
             lines.extend(render_markdown(&st.buffer));
@@ -55,9 +63,21 @@ pub(super) fn render_transcript(frame: &mut Frame, chunk: Rect, s: &mut SessionS
         .as_ref()
         .map(|sess| sess.title.as_str())
         .unwrap_or(" mewcode ");
-    let block = Block::bordered().title(title);
+    let block = Block::bordered()
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(theme.lavender).bg(theme.ink_bg))
+        .style(Style::default().bg(theme.ink_bg))
+        .title(Span::styled(
+            format!(" {title} "),
+            Style::default()
+                .fg(theme.hot_pink)
+                .bg(theme.ink_bg)
+                .add_modifier(Modifier::BOLD),
+        ));
     let inner = block.inner(chunk);
-    let para = Paragraph::new(Text::from(lines)).wrap(Wrap { trim: false });
+    let para = Paragraph::new(Text::from(lines))
+        .style(Style::default().fg(theme.text).bg(theme.ink_bg))
+        .wrap(Wrap { trim: false });
     let total = para.line_count(inner.width).min(u16::MAX as usize) as u16;
 
     s.viewport = inner.height;
@@ -71,11 +91,11 @@ pub(super) fn render_transcript(frame: &mut Frame, chunk: Rect, s: &mut SessionS
     frame.render_widget(para.block(block).scroll((s.scroll, 0)), chunk);
 }
 
-fn render_message(msg: &mewcode_protocol::Message) -> Vec<Line<'static>> {
+fn render_message(msg: &mewcode_protocol::Message, theme: Theme) -> Vec<Line<'static>> {
     let (label, label_style) = match msg.role {
-        Role::User => ("you", Style::default().fg(Color::Green)),
-        Role::Assistant => ("assistant", Style::default().fg(Color::Cyan)),
-        Role::Tool => ("tool", Style::default().fg(Color::Magenta)),
+        Role::User => ("you", Style::default().fg(theme.hot_pink)),
+        Role::Assistant => ("assistant", Style::default().fg(theme.psy_cyan)),
+        Role::Tool => ("tool", Style::default().fg(theme.lavender)),
     };
     let mut out = vec![Line::from(Span::styled(
         label.to_string(),
@@ -105,7 +125,7 @@ fn render_message(msg: &mewcode_protocol::Message) -> Vec<Line<'static>> {
                 last_tool_call_id = None;
                 out.push(Line::from(Span::styled(
                     format!("@{path}"),
-                    Style::default().fg(Color::Blue),
+                    Style::default().fg(theme.mew_gold),
                 )));
             }
         }

@@ -19,7 +19,8 @@
 use ratatui::Frame;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
-use ratatui::widgets::{Paragraph, Widget, Wrap};
+use ratatui::style::Style;
+use ratatui::widgets::{Block, Paragraph, Widget, Wrap};
 use tui_textarea::TextArea;
 
 use super::model::{App, Screen};
@@ -28,6 +29,7 @@ mod markdown;
 mod overlay;
 mod session;
 mod spinner;
+mod theme;
 mod toast;
 mod tool_card;
 mod transcript;
@@ -47,6 +49,7 @@ pub use tool_card::{
 };
 
 use session::render_session;
+use theme::{COMPOSER_HORIZONTAL_PAD, COMPOSER_LEFT_PAD, theme_for};
 use toast::render_toast;
 
 const CURSOR_MARKER: &str = "\u{E000}";
@@ -54,8 +57,13 @@ const CURSOR_MARKER: &str = "\u{E000}";
 /// Draw the whole application: the active screen, then any toast on top.
 pub fn render(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
+    let theme = theme_for(app.theme);
+    frame.render_widget(
+        Block::default().style(Style::default().bg(theme.ink_bg)),
+        area,
+    );
     match &mut app.screen {
-        Screen::Session(s) => render_session(frame, area, s),
+        Screen::Session(s) => render_session(frame, area, s, theme),
     }
 
     if let Some(toast) = &app.toast {
@@ -72,14 +80,14 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 ///
 pub(super) fn park_cursor_in_field(frame: &mut Frame, chunk: Rect, textarea: &TextArea) {
     let (cursor_row, cursor_col) = textarea.cursor();
-    let inner_width = chunk.width.saturating_sub(2) as usize;
+    let inner_width = chunk.width.saturating_sub(COMPOSER_HORIZONTAL_PAD) as usize;
     let (visual_row, visual_col) =
         visual_cursor_pos(textarea.lines(), cursor_row, cursor_col, inner_width);
 
-    let inner_x = chunk.x.saturating_add(1);
-    let inner_y = chunk.y.saturating_add(1);
+    let inner_x = chunk.x.saturating_add(COMPOSER_LEFT_PAD);
+    let inner_y = chunk.y;
     let max_x = chunk.x.saturating_add(chunk.width.saturating_sub(2));
-    let max_y = chunk.y.saturating_add(chunk.height.saturating_sub(2));
+    let max_y = chunk.y.saturating_add(chunk.height.saturating_sub(1));
     let x = inner_x.saturating_add(visual_col as u16).min(max_x);
     let y = inner_y.saturating_add(visual_row as u16).min(max_y);
     frame.set_cursor_position(Position::new(x, y));
