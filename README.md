@@ -33,14 +33,28 @@
 
 **A terminal coding agent that clones, audits, and ships better apps.**
 
-## Architecture
+## Repository layout
+
+This is a polyrepo workspace — multiple components in a single repo, each
+in its own top-level directory:
 
 ```
-crates/
-  protocol/  shared types, wire format (no I/O)
-  engine/    Rig-based agent harness, tools, skills, streaming, memory
-  server/    axum backend + session store + memory API
-  client/    ratatui terminal UI + CLI dispatcher
+mew/
+  mew-core/   Rust workspace: protocol, engine, server, TUI client
+  .github/    CI workflows
+  .env.example
+```
+
+### mew-core
+
+```
+mew-core/
+  .mewcode/  component-local project skills
+  crates/
+    protocol/  shared types, wire format (no I/O)
+    engine/    Rig-based agent harness, tools, skills, streaming, memory
+    server/    axum backend + session store + memory API
+    client/    ratatui terminal UI + CLI dispatcher
 ```
 
 ## Getting started
@@ -49,8 +63,9 @@ crates/
 cp .env.example .env
 # Set OPENCODE_GO_API_KEY to an OpenCode Go or compatible endpoint key.
 
-cargo run -p mewcode-server &   # start the backend
-cargo run -p mewcode-client -- tui  # open the TUI
+cd mew-core
+cargo run -p mewcode-server &      # start the backend
+cargo run -p mewcode-client -- tui # open the TUI
 ```
 
 Requires Rust 1.85+ (edition 2024).

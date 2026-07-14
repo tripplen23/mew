@@ -17,12 +17,17 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Build
+      working-directory: mew-core
       run: cargo build --verbose
     - name: Run tests
+      working-directory: mew-core
       run: cargo test --verbose
     - name: Check formatting
+      working-directory: mew-core
       run: cargo fmt --all -- --check
     - name: Run clippy
+      working-directory: mew-core
       run: cargo clippy --workspace --all-targets -- -D warnings
     - name: Check docs
+      working-directory: mew-core
       run: cargo doc --workspace --no-deps
