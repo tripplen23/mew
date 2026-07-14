@@ -59,7 +59,7 @@ Fix shape:
   so `provider.shutdown()` is actually reached.
 - `force_flush()` at end of `Harness::run_turn` and the chat forwarder.
 
-E2E: extend `crates/server/tests/agent_tool_e2e.rs` to assert trace
+E2E: extend `mew-core/crates/server/tests/agent_tool_e2e.rs` to assert trace
 returns from a Langfuse API query in <5s.
 
 [langfuse-v4]: https://langfuse.com/faq/all/explore-observations-in-v4
@@ -68,13 +68,13 @@ returns from a Langfuse API query in <5s.
 
 | Concern | Location |
 |---|---|
-| Wire protocol | `crates/protocol/src/` |
-| Harness | `crates/engine/src/harness/` |
-| System prompt | `crates/engine/src/agent/prompt.rs` |
-| Trace helpers | `crates/engine/src/harness/trace.rs` |
-| Tool adapter (rig ↔ mewcode) | `crates/engine/src/tools/adapter.rs` |
-| Tool registry / mode gate | `crates/engine/src/tools/mod.rs` |
-| Memory store | `crates/engine/src/memory.rs` |
-| OTel/Langfuse init | `crates/server/src/main.rs:73-120` |
-| `/chat` SSE | `crates/server/src/routes/chat.rs` |
-| E2E (real LLM + Langfuse) | `crates/server/tests/agent_tool_e2e.rs` |
+| Wire protocol | `mew-core/crates/protocol/src/` |
+| Harness | `mew-core/crates/engine/src/harness/` |
+| System prompt | `mew-core/crates/engine/src/agent/prompt.rs` |
+| Trace helpers | `mew-core/crates/engine/src/harness/trace.rs` |
+| Tool adapter (rig ↔ mewcode) | `mew-core/crates/engine/src/tools/adapter.rs` |
+| Tool registry / mode gate | `mew-core/crates/engine/src/tools/mod.rs` |
+| Memory store | `mew-core/crates/engine/src/memory.rs` |
+| OTel/Langfuse init | `mew-core/crates/server/src/main.rs:73-120` |
+| `/chat` SSE | `mew-core/crates/server/src/routes/chat.rs` |
+| E2E (real LLM + Langfuse) | `mew-core/crates/server/tests/agent_tool_e2e.rs` |

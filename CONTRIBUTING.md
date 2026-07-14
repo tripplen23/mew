@@ -5,6 +5,7 @@ Thanks for contributing to mewcode.
 ## Build
 
 ```bash
+cd mew-core
 cargo build
 cargo test
 cargo clippy --workspace --all-targets
@@ -12,12 +13,12 @@ cargo clippy --workspace --all-targets
 
 ## Architecture
 
-A Cargo workspace with four crates:
+The Rust workspace lives in `mew-core/`. It is a Cargo workspace with four crates:
 
-- `crates/protocol` — wire-protocol types. No I/O. The single source of truth for messages, models, tools, skills, and the streaming event shape.
-- `crates/engine` — AI agent harness. Talks to OpenCode Go, registers local tools, runs the tool-calling loop.
-- `crates/server` — axum backend. Local filesystem session storage, SSE chat streaming, OpenCode Go proxy.
-- `crates/client` — ratatui TUI.
+- `mew-core/crates/protocol` — wire-protocol types. No I/O. The single source of truth for messages, models, tools, skills, and the streaming event shape.
+- `mew-core/crates/engine` — AI agent harness. Talks to OpenCode Go, registers local tools, runs the tool-calling loop.
+- `mew-core/crates/server` — axum backend. Local filesystem session storage, SSE chat streaming, OpenCode Go proxy.
+- `mew-core/crates/client` — ratatui TUI.
 
 The dependency direction is a partial order, not a strict tree. The actual graph:
 
@@ -70,12 +71,12 @@ When a docstring names a crate we depend on, link the specific item on docs.rs s
 
 ### Tests
 
-**All tests live in external `tests/*.rs` files — never as `#[cfg(test)] mod tests` blocks inside source files.** Source files are 100% production code; reading `crates/<crate>/src/<file>.rs` from top to bottom should show you only the API, never the tests that exercise it.
+**All tests live in external `tests/*.rs` files — never as `#[cfg(test)] mod tests` blocks inside source files.** Source files are 100% production code; reading `mew-core/crates/<crate>/src/<file>.rs` from top to bottom should show you only the API, never the tests that exercise it.
 
 Layout per crate:
 
 ```
-crates/<crate>/
+mew-core/crates/<crate>/
 ├── src/<file>.rs          ← production code only
 └── tests/
     ├── <area>.rs          ← per-area integration tests, one file per area
@@ -89,14 +90,14 @@ Rationale:
 - **External tests exercise the public API.** That catches accidental breakage of the contract a downstream consumer sees, which `#[cfg(test)] mod tests` inside the source file can't (it has private access).
 - **Black-box by default.** If a test genuinely needs a private item, that's a signal to make the item `pub` (so an external test crate can reach it) and write a doc comment explaining *why* it's exposed. `pub(crate)` does **not** help here — files under `tests/` are a *separate* crate, not a submodule of the crate under test. Don't reach inside the module with `use super::*`; that's a code smell that usually means a `pub` item is missing.
 
-Adding a new test: create `crates/<crate>/tests/<area>.rs` and `use mewcode_<crate>::...` like any downstream user would. No `use super::*`.
+Adding a new test: create `mew-core/crates/<crate>/tests/<area>.rs` and `use mewcode_<crate>::...` like any downstream user would. No `use super::*`.
 
 #### Worked example: a renderer and its tests
 
-Suppose `crates/client/src/runtime/view/foo.rs` defines a renderer. The tests for it go in `crates/client/tests/foo.rs`:
+Suppose `mew-core/crates/client/src/runtime/view/foo.rs` defines a renderer. The tests for it go in `mew-core/crates/client/tests/foo.rs`:
 
 ```rust
-// crates/client/src/runtime/view/foo.rs
+// mew-core/crates/client/src/runtime/view/foo.rs
 //
 // `pub` (not `pub(super)`) so external tests can reach it. The two
 // helpers are test surface only — `#[doc(hidden)]` keeps them out of
@@ -108,14 +109,14 @@ pub fn foo_helper(s: &str) -> String { /* ... */ }
 ```
 
 ```rust
-// crates/client/src/runtime/view/mod.rs
+// mew-core/crates/client/src/runtime/view/mod.rs
 mod foo;
 
 pub use foo::{render_foo, foo_helper};  // re-export at the view root
 ```
 
 ```rust
-// crates/client/tests/foo.rs
+// mew-core/crates/client/tests/foo.rs
 
 use mewcode_client::runtime::view::{render_foo, foo_helper};
 
@@ -151,7 +152,7 @@ let api_key = env::var("OPENCODE_GO_API_KEY")?;
 
 ### Prompt format
 
-System prompts are built from named `&'static str` helpers for static sections and `writeln!` for dynamic lines; each section includes its own leading blank line. Don't chain `push_str("...")` on inline literals — the source becomes unreadable and the layout drifts. Canonical examples: `crates/engine/src/agent/prompt.rs` and `crates/engine/src/skills/catalog.rs`.
+System prompts are built from named `&'static str` helpers for static sections and `writeln!` for dynamic lines; each section includes its own leading blank line. Don't chain `push_str("...")` on inline literals — the source becomes unreadable and the layout drifts. Canonical examples: `mew-core/crates/engine/src/agent/prompt.rs` and `mew-core/crates/engine/src/skills/catalog.rs`.
 
 ```rust
 // good
@@ -170,7 +171,7 @@ for d in &descriptors {
 
 - **No emoji in code, comments, or commits** unless explicitly asked. The
   one current exception: `🛠️` is the chosen marker for the P14.2 tool card
-  header in `crates/client/src/runtime/view/tool_card.rs`, in tests that
+  header in `mew-core/crates/client/src/runtime/view/tool_card.rs`, in tests that
   assert on it, and in the commit that introduced it — see PR #30.
 - **Don't add comments unless asked** (per the project AGENTS.md).
 - **Match existing style** when editing. If nearby code uses `///` doc comments, you use `///` doc comments. If nearby code doesn't, neither do you.
