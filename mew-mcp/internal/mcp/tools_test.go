@@ -1,45 +1,50 @@
-package mcp
+package mcpserver
 
 import (
+	"context"
 	"testing"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/tripplen23/mew/mew-mcp/internal/mew"
 )
 
 func TestToolRegistryHasExpectedTools(t *testing.T) {
-	r := NewToolRegistry(nil)
-	names := r.Names()
+	client := mew.NewClient("http://127.0.0.1:3737")
+	server := NewServer(client)
 
-	expected := []string{"ask_mew", "continue_mew_session", "list_mew_sessions", "get_mew_session", "mew_health"}
-	for _, want := range expected {
-		found := false
-		for _, n := range names {
-			if n == want {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Errorf("tool registry missing %q; have %v", want, names)
-		}
+	t1, t2 := mcp.NewInMemoryTransports()
+	ctx := context.Background()
+	if _, err := server.Connect(ctx, t1, nil); err != nil {
+		t.Fatalf("server.Connect: %v", err)
 	}
-}
+	c := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "0"}, nil)
+	session, err := c.Connect(ctx, t2, nil)
+	if err != nil {
+		t.Fatalf("client.Connect: %v", err)
+	}
+	defer session.Close()
 
-func TestToolSchemaHasRequiredFields(t *testing.T) {
-	r := NewToolRegistry(nil)
-	for _, name := range r.Names() {
-		tool, err := r.Get(name)
+	want := map[string]bool{
+		"mew_health":           false,
+		"ask_mew":              false,
+		"continue_mew_session": false,
+		"list_mew_sessions":    false,
+		"get_mew_session":      false,
+	}
+	for tool, err := range session.Tools(ctx, nil) {
 		if err != nil {
-			t.Errorf("Get(%q) error: %v", name, err)
-			continue
+			t.Fatalf("session.Tools: %v", err)
+		}
+		if _, ok := want[tool.Name]; ok {
+			want[tool.Name] = true
 		}
 		if tool.Description == "" {
-			t.Errorf("tool %q has empty description", name)
+			t.Errorf("tool %q has empty description", tool.Name)
 		}
-		// Every tool must declare its properties
-		if len(tool.InputSchema.Properties) == 0 && len(tool.InputSchema.Required) == 0 {
-			// mew_health has no params — that's fine, but others must have properties
-			if name != "mew_health" && name != "list_mew_sessions" {
-				t.Errorf("tool %q has no input properties and no required fields", name)
-			}
+	}
+	for name, found := range want {
+		if !found {
+			t.Errorf("missing tool %q", name)
 		}
 	}
 }

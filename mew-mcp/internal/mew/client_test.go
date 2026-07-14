@@ -1,6 +1,7 @@
 package mew
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -19,7 +20,7 @@ func TestHealth(t *testing.T) {
 	defer srv.Close()
 
 	c := NewClient(srv.URL)
-	h, err := c.Health()
+	h, err := c.Health(context.Background())
 	if err != nil {
 		t.Fatalf("Health() error: %v", err)
 	}
@@ -43,7 +44,7 @@ func TestListSessions(t *testing.T) {
 	defer srv.Close()
 
 	c := NewClient(srv.URL)
-	sessions, err := c.ListSessions()
+	sessions, err := c.ListSessions(context.Background())
 	if err != nil {
 		t.Fatalf("ListSessions() error: %v", err)
 	}
@@ -73,7 +74,7 @@ func TestCreateSession(t *testing.T) {
 	defer srv.Close()
 
 	c := NewClient(srv.URL)
-	s, err := c.CreateSession("hello", "", "")
+	s, err := c.CreateSession(context.Background(), "hello", "", "")
 	if err != nil {
 		t.Fatalf("CreateSession() error: %v", err)
 	}
@@ -97,7 +98,7 @@ func TestGetSession(t *testing.T) {
 	defer srv.Close()
 
 	c := NewClient(srv.URL)
-	s, err := c.GetSession("550e8400-e29b-41d4-a716-446655440000")
+	s, err := c.GetSession(context.Background(), "550e8400-e29b-41d4-a716-446655440000")
 	if err != nil {
 		t.Fatalf("GetSession() error: %v", err)
 	}
@@ -134,7 +135,7 @@ data: {"type":"finish","duration_ms":42}
 	defer srv.Close()
 
 	c := NewClient(srv.URL)
-	result, err := c.Chat("550e8400-e29b-41d4-a716-446655440000", "minimax-m3", "BUILD", "Hello")
+	result, err := c.Chat(context.Background(), "550e8400-e29b-41d4-a716-446655440000", "minimax-m3", "BUILD", "Hello")
 	if err != nil {
 		t.Fatalf("Chat() error: %v", err)
 	}
