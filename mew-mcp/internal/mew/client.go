@@ -16,6 +16,8 @@ import (
 )
 
 // Client talks to a running mewcode-server instance.
+const errorBodyLimit = 4 * 1024
+
 type Client struct {
 	BaseURL string
 	HTTP    *http.Client
@@ -125,7 +127,10 @@ func (c *Client) Chat(ctx context.Context, sessionID, model, mode, userText stri
 			"created_at": createdAt,
 		}},
 	}
-	payload, _ := json.Marshal(body)
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("chat: marshal request: %w", err)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/chat", bytes.NewReader(payload))
 	if err != nil {
 		return nil, fmt.Errorf("chat: %w", err)
@@ -144,8 +149,7 @@ func (c *Client) Chat(ctx context.Context, sessionID, model, mode, userText stri
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("chat: status %d: %s", resp.StatusCode, string(b))
+		return nil, statusError("chat", resp.StatusCode, http.StatusOK, resp.Body)
 	}
 
 	result := &ChatResult{}
@@ -191,13 +195,16 @@ func (c *Client) getJSON(ctx context.Context, path string, out any) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("status %d", resp.StatusCode)
+		return statusError("GET "+path, resp.StatusCode, http.StatusOK, resp.Body)
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
 func (c *Client) postJSON(ctx context.Context, path string, body any, wantStatus int, out any) error {
-	payload, _ := json.Marshal(body)
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("marshal request: %w", err)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+path, bytes.NewReader(payload))
 	if err != nil {
 		return err
@@ -209,7 +216,16 @@ func (c *Client) postJSON(ctx context.Context, path string, body any, wantStatus
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != wantStatus {
-		return fmt.Errorf("status %d", resp.StatusCode)
+		return statusError("POST "+path, resp.StatusCode, wantStatus, resp.Body)
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+// statusError reads a bounded snippet of the response body and returns a
+// formatted error that includes the actual status, expected status, and a
+// truncated body excerpt for debugging.
+func statusError(op string, got, want int, body io.Reader) error {
+	lim := io.LimitReader(body, errorBodyLimit)
+	b, _ := io.ReadAll(lim)
+	return fmt.Errorf("%s: status %d (expected %d): %s", op, got, want, strings.TrimSpace(string(b)))
 }
