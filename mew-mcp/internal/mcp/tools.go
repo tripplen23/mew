@@ -108,8 +108,9 @@ func RegisterTools(server *mcp.Server, client *mew.Client) {
 }
 
 func defaultTitle(prompt string) string {
-	if len(prompt) > 50 {
-		return prompt[:50] + "..."
+	r := []rune(prompt)
+	if len(r) > 50 {
+		return string(r[:50]) + "..."
 	}
 	return prompt
 }

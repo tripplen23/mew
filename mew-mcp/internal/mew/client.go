@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // Client talks to a running mewcode-server instance.
@@ -110,24 +112,29 @@ type ChatResult struct {
 }
 
 func (c *Client) Chat(ctx context.Context, sessionID, model, mode, userText string) (*ChatResult, error) {
+	msgID := uuid.NewString()
+	createdAt := time.Now().UTC().Format(time.RFC3339)
 	body := map[string]any{
 		"session_id": sessionID,
 		"model":      model,
 		"mode":       mode,
 		"messages": []map[string]any{{
-			"id":         "00000000-0000-0000-0000-000000000000",
+			"id":         msgID,
 			"role":       "user",
 			"parts":      []map[string]any{{"type": "text", "text": userText}},
-			"created_at": "2025-01-01T00:00:00Z",
+			"created_at": createdAt,
 		}},
 	}
 	payload, _ := json.Marshal(body)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/chat", bytes.NewReader(payload))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("chat: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	streamClient := &http.Client{Transport: c.HTTP.Transport}
+	streamClient := &http.Client{
+		Transport: c.HTTP.Transport,
+		Timeout:   5 * time.Minute,
+	}
 	if streamClient.Transport == nil {
 		streamClient.Transport = http.DefaultTransport
 	}
@@ -137,7 +144,8 @@ func (c *Client) Chat(ctx context.Context, sessionID, model, mode, userText stri
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("chat: status %d", resp.StatusCode)
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("chat: status %d: %s", resp.StatusCode, string(b))
 	}
 
 	result := &ChatResult{}
