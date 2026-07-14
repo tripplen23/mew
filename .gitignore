@@ -40,6 +40,10 @@ Thumbs.db
 PROMPT.md
 .env
 
+# Go build artifacts
+mew-mcp/mew-mcp
+mew-mcp/bin/
+
 # Proptest regression seeds — regenerable, pollutes diffs if committed.
 *.proptest-regressions
 **/*.proptest-regressions

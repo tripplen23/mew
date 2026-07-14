@@ -41,7 +41,8 @@ in its own top-level directory:
 ```
 mew/
   mew-core/   Rust workspace: protocol, engine, server, TUI client
-  .github/    CI workflows
+  mew-mcp/    Go MCP server: exposes mew to external AI agents (Claude, Cursor, Hermes)
+  .github/    CI workflows (Rust + Go)
   .env.example
 ```
 

@@ -4,11 +4,22 @@ Thanks for contributing to mewcode.
 
 ## Build
 
+### Rust (mew-core)
+
 ```bash
 cd mew-core
 cargo build
 cargo test
 cargo clippy --workspace --all-targets
+```
+
+### Go (mew-mcp)
+
+```bash
+cd mew-mcp
+go build ./cmd/mew-mcp
+go test -v ./...
+go vet ./...
 ```
 
 ## Architecture
