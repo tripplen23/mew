@@ -83,6 +83,8 @@ Mew:
 
 Mew should preserve the approved product behavior, not blindly copy pixels or protected assets. Authorization, provenance, and publication remain explicit boundaries.
 
+For visual work, the browser driver captures named screenshots alongside DOM, accessibility, console, and network state. If a multimodal provider is configured, a separate vision analyzer can evaluate hierarchy, composition, art direction, and visual defects. Vision results remain evidence-linked model inferences, not a sole oracle for parity.
+
 ## How it works
 
 This is the abbreviated flow. The canonical stage definitions are in the

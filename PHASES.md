@@ -227,11 +227,17 @@ UI polish, extra tool-card markers, command-palette work, and similar improvemen
 
 **Goal:** apply the same evidence and contract model to authorized web applications.
 
-**PRD coverage:** FR-4, FR-5, FR-6, FR-10; NFR-3, NFR-5.
+**PRD coverage:** FR-4, FR-5, FR-6, FR-10, FR-13; NFR-3, NFR-5, NFR-6.
 
 ### Deliverables (M7)
 
 - Playwright driver running as an external managed process or service.
+- Named-state screenshot capture with viewport and region metadata.
+- Provider-neutral `VisionAnalyzer` bridge to a configured multimodal API or
+  external vision service, with ordered provider fallback.
+- Structured visual observations linked to screenshot, crop, rubric, provider,
+  model, and confidence.
+- Analysis caching keyed by image hash, region, rubric, and model configuration.
 - Route and crawl-boundary discovery.
 - Optional structured-content extraction for page inventory; browser replay remains the source of behavioral evidence.
 - Real browser input for links, controls, forms, keyboard navigation, and responsive states.
@@ -266,6 +272,12 @@ Expected run:
 - A candidate passes when its journey checks and user-approved visual contract
   pass; pixel similarity is required only for regions explicitly marked for
   preservation.
+- Every visual claim references its image hash, inspected region, rubric,
+  provider, model, and confidence.
+- Vision output cannot overrule a deterministic failure or produce an unapproved
+  visual parity verdict.
+- Without a configured vision provider, deterministic checks continue and
+  semantic visual items block or request human review rather than silently pass.
 
 ## M8: computer-use and non-web drivers
 
@@ -276,6 +288,8 @@ Expected run:
 ### Deliverables (M8)
 
 - Computer-use driver for screen, keyboard, pointer, window, and clipboard state.
+- Native accessibility and UI metadata as the first choice, with screenshot-based
+  vision fallback when structured state is unavailable or insufficient.
 - Driver adapters for local desktop applications and remote test machines.
 - Recorded input and reset strategy.
 - Optional device, simulator, or hardware driver contract.

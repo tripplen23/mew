@@ -72,7 +72,8 @@ Migration and reconstruction runs can take hours or days. They cross network, fi
 Mew must:
 
 1. reproduce an existing system in an isolated workspace when source is available;
-2. observe static structure and runtime behavior through interchangeable drivers;
+2. observe static structure and runtime behavior through interchangeable drivers
+   and analyzers;
 3. produce a behavioral contract whose important claims point to evidence;
 4. expose uncertainty and request user decisions at semantic boundaries;
 5. create a migration or reconstruction plan in independently reviewable slices;
@@ -212,6 +213,15 @@ to the source, such as owner, licensee, or authorized agent, and the basis for t
 requested access and reproduction. It is an audit record, not a substitute for
 legal rights or applicable platform rules.
 
+### 8.10 Visual analyzer
+
+A provider-neutral capability that interprets screenshot, crop, or frame artifacts
+captured by an interaction driver. Capture and interpretation are separate: the
+browser or computer-use driver records the state, while a configured multimodal
+provider or external vision service produces structured visual observations. A
+visual observation records the image hash, inspected region, analysis rubric,
+provider and model identity, confidence, and resulting claims.
+
 ## 9. Product workflow
 
 ### 9.1 Intake
@@ -315,6 +325,7 @@ Mew runs baseline and candidate against the same approved scenarios. Depending o
 - HTTP status, body, headers, and error semantics;
 - DOM, accessibility tree, navigation, and browser state;
 - visual comparison within approved regions and thresholds;
+- semantic visual observations against an approved rubric;
 - latency, throughput, memory, CPU, and startup time;
 - side effects and persisted state.
 
@@ -432,12 +443,26 @@ MCP and future APIs expose run creation, status, approvals, evidence, artifacts,
 pause, resume, and cancellation without embedding the Mew engine into every
 client.
 
+### FR-13: multimodal visual analysis
+
+Mew can submit approved image artifacts to a configured multimodal provider or
+external vision service and use an ordered fallback when the primary provider is
+unavailable. Requests and results are provider-neutral structured records. Each
+result includes the image and region hashes, analysis rubric, provider, model,
+request version, confidence, cost metadata when available, and resulting claims.
+
+Vision output is classified as model inference. It cannot overrule a deterministic
+failure or become the sole basis for a parity pass unless the user approved a
+visual rubric for that contract item. If no vision provider is configured, Mew
+continues deterministic browser checks and blocks or requests human review for
+items that require semantic visual judgment.
+
 ### Goal-to-requirement traceability
 
 | Product goal | Primary requirements |
 | --- | --- |
 | Reproduce an existing system safely | FR-2, FR-11, NFR-2, NFR-3 |
-| Observe static and runtime behavior | FR-4, FR-5 |
+| Observe static and runtime behavior | FR-4, FR-5, FR-13 |
 | Produce an evidence-backed contract | FR-3, FR-6, FR-7, NFR-4 |
 | Expose uncertainty and request decisions | FR-7 |
 | Create an independently reviewable plan | FR-8 |
@@ -479,7 +504,8 @@ without changing the core run model.
 ### NFR-6: model independence
 
 Durable state, policy, artifacts, and verification belong to Mew rather than a
-particular model provider.
+particular text or multimodal model provider. Provider fallback must not change
+the artifact schema or silently change an approved visual rubric.
 
 ### NFR-7: efficiency
 
@@ -528,6 +554,8 @@ For external websites and applications:
 - respect configured crawl boundaries and platform restrictions;
 - do not attempt authentication bypass or hidden endpoint discovery outside the approved scope;
 - do not collect unrelated personal data;
+- apply configured redaction before screenshots or crops leave the local trust
+  boundary for a remote vision provider;
 - record the provenance and license of reused content and assets;
 - default to recreating behavior and structure rather than copying protected branding or media;
 - require explicit approval before publishing a candidate that could impersonate the source.
@@ -581,7 +609,7 @@ better, but not at the expense of evidence quality or honest blockers.
 
 The first product slice supports source-available libraries, CLIs, and HTTP services with deterministic fixtures. It proves the full workflow from acquisition through parity report before adding broad UI or computer-use coverage.
 
-The first browser slice supports public or locally hosted websites with finite routes and explicit interaction scope. It uses Playwright as an external driver and focuses on navigation, controls, forms, responsive states, console errors, network behavior, DOM/accessibility structure, and approved visual comparison.
+The first browser slice supports public or locally hosted websites with finite routes and explicit interaction scope. It uses Playwright as an external driver and focuses on navigation, controls, forms, responsive states, console errors, network behavior, DOM/accessibility structure, and approved visual comparison. When a multimodal provider is configured, a separate visual analyzer can assess hierarchy, composition, art direction, and visual defects from captured artifacts.
 
 General desktop control, mobile applications, authenticated third-party systems, hardware, production cutover, and open-ended black-box discovery follow only after the underlying run, evidence, contract, and verification model is reliable.
 
@@ -625,6 +653,8 @@ The existing Rust engine, protocol, server, TUI, skills runtime, persistence, an
 - approval and artifact events in the protocol;
 - sandbox and process lifecycle management;
 - driver bridges for CLI, HTTP, fixtures, browser, and later computer use;
+- a provider-neutral visual-analyzer bridge with screenshot preprocessing,
+  redaction, artifact hashing, caching, and ordered multimodal fallback;
 - conformance and benchmark runners;
 - report and pull-request exporters.
 
