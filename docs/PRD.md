@@ -81,7 +81,9 @@ Mew must:
 7. compare baseline and candidate behavior with explicit tolerances;
 8. survive interruption and resume from durable state;
 9. emit an auditable artifact bundle and a reviewable code change;
-10. support external agents through stable integration surfaces such as MCP.
+10. support external agents through stable integration surfaces such as MCP;
+11. install, launch, diagnose, update, and remove Mew through one stable public
+    command.
 
 ## 5. Non-goals
 
@@ -457,6 +459,19 @@ visual rubric for that contract item. If no vision provider is configured, Mew
 continues deterministic browser checks and blocks or requests human review for
 items that require semantic visual judgment.
 
+### FR-14: installable operator surface
+
+Each supported release provides a documented one-command installation path and a
+stable `mew` executable. Running `mew` without arguments opens the primary local
+interface and starts or connects to the required local runtime without asking the
+user to manage internal server binaries.
+
+The public CLI includes setup, configuration, version, status, diagnostics,
+update, and uninstall flows. Internal processes such as the server and MCP bridge
+may remain separate components, but their names, locations, and lifecycle are not
+part of the normal user workflow. CLI and configuration changes that affect
+automation are versioned or migrated explicitly.
+
 ### Goal-to-requirement traceability
 
 | Product goal | Primary requirements |
@@ -471,6 +486,7 @@ items that require semantic visual judgment.
 | Survive interruption and resume | FR-1, NFR-1, NFR-8 |
 | Emit auditable artifacts and code changes | FR-3, FR-10, NFR-4 |
 | Support external agents | FR-12, NFR-5, NFR-6 |
+| Install and operate Mew as a product | FR-14, NFR-9 |
 
 ## 12. Non-functional requirements
 
@@ -518,6 +534,14 @@ quality take priority over minimizing tool calls.
 Every run can set disk, process, network, token or provider-cost, rate-limit, and
 deadline budgets. Reaching a budget stops or pauses work predictably, preserves a
 resumable state, and records the limiting resource.
+
+### NFR-9: release integrity
+
+Release artifacts include checksums, signatures, a software bill of materials,
+and build provenance. Install and update flows verify artifacts before replacing
+an existing installation, preserve user data by default, and provide a documented
+rollback path. Secrets never appear in command-line arguments, installer logs, or
+release artifacts.
 
 ## 13. Run artifacts
 
@@ -655,6 +679,7 @@ The existing Rust engine, protocol, server, TUI, skills runtime, persistence, an
 - driver bridges for CLI, HTTP, fixtures, browser, and later computer use;
 - a provider-neutral visual-analyzer bridge with screenshot preprocessing,
   redaction, artifact hashing, caching, and ordered multimodal fallback;
+- a stable `mew` command and release manager that hides internal process layout;
 - conformance and benchmark runners;
 - report and pull-request exporters.
 

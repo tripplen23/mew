@@ -19,6 +19,7 @@ A phase is complete only when its acceptance criteria pass in a clean environmen
 | M7 | Browser-observed application reconstruction | Planned |
 | M8 | Computer-use and non-web drivers | Planned |
 | M9 | Overnight reliability and team operation | Planned |
+| M10 | Installable product and operator CLI | Planned |
 
 ## Foundation: coding-agent substrate
 
@@ -329,6 +330,40 @@ Expected run:
 - Runtime releases pass the golden migration and browser-reconstruction corpus.
 - Cost and resource ceilings stop work predictably and preserve a resumable state.
 
+## M10: installable product and operator CLI
+
+**Goal:** make Mew a one-command install with a stable operator surface, not a
+build-from-source research project.
+
+**PRD coverage:** FR-14; NFR-9.
+
+### Deliverables (M10)
+
+- One-command installer for supported platforms (Linux, macOS; Windows if viable).
+- Stable `mew` executable that starts or connects to the local runtime and opens
+  the primary interface without exposing internal process names.
+- Subcommands: `mew setup`, `mew config`, `mew status`, `mew doctor`, `mew update`,
+  `mew uninstall`, `mew version`.
+- Automatic or documented lifecycle for the server and MCP bridge as internal
+  processes managed by `mew`, not by the user.
+- Release artifacts with checksums, signatures, SBOM, and build provenance.
+- Configuration migration for breaking CLI or config changes between versions.
+- Rollback path that preserves user data and run artifacts.
+
+### Acceptance criteria (M10)
+
+- A new machine can install Mew with one command and reach a working TUI without
+  manually starting a server.
+- `mew doctor` detects and reports common misconfigurations: missing API key,
+  unreachable provider, stale server, broken MCP bridge, insufficient toolchain.
+- `mew update` replaces the installation after verifying checksums and signatures.
+- Internal process names (`mewcode-server`, `mew-mcp`) do not appear in normal
+  user-facing documentation or workflows.
+- Breaking CLI or config changes between releases produce a migration prompt or
+  automatic migration, not a silent failure.
+- Uninstall removes binaries and managed processes but preserves user data and
+  run artifacts by default.
+
 ## Promotion rule: skill to runtime
 
 Hermes remains the laboratory for workflows that still depend on exploration and judgment. A mechanic moves into Mew when all of the following are true:
@@ -345,4 +380,4 @@ Mew owns mechanics and proof. Skills retain evolving procedures and judgment unt
 The roadmap's first complete loop is M0 through M6. Its release gate is the
 detailed checklist in [PRD section 19](docs/PRD.md#19-release-criteria-for-the-first-complete-loop).
 
-M7 extends the same guarantees to websites. M8 extends them to computer-use targets. Neither lane is considered complete if it bypasses the contract, evidence, approval, durability, or verification model established in M0 through M6.
+M7 extends the same guarantees to websites. M8 extends them to computer-use targets. M10 makes the whole package installable and operable as a product. Neither lane is considered complete if it bypasses the contract, evidence, approval, durability, or verification model established in M0 through M6.

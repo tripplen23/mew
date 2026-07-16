@@ -65,17 +65,14 @@ Mew is experimental. Keep a human in the loop for production and irreversible ac
 ## Getting started
 
 ```bash
-cp .env.example .env
-# Set OPENCODE_GO_API_KEY to an OpenCode Go or compatible endpoint key.
-
-cd mew-core
-cargo run -p mewcode-server &
+# Build from source (until one-command install ships in M10):
+git clone https://github.com/tripplen23/mew && cd mew/mew-core
 cargo run -p mewcode-client -- tui
 ```
 
-The Rust workspace requires Rust 1.85 or newer and edition 2024 support.
+Requires Rust 1.85+ (edition 2024). The client starts or connects to the server automatically.
 
-To build the MCP adapter:
+To build the MCP adapter separately:
 
 ```bash
 cd mew-mcp
