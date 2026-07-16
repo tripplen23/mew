@@ -1,6 +1,6 @@
 # Mew product requirements document
 
-**Status:** Draft 1
+**Status:** Draft 2
 
 **Product:** Mew
 
@@ -12,7 +12,8 @@ Software prototypes are easier to create than ever, but many are built without a
 
 Rewriting it is not primarily a code-generation problem. The hard part is discovering what the existing system actually does, separating intended behavior from incidental implementation details, deciding what must survive, and proving that the replacement still satisfies those decisions.
 
-Mew treats this as a controlled evolution process:
+Mew treats this as a controlled evolution process. The canonical workflow and
+its stage semantics are defined in [Product workflow](#9-product-workflow):
 
 1. acquire and reproduce the source system;
 2. observe its structure and behavior;
@@ -24,7 +25,9 @@ Mew treats this as a controlled evolution process:
 
 Mew is not limited to source-to-source migration. With browser or computer-use drivers, it can also study an accessible application from the outside and create a new product that preserves selected interactions while changing its design or implementation. For example:
 
-> Clone `https://nguyenducbinh.vercel.app/`, preserve its information and important interactions, then rebuild it with a stronger manga visual direction.
+> Study and reconstruct `https://nguyenducbinh.vercel.app/`, preserve its
+> information and important interactions, then rebuild it with a stronger manga
+> visual direction.
 
 In that case Mew would inspect the public pages, exercise navigation and interactive states, collect the approved content and behavior, propose a new visual contract, then implement and verify the result. It should not copy protected assets, hidden data, credentials, or brand identity without authorization.
 
@@ -32,18 +35,21 @@ In that case Mew would inspect the public pages, exercise navigation and interac
 
 Mew does not clone code. It extracts behavioral DNA.
 
-Behavioral DNA is the smallest reviewable description of what users and dependent systems can observe and what the owner intends to preserve. It may include:
+**Behavioral DNA** is the product concept: the smallest reviewable description
+of what users and dependent systems can observe and what the owner intends to
+preserve or deliberately change. A **behavioral contract** is the concrete,
+versioned, evidence-linked artifact that records that DNA for one run. Section 9.4
+defines its contents.
 
-- public APIs, commands, events, file formats, and configuration;
-- user journeys, navigation, controls, visual states, and accessibility behavior;
-- numerical invariants, tensor shapes, ordering, timing, and error semantics;
-- performance and resource budgets;
-- content or domain rules that belong to the product rather than its current implementation;
-- approved changes that define how the evolved implementation should differ.
-
-The behavioral contract is not inferred once and treated as truth. Mew presents it to the user with evidence, uncertainty, and unanswered questions. The user remains the authority on intent.
+The contract is not inferred once and treated as truth. Mew presents it to the
+user with evidence, uncertainty, and unanswered questions. The user remains the
+authority on intent.
 
 ## 3. Problem
+
+Mew addresses three connected problems: preserving behavior during migration,
+learning behavior when only an observable product is available, and sustaining
+the resulting work over long-running agent sessions.
 
 ### 3.1 Prototype-to-production migration
 
@@ -90,23 +96,29 @@ Mew is not intended to:
 - merge, deploy, purchase, publish, or perform another irreversible action without explicit approval;
 - optimize a component before measurements show that it is relevant.
 
-## 6. Target users
+## 6. Target users and roles
 
-### 6.1 Product engineer with a successful prototype
+Target users are:
 
-They have a working application and need to change its runtime, framework, architecture, or deployment model without losing behavior.
+- product engineers changing the runtime, framework, architecture, or deployment
+  model of a successful prototype without losing behavior;
+- teams that need an evidence-backed map before modernizing an unfamiliar system;
+- designers or developers reconstructing a product they are authorized to use,
+  with selected behavior preserved and a deliberate new design direction;
+- agent operators who need long-running work to be inspectable, resumable,
+  policy-bound, and safe to leave unattended.
 
-### 6.2 Team inheriting an unfamiliar system
+Mew distinguishes four run roles:
 
-They need an evidence-backed map of the system before they can modernize or replace it.
+| Role | Responsibility |
+| --- | --- |
+| Requester | Defines the desired evolution and product intent. |
+| Operator | Confirms authorization, configures policy, and manages execution. |
+| Reviewer | Audits evidence, contracts, plans, and verification results. |
+| Approver | Accepts gated decisions, deviations, and final handoff. |
 
-### 6.3 Designer or developer reconstructing an owned product
-
-They can provide a URL or runnable binary and want a new implementation with selected behavior preserved and a deliberate new design direction.
-
-### 6.4 Agent operator
-
-They need long-running work to be inspectable, resumable, policy-bound, and safe to leave unattended.
+One person may hold all four roles in the initial release. The run manifest
+records which identity acted in each role so team separation can be added later.
 
 ## 7. Core use cases
 
@@ -128,9 +140,16 @@ They need long-running work to be inspectable, resumable, policy-bound, and safe
 
 **Input:** an authorized public URL and a goal such as "rebuild this portfolio with more manga energy."
 
-**Expected behavior:** Mew crawls accessible pages, uses a real browser to exercise links and controls, records responsive and interactive states, inventories reusable content, and proposes a visual and behavioral contract. After approval it creates a new implementation and runs browser-level comparisons against the contract.
+**Expected behavior:** Mew crawls pages within configured boundaries, uses a real
+browser to exercise links and controls, records responsive and interactive states,
+inventories reusable content, and proposes a visual and behavioral contract. After
+approval it creates a new implementation and runs browser-level comparisons
+against the contract.
 
-**Expected evolution:** the candidate should not be a pixel-for-pixel copy unless the user explicitly owns and requests that output. The approved art direction is part of the target contract.
+**Expected evolution:** the candidate should not be a pixel-for-pixel copy unless
+the user owns the source product or has equivalent reproduction rights and
+explicitly requests that output. The approved art direction is part of the target
+contract.
 
 ### 7.4 Black-box service reconstruction
 
@@ -142,7 +161,11 @@ They need long-running work to be inspectable, resumable, policy-bound, and safe
 
 ### 8.1 Source system
 
-The repository, URL, binary, API, or application being studied. A run must pin or otherwise identify the exact source state whenever possible.
+The repository, URL, binary, API, or application being studied. A run must
+identify the exact source state. For versioned source this is an immutable
+revision. For a live external system it is the strongest available identity,
+such as a release version, deployment identifier, response fingerprint, and
+capture timestamp; any remaining ambiguity is recorded.
 
 ### 8.2 Candidate
 
@@ -154,7 +177,11 @@ A versioned, user-approved set of invariants, tolerances, journeys, performance 
 
 ### 8.4 Evidence
 
-A stable reference to a repository location, command output, runtime trace, browser observation, screenshot, network response, fixture result, benchmark, or official document. Evidence records its source revision, capture time, and content hash where practical.
+A stable reference to a repository location, command output, runtime trace,
+browser observation, screenshot, network response, fixture result, benchmark,
+or official document. Evidence records its source identity and capture time.
+File-backed and captured artifacts include a content hash; ephemeral observations
+include the driver, environment, and replay information needed to reproduce them.
 
 ### 8.5 Interaction driver
 
@@ -163,6 +190,27 @@ An adapter that lets Mew observe or exercise a system. Initial drivers are CLI, 
 ### 8.6 Migration run
 
 The durable unit of work. It owns policy, workspaces, state, artifacts, decisions, checkpoints, and results independently from a chat session.
+
+### 8.7 Important claim
+
+A claim is important when it defines a contract invariant or tolerance, affects
+user-visible or dependent-system behavior, is referenced by an implementation
+slice, changes a safety or rights decision, or has uncertain provenance. Important
+claims require evidence or an explicit `unknown` classification.
+
+### 8.8 Confidence
+
+Confidence is a qualitative label: high, medium, or low. It reflects evidence
+strength and agreement, not model certainty. Repeated direct observation is
+stronger than a single observation; user-provided intent and static inference are
+recorded as different evidence classes rather than collapsed into one score.
+
+### 8.9 Authorization declaration
+
+A recorded statement in the run manifest identifying the operator's relationship
+to the source, such as owner, licensee, or authorized agent, and the basis for the
+requested access and reproduction. It is an audit record, not a substitute for
+legal rights or applicable platform rules.
 
 ## 9. Product workflow
 
@@ -174,7 +222,7 @@ Mew accepts:
 - the user's desired evolution;
 - scope and exclusions;
 - target constraints;
-- authorization and provenance declarations;
+- the authorization declaration and provenance information;
 - filesystem, network, secret, and resource policy.
 
 Mew converts free-form intent into a proposed run manifest. The user approves trust-boundary changes before execution.
@@ -203,7 +251,8 @@ Mew combines static and dynamic investigation:
 - CLI, API, fixture, browser, or computer-use interaction;
 - baseline performance and resource measurement.
 
-Every important claim is classified as observed, inferred, user-provided, or unknown.
+Every important claim, as defined in section 8.7, is classified as observed,
+inferred, user-provided, or unknown.
 
 ### 9.4 Behavioral DNA extraction
 
@@ -217,11 +266,14 @@ Mew produces a draft contract containing:
 - numerical and visual tolerances;
 - performance and resource budgets;
 - unsupported or unobserved areas;
-- evidence references and confidence.
+- evidence references and confidence using the labels defined in section 8.8.
 
 ### 9.5 User review
 
-The user can edit, accept, reject, or defer each important contract item. Mew must never convert an assumption into an approved invariant without showing the transition.
+The user can edit, accept, reject, or defer each important contract item. A
+deferred item remains unknown and blocks any implementation slice that depends on
+it. Independent slices may continue. Mew must never convert an assumption into an
+approved invariant without showing the transition.
 
 The approved contract becomes immutable for the implementation loop. Amendments create a new contract version and preserve the previous decision history.
 
@@ -287,6 +339,10 @@ Mew does not merge or deploy by default.
 ## 10. Human approval model
 
 Mew pauses at semantic and trust boundaries rather than every mechanical step.
+A semantic boundary is a decision whose correct answer depends on product intent,
+not mechanical fact. Examples include whether changed error behavior is acceptable,
+whether a dependency substitution preserves intent, and whether an unobserved area
+blocks a slice.
 
 Required approval points:
 
@@ -294,7 +350,9 @@ Required approval points:
 2. behavioral contract before implementation;
 3. target architecture and non-obvious dependency substitutions;
 4. any contract amendment or accepted deviation;
-5. destructive or externally visible action;
+5. destructive or externally visible action, including merge, deploy, publish,
+   purchase, production cutover, irreversible filesystem mutation, or an external
+   API write outside the approved candidate workflow;
 6. final handoff, merge, publish, or deployment.
 
 Routine reads, approved commands, tests, and writes inside the candidate workspace do not require repeated approval.
@@ -303,73 +361,137 @@ Routine reads, approved commands, tests, and writes inside the candidate workspa
 
 ### FR-1: durable runs
 
-A migration run must have an ID, phase, status, owner, source lock, candidate workspace, policy, heartbeat, current checkpoint, and timestamps. It must resume after process restart without reconstructing state from chat history.
+A migration run must have an ID, phase, status, owner, source lock, candidate
+workspace, policy, heartbeat, current checkpoint, and timestamps. It must resume
+after process restart without reconstructing state from chat history.
 
 ### FR-2: isolated workspaces
 
-The baseline is immutable during observation and verification. Candidate writes occur in a separate worktree or workspace. Tools cannot escape the configured roots.
+The baseline is immutable during observation and verification. Candidate writes
+occur in a separate worktree or workspace. Tools cannot escape the configured
+roots.
 
 ### FR-3: append-only event and evidence log
 
-State-changing decisions and important observations are persisted before they are surfaced as complete. Logs remain readable after failure.
+State-changing decisions and important observations are persisted before they
+are surfaced as complete. Logs remain readable after failure.
 
 ### FR-4: driver interface
 
-The runtime exposes a common lifecycle for interaction drivers: prepare, observe, act, capture, reset, and close. Drivers return structured evidence rather than free-form prose alone.
+The runtime exposes a common lifecycle for interaction drivers: prepare,
+observe, act, capture, reset, and close. Drivers return structured evidence
+rather than free-form prose alone.
 
 ### FR-5: browser and crawl observation
 
-The browser driver uses real input events for interaction, captures console and network failures, records viewport and route state, and can attach screenshots or DOM/accessibility snapshots to evidence. A crawler or structured-content extractor may accelerate route and content discovery, but browser observations remain the authority for interactive behavior.
+The browser driver uses real input events, captures console and network failures,
+records viewport and route state, and attaches screenshots or DOM/accessibility
+snapshots to evidence. A crawler or structured-content extractor may accelerate
+route and content discovery, but browser observations remain the authority for
+interactive behavior. Automated discovery must remain inside the approved
+allowlist and honor applicable robots directives and platform restrictions.
 
 ### FR-6: behavioral contract versioning
 
-Contracts are machine-readable, diffable, and tied to the source revision. Approval records the exact version.
+Contracts are machine-readable, diffable, and tied to the source identity.
+Approval records the exact version.
 
-### FR-7: checkpoints and rollback
+### FR-7: contract review and approval
 
-Mew can checkpoint the candidate before each implementation slice and return to a known state without modifying the baseline.
+Mew must provide a structured review flow where authorized roles can inspect
+evidence, edit, accept, reject, or defer contract items, and record approval
+against an immutable contract version. Dependent slices cannot start while a
+required item is rejected, deferred, or unknown.
 
-### FR-8: conformance runner
+### FR-8: evolution plan generation
 
-The same scenario can execute against baseline and candidate. Comparison rules are explicit and stored with the contract.
+Mew must produce a machine-readable plan divided into independently reviewable
+slices. Each slice identifies its contract items, scope, dependency decisions,
+validation, risks, deliberate deviations, checkpoint, and rollback action.
 
-### FR-9: policy enforcement
+### FR-9: checkpoints and rollback
 
-Filesystem, network, command, secret, resource, and approval policy is enforced by the runtime where possible, not left only in the model prompt.
+Mew can checkpoint the candidate before each implementation slice and return to
+a known state without modifying the baseline.
 
-### FR-10: external integration
+### FR-10: conformance runner and parity report
 
-MCP and future APIs expose run creation, status, approvals, evidence, artifacts, pause, resume, and cancellation without embedding the Mew engine into every client.
+The same scenario can execute against baseline and candidate. Comparison rules
+are explicit and stored with the contract. Every run emits a structured parity
+report that maps each contract item to pass, fail, accepted deviation, or
+inconclusive, with supporting evidence.
+
+### FR-11: policy enforcement
+
+Filesystem, network, command, secret, resource, and approval policy is enforced
+by the runtime where possible, not left only in the model prompt.
+
+### FR-12: external integration
+
+MCP and future APIs expose run creation, status, approvals, evidence, artifacts,
+pause, resume, and cancellation without embedding the Mew engine into every
+client.
+
+### Goal-to-requirement traceability
+
+| Product goal | Primary requirements |
+| --- | --- |
+| Reproduce an existing system safely | FR-2, FR-11, NFR-2, NFR-3 |
+| Observe static and runtime behavior | FR-4, FR-5 |
+| Produce an evidence-backed contract | FR-3, FR-6, FR-7, NFR-4 |
+| Expose uncertainty and request decisions | FR-7 |
+| Create an independently reviewable plan | FR-8 |
+| Implement without modifying the baseline | FR-2, FR-9, FR-11 |
+| Compare baseline and candidate | FR-10 |
+| Survive interruption and resume | FR-1, NFR-1, NFR-8 |
+| Emit auditable artifacts and code changes | FR-3, FR-10, NFR-4 |
+| Support external agents | FR-12, NFR-5, NFR-6 |
 
 ## 12. Non-functional requirements
 
-### Durability
+### NFR-1: durability
 
-A completed event, approval, artifact, or checkpoint survives process failure. Interrupted runs resume or fail with a clear recovery action.
+A completed event, approval, artifact, or checkpoint survives process failure.
+Interrupted runs resume or fail with a clear recovery action.
 
-### Reproducibility
+### NFR-2: reproducibility
 
-Every run records source identity, environment, tool versions, commands, policy, fixtures, and hashes needed to repeat the result. Golden evaluations must pass from a clean environment.
+Every run records source identity, environment, tool versions, commands, policy,
+fixtures, and hashes needed to repeat the result. Golden evaluations must pass
+from a clean environment.
 
-### Safety
+### NFR-3: safety and privacy
 
-Untrusted repositories and observed applications are treated as hostile inputs. Mew defaults to least privilege, redacts secrets from artifacts, and isolates execution from the host and unrelated workspaces.
+Untrusted repositories and observed applications are treated as hostile inputs.
+Mew defaults to least privilege, redacts secrets and unrelated personal data from
+portable artifacts, and isolates execution from the host and unrelated workspaces.
 
-### Auditability
+### NFR-4: auditability
 
-A reviewer can trace a contract claim and final verdict back to evidence without reading the full agent transcript.
+A reviewer can trace a contract claim and final verdict back to evidence without
+reading the full agent transcript.
 
-### Extensibility
+### NFR-5: extensibility
 
-New drivers, comparison strategies, providers, and skill packs can be added without changing the core run model.
+New drivers, comparison strategies, providers, and skill packs can be added
+without changing the core run model.
 
-### Model independence
+### NFR-6: model independence
 
-Durable state, policy, artifacts, and verification belong to Mew rather than a particular model provider.
+Durable state, policy, artifacts, and verification belong to Mew rather than a
+particular model provider.
 
-### Efficiency
+### NFR-7: efficiency
 
-The system should avoid repeating reproduction and observation work when source, environment, policy, and artifact hashes are unchanged. Correctness and evidence quality take priority over minimizing tool calls.
+The system avoids repeating reproduction and observation work when source,
+environment, policy, and artifact hashes are unchanged. Correctness and evidence
+quality take priority over minimizing tool calls.
+
+### NFR-8: resource and cost control
+
+Every run can set disk, process, network, token or provider-cost, rate-limit, and
+deadline budgets. Reaching a budget stops or pauses work predictably, preserves a
+resumable state, and records the limiting resource.
 
 ## 13. Run artifacts
 
@@ -397,7 +519,9 @@ Transcripts are useful for debugging but are not the primary interface between p
 
 ## 14. Safety, rights, and provenance
 
-Mew must ask the operator to confirm that they are authorized to inspect and reproduce the target. Authorization does not automatically grant rights to every asset or dependency contained in it.
+Mew must require the authorization declaration defined in section 8.9 before it
+inspects or reproduces a target. The declaration does not automatically grant
+rights to every asset or dependency contained in that target.
 
 For external websites and applications:
 
@@ -425,10 +549,16 @@ For source repositories:
 - time from approved contract to first passing vertical slice;
 - number of semantic corrections requested by the user after handoff.
 
+These are tracked outcome metrics, not first-release gates. M0 establishes a
+baseline from at least three golden tasks; each subsequent release sets its target
+against that baseline. Lower time and fewer post-handoff semantic corrections are
+better, but not at the expense of evidence quality or honest blockers.
+
 ### Evidence quality
 
-- all critical claims have evidence;
-- no fabricated or missing-source claims;
+- all important claims, as defined in section 8.7, have evidence or are explicitly
+  classified as unknown;
+- zero claims presented as fact without evidence or user attribution;
 - all accepted deviations identify an approver and contract version;
 - reviewers can reproduce the final verdict from artifacts.
 
@@ -454,6 +584,10 @@ The first product slice supports source-available libraries, CLIs, and HTTP serv
 The first browser slice supports public or locally hosted websites with finite routes and explicit interaction scope. It uses Playwright as an external driver and focuses on navigation, controls, forms, responsive states, console errors, network behavior, DOM/accessibility structure, and approved visual comparison.
 
 General desktop control, mobile applications, authenticated third-party systems, hardware, production cutover, and open-ended black-box discovery follow only after the underlying run, evidence, contract, and verification model is reliable.
+
+The implementation sequence and milestone ownership for these slices are defined
+in [`PHASES.md`](../PHASES.md). M0 through M6 deliver the first complete
+source-available loop; M7 applies the same guarantees to browser-observed targets.
 
 ## 17. Risks
 
@@ -498,7 +632,8 @@ The model reasons about ambiguity. Mew owns mechanics, policy, durable state, an
 
 ## 19. Release criteria for the first complete loop
 
-The first complete Mew release is ready when an operator can:
+The first complete Mew release, corresponding to M0 through M6 in
+[`PHASES.md`](../PHASES.md), is ready when an operator can:
 
 1. create a run from a source repository and evolution goal;
 2. reproduce the baseline in an isolated workspace;

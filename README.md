@@ -1,4 +1,4 @@
-# mew
+# Mew
 
 ```text
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣤⣶⣶⣶⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
@@ -84,6 +84,9 @@ Mew:
 Mew should preserve the approved product behavior, not blindly copy pixels or protected assets. Authorization, provenance, and publication remain explicit boundaries.
 
 ## How it works
+
+This is the abbreviated flow. The canonical stage definitions are in the
+[PRD product workflow](docs/PRD.md#9-product-workflow).
 
 ```text
 intake

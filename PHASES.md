@@ -63,16 +63,22 @@ UI polish, extra tool-card markers, command-palette work, and similar improvemen
 
 ### Acceptance criteria (M0)
 
-- Three tasks complete from intake to verification without fabricated output.
-- Every critical contract claim points to evidence.
+- Three tasks produce the required manifest, contract, plan, evidence, and
+  verification artifacts from intake through handoff.
+- Every important contract claim points to evidence or is explicitly marked
+  unknown, using the definition in PRD section 8.7.
 - Each task succeeds twice from a clean workspace with pinned source and tools.
 - Unexplained contract deviations are zero.
-- Repeated workflow mechanics are classified as runtime candidates or skill-level reasoning.
+- Every workflow mechanic observed in at least two tasks is recorded with an
+  owner and classified by the promotion rule below as runtime candidate or
+  skill-level reasoning.
 - No task writes outside its approved workspace or leaks a secret into artifacts.
 
 ## M1: durable migration runs
 
 **Goal:** make a migration run a first-class durable object independent from chat history.
+
+**PRD coverage:** FR-1, FR-3, FR-12; NFR-1, NFR-4, NFR-6.
 
 ### Deliverables (M1)
 
@@ -95,6 +101,8 @@ UI polish, extra tool-card markers, command-palette work, and similar improvemen
 ## M2: isolated acquisition and reproduction
 
 **Goal:** create immutable baselines and writable candidates under enforced policy.
+
+**PRD coverage:** FR-2, FR-11; NFR-2, NFR-3, NFR-8.
 
 ### Deliverables (M2)
 
@@ -120,6 +128,8 @@ UI polish, extra tool-card markers, command-palette work, and similar improvemen
 
 **Goal:** turn source and observations into an evidence-backed draft contract.
 
+**PRD coverage:** FR-4, FR-6; NFR-4, NFR-5.
+
 ### Deliverables (M3)
 
 - Repository cartography for components, entrypoints, dependencies, boundaries, tests, schemas, and configuration.
@@ -128,11 +138,13 @@ UI polish, extra tool-card markers, command-palette work, and similar improvemen
 - Baseline scenario recorder.
 - Evidence references for repository locations, command output, traces, responses, and fixture results.
 - Draft contract format with invariants, target behavior, tolerances, unknowns, confidence, and coverage.
-- Performance baseline support for latency, throughput, startup, memory, and CPU where measurable.
+- Performance baseline support for latency, throughput, startup, memory, and CPU
+  when the target exposes those resources to the active driver.
 
 ### Acceptance criteria (M3)
 
-- Every critical draft invariant is observed, user-provided, or explicitly marked as an inference.
+- Every important draft invariant is observed, user-provided, inferred with
+  evidence, or explicitly unknown.
 - The system reports unknown and unobserved behavior instead of filling gaps.
 - Recorded scenarios can be replayed against the same baseline.
 - Benchmark artifacts contain method, environment, samples, and raw results.
@@ -141,6 +153,8 @@ UI polish, extra tool-card markers, command-palette work, and similar improvemen
 ## M4: contract review and evolution planning
 
 **Goal:** convert observed behavior and user intent into an approved, versioned target.
+
+**PRD coverage:** FR-7, FR-8.
 
 ### Deliverables (M4)
 
@@ -164,6 +178,8 @@ UI polish, extra tool-card markers, command-palette work, and similar improvemen
 
 **Goal:** evolve the candidate in small slices while protecting the approved contract.
 
+**PRD coverage:** FR-9, FR-11; NFR-1, NFR-8.
+
 ### Deliverables (M5)
 
 - Git-native checkpoint and rollback support.
@@ -185,6 +201,8 @@ UI polish, extra tool-card markers, command-palette work, and similar improvemen
 ## M6: differential verification and handoff
 
 **Goal:** prove what the evolved implementation preserves, changes, and leaves unknown.
+
+**PRD coverage:** FR-10; NFR-2, NFR-4.
 
 ### Deliverables (M6)
 
@@ -208,6 +226,8 @@ UI polish, extra tool-card markers, command-palette work, and similar improvemen
 ## M7: browser-observed application reconstruction
 
 **Goal:** apply the same evidence and contract model to authorized web applications.
+
+**PRD coverage:** FR-4, FR-5, FR-6, FR-10; NFR-3, NFR-5.
 
 ### Deliverables (M7)
 
@@ -243,11 +263,15 @@ Expected run:
 - Console and network errors are included in verification.
 - The contract identifies copied, transformed, replaced, and excluded content or assets.
 - Publication blocks when authorization or provenance is unresolved.
-- A visually different candidate can pass because behavior and target art direction, not pixel identity, define success.
+- A candidate passes when its journey checks and user-approved visual contract
+  pass; pixel similarity is required only for regions explicitly marked for
+  preservation.
 
 ## M8: computer-use and non-web drivers
 
 **Goal:** observe and reconstruct authorized applications beyond the browser.
+
+**PRD coverage:** FR-4, FR-6, FR-10, FR-11; NFR-3, NFR-5.
 
 ### Deliverables (M8)
 
@@ -269,6 +293,8 @@ Expected run:
 ## M9: overnight reliability and team operation
 
 **Goal:** make long-running migration work safe to leave unattended and easy to review as a team.
+
+**PRD coverage:** FR-1, FR-3, FR-12; NFR-1, NFR-4, NFR-7, NFR-8.
 
 ### Deliverables (M9)
 
@@ -302,6 +328,7 @@ Mew owns mechanics and proof. Skills retain evolving procedures and judgment unt
 
 ## Product-level definition of done
 
-The roadmap's first complete loop is M0 through M6. At that point a user can provide source and an evolution goal, approve behavioral DNA, interrupt and resume execution, and receive a reviewable candidate with reproducible evidence.
+The roadmap's first complete loop is M0 through M6. Its release gate is the
+detailed checklist in [PRD section 19](docs/PRD.md#19-release-criteria-for-the-first-complete-loop).
 
 M7 extends the same guarantees to websites. M8 extends them to computer-use targets. Neither lane is considered complete if it bypasses the contract, evidence, approval, durability, or verification model established in M0 through M6.
