@@ -3,7 +3,7 @@
 use eventsource_stream::Eventsource;
 use futures::{Stream, StreamExt};
 use mewcode_protocol::event::ChatRequest;
-use mewcode_protocol::routes::{CHAT, HEALTH, MODELS, SESSION_BY_ID, SESSIONS};
+use mewcode_protocol::routes::{CHAT, HEALTH, MODELS, SESSION_BY_ID, SESSIONS, SKILLS};
 use mewcode_protocol::{Message, Mode, ModelId, ModelKind, StreamEvent};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -56,6 +56,20 @@ pub struct ModelEntry {
     pub display_name: String,
     /// Which OpenCode Go endpoint serves the model.
     pub kind: ModelKind,
+}
+
+/// One entry in the skill catalog returned by `GET /skills`. Mirrors the
+/// server's `SkillEntry` wire shape.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SkillEntry {
+    /// Skill name.
+    pub name: String,
+    /// When to use the skill.
+    pub description: String,
+    /// Where it was loaded from (`bundled`, `project`, `external`, …).
+    pub source: String,
+    /// Sub-files inside the skill bundle, relative to its root.
+    pub assets: Vec<String>,
 }
 
 /// A lightweight view of a session, without message history. Mirrors the
@@ -154,6 +168,18 @@ impl ApiClient {
         let resp = self
             .inner
             .get(format!("{}{}", self.base_url, MODELS))
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await?;
+        let bytes = ensure_success(resp)?.bytes().await?;
+        Ok(serde_json::from_slice(&bytes)?)
+    }
+
+    /// `GET /skills` — fetch the loaded skill catalog.
+    pub async fn skills(&self) -> Result<Vec<SkillEntry>, NetError> {
+        let resp = self
+            .inner
+            .get(format!("{}{}", self.base_url, SKILLS))
             .timeout(Duration::from_secs(10))
             .send()
             .await?;

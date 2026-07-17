@@ -1,8 +1,8 @@
-use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Paragraph, Wrap};
+use ratatui::Frame;
 
 use mewcode_protocol::Mode;
 
@@ -12,7 +12,7 @@ use super::overlay::{
     theme_lines, tools_lines,
 };
 use super::park_cursor_in_field;
-use super::theme::{COMPOSER_HORIZONTAL_PAD, COMPOSER_LEFT_PAD, Theme};
+use super::theme::{Theme, COMPOSER_HORIZONTAL_PAD, COMPOSER_LEFT_PAD};
 use super::transcript::render_transcript;
 
 /// Maximum height (rows) the input field may grow to. Wrapped text beyond
@@ -98,28 +98,21 @@ fn render_input(frame: &mut Frame, chunk: Rect, input_text: &str, theme: Theme) 
 
 fn render_status(frame: &mut Frame, chunk: Rect, s: &SessionState, theme: Theme) {
     let (model, mode) = match &s.session {
-        Some(session) => (session.model.display_name(), session.mode.as_str()),
+        Some(session) => (session.model.display_name(), session.mode),
         None => (
             s.pending_model.unwrap_or_default().display_name(),
-            Mode::default().as_str(),
+            Mode::default(),
         ),
     };
     let mut spans = vec![
         Span::styled(
-            "  Build",
+            format!("  {}", mode.label()),
             Style::default()
                 .fg(theme.hot_pink)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(" · ", Style::default().fg(theme.muted)),
         Span::styled(model.to_string(), Style::default().fg(Color::Gray)),
-        Span::styled(" · ", Style::default().fg(theme.muted)),
-        Span::styled(
-            mode.to_string(),
-            Style::default()
-                .fg(theme.mew_gold)
-                .add_modifier(Modifier::BOLD),
-        ),
     ];
     if s.streaming.is_some() {
         spans.push(Span::styled(
@@ -163,8 +156,11 @@ fn input_line(line: &str, theme: Theme) -> Line<'static> {
 fn render_active_overlay(frame: &mut Frame, area: Rect, s: &mut SessionState) {
     match s.overlay {
         Overlay::None => {}
-        Overlay::Tools => render_overlay(frame, area, "Tools", tools_lines()),
-        Overlay::Skills => render_overlay(frame, area, "Skills", skills_lines()),
+        Overlay::Tools => {
+            let mode = s.session.as_ref().map(|sess| sess.mode).unwrap_or_default();
+            render_overlay(frame, area, "Tools", tools_lines(mode))
+        }
+        Overlay::Skills => render_overlay(frame, area, "Skills", skills_lines(s)),
         Overlay::Theme => render_overlay(frame, area, "Theme", theme_lines()),
         Overlay::ModelPicker => {
             // Compute the overlay rect first so the row builder knows

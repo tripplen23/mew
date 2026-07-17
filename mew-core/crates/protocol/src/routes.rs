@@ -10,6 +10,9 @@ pub const HEALTH: &str = "/health";
 /// `GET /models` — model registry.
 pub const MODELS: &str = "/models";
 
+/// `GET /skills` — loaded skill catalog.
+pub const SKILLS: &str = "/skills";
+
 /// `GET/POST /sessions` — list and create sessions.
 pub const SESSIONS: &str = "/sessions";
 

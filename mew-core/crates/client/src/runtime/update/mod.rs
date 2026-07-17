@@ -123,6 +123,20 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
             Cmd::None
         }
 
+        Msg::SkillsFetched(result) => {
+            // Fire-and-forget: only surface the error toast if
+            // the /skills overlay is still showing.
+            match result {
+                Ok(entries) => s.skills = Some(entries),
+                Err(e) => {
+                    if s.overlay == Overlay::Skills {
+                        *toast = Some(Toast::error(format!("/skills: {e}")));
+                    }
+                }
+            }
+            Cmd::None
+        }
+
         Msg::SessionsFetched(result) => {
             // The session list is fire-and-forget too: only surface the
             // error toast if the /session overlay is still the one the

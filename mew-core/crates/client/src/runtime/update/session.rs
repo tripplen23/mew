@@ -8,12 +8,12 @@ use mewcode_protocol::{Message, MessagePart, Mode};
 use crate::net::{CreateSessionRequest, SessionPatch};
 
 use super::super::model::{
-    Cmd, Overlay, PastedText, QUIT_COMMAND, SessionState, StreamingState, Toast,
+    Cmd, Overlay, PastedText, SessionState, StreamingState, Toast, QUIT_COMMAND,
 };
 use super::key_to_input;
 use super::picker::{on_model_picker_key, on_session_list_key};
 use super::slash::{
-    SlashPickerResult, on_slash_picker_key, open_slash_picker, slash_default_cursor,
+    on_slash_picker_key, open_slash_picker, slash_default_cursor, SlashPickerResult,
 };
 
 const COMPACT_PASTE_CHARS: usize = 120;
@@ -192,10 +192,7 @@ pub(super) fn on_session_submit(s: &mut SessionState, toast: &mut Option<Toast>)
                 s.overlay = Overlay::Tools;
                 Cmd::None
             }
-            "skills" => {
-                s.overlay = Overlay::Skills;
-                Cmd::None
-            }
+            "skills" => on_skills_command(s),
             "theme" => {
                 s.overlay = Overlay::Theme;
                 Cmd::None
@@ -282,6 +279,16 @@ fn on_model_command(s: &mut SessionState) -> Cmd {
     s.model_picker.cursor = 0;
     if s.model_picker.models.is_none() {
         Cmd::FetchModels
+    } else {
+        Cmd::None
+    }
+}
+
+/// Handle `/skills`: open the read-only skills overlay
+fn on_skills_command(s: &mut SessionState) -> Cmd {
+    s.overlay = Overlay::Skills;
+    if s.skills.is_none() {
+        Cmd::FetchSkills
     } else {
         Cmd::None
     }

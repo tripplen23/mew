@@ -17,6 +17,8 @@ pub enum Cmd {
     StartChat(ChatRequest),
     /// Fetch the model registry for the picker overlay.
     FetchModels,
+    /// Fetch the skill catalog for the skills overlay.
+    FetchSkills,
     /// Fetch the session list for the picker overlay.
     FetchSessions,
     /// Apply a partial update to a session via `PATCH /sessions/{id}`.

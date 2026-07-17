@@ -31,6 +31,14 @@ impl Mode {
         }
     }
 
+    /// Title-case form for display in the UI.
+    pub fn label(self) -> &'static str {
+        match self {
+            Mode::Build => "Build",
+            Mode::Plan => "Plan",
+        }
+    }
+
     /// `true` if write tools should be exposed.
     pub fn allows_writes(self) -> bool {
         matches!(self, Mode::Build)
