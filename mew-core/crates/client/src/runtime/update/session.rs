@@ -192,10 +192,7 @@ pub(super) fn on_session_submit(s: &mut SessionState, toast: &mut Option<Toast>)
                 s.overlay = Overlay::Tools;
                 Cmd::None
             }
-            "skills" => {
-                s.overlay = Overlay::Skills;
-                Cmd::None
-            }
+            "skills" => on_skills_command(s),
             "theme" => {
                 s.overlay = Overlay::Theme;
                 Cmd::None
@@ -282,6 +279,16 @@ fn on_model_command(s: &mut SessionState) -> Cmd {
     s.model_picker.cursor = 0;
     if s.model_picker.models.is_none() {
         Cmd::FetchModels
+    } else {
+        Cmd::None
+    }
+}
+
+/// Handle `/skills`: open the read-only skills overlay
+fn on_skills_command(s: &mut SessionState) -> Cmd {
+    s.overlay = Overlay::Skills;
+    if s.skills.is_none() {
+        Cmd::FetchSkills
     } else {
         Cmd::None
     }

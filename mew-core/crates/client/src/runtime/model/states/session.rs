@@ -3,7 +3,7 @@ use std::time::Instant;
 use tui_textarea::TextArea;
 use uuid::Uuid;
 
-use crate::net::{ModelEntry, Session, SessionSummary};
+use crate::net::{ModelEntry, Session, SessionSummary, SkillEntry};
 use mewcode_protocol::ModelId;
 
 /// One row in the slash-command picker.
@@ -119,6 +119,8 @@ pub struct SessionState {
     pub model_picker: ModelPickerState,
     /// Session list overlay state.
     pub session_list: SessionListState,
+    /// Cached skill catalog for the [`Overlay::Skills`] overlay.
+    pub skills: Option<Vec<SkillEntry>>,
     /// Highlighted row in the slash-command picker (0-based).
     pub slash_cursor: usize,
 }
@@ -143,6 +145,7 @@ impl SessionState {
             overlay: Overlay::None,
             model_picker: ModelPickerState::default(),
             session_list: SessionListState::default(),
+            skills: None,
             slash_cursor: 0,
         }
     }

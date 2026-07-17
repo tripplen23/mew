@@ -2,7 +2,7 @@ use uuid::Uuid;
 
 use crossterm::event::KeyEvent;
 
-use crate::net::{ModelEntry, Session, SessionSummary};
+use crate::net::{ModelEntry, Session, SessionSummary, SkillEntry};
 
 /// Messages that drive the [`super::App`] through `update`.
 #[derive(Debug)]
@@ -19,6 +19,8 @@ pub enum Msg {
     Stream(StreamMsg),
     /// The model registry was fetched (or failed).
     ModelsFetched(Result<Vec<ModelEntry>, String>),
+    /// The skill catalog was fetched (or failed).
+    SkillsFetched(Result<Vec<SkillEntry>, String>),
     /// The session list was fetched (or failed).
     SessionsFetched(Result<Vec<SessionSummary>, String>),
     /// A `PATCH /sessions/{id}` returned a refreshed session (or failed).

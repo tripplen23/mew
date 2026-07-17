@@ -44,9 +44,6 @@ The completed foundation is retained rather than rewritten.
 
 UI polish, extra tool-card markers, command-palette work, and similar improvements remain valid but no longer define the product's critical path. They should ship only when they improve an active migration workflow.
 
-- Wire the `/skills` overlay to the runtime catalog instead of showing the placeholder `No skills loaded` state.
-- Derive the `/tools` overlay from the active mode's registry instead of the static protocol name list.
-- Remove the hard-coded `Build` label from the status bar and render the active mode once from session state.
 - Add tool-card expansion only when migration artifacts or policy failures need more than the current compact preview.
 
 ## M0: product contract and evaluation laboratory

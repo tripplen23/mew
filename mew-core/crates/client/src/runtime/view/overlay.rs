@@ -4,33 +4,62 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Clear, Paragraph, Wrap};
 
+use mewcode_protocol::Mode;
 use mewcode_protocol::ModelId;
-use mewcode_protocol::tool::ToolName;
+use mewcode_protocol::tool::tools_for_mode;
 
 use super::super::model::{SLASH_COMMANDS, SessionState, ThemeId};
 
-/// The `/tools` overlay body: every tool plus the total count.
-pub(super) fn tools_lines() -> Vec<Line<'static>> {
-    let mut lines: Vec<Line> = ToolName::ALL
-        .iter()
-        .map(|t| Line::from(format!("• {t}")))
-        .collect();
+/// The `/tools` overlay body: the tools available in the active mode plus
+/// the total count. Mirrors the mode gating in the engine's tool registry
+/// (`Plan` is read-only; `Build` adds the write tools).
+pub(super) fn tools_lines(mode: Mode) -> Vec<Line<'static>> {
+    let tools = tools_for_mode(mode);
+    let mut lines: Vec<Line> = tools.iter().map(|t| Line::from(format!("• {t}"))).collect();
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
-        format!("{} tools available", ToolName::ALL.len()),
+        format!("{} tools available in {} mode", tools.len(), mode.label()),
         Style::default().fg(Color::DarkGray),
     )));
     lines
 }
 
-/// The `/skills` overlay body. The skill catalog is loaded by the engine at
-/// runtime; the view shows whatever the model carries — here a hint until the
-/// catalog is wired through.
-pub(super) fn skills_lines() -> Vec<Line<'static>> {
-    vec![Line::from(Span::styled(
-        "No skills loaded.",
-        Style::default().fg(Color::DarkGray),
-    ))]
+/// The `/skills` overlay body, built from the catalog fetched via
+/// `GET /skills`. `None` is the fetch-in-flight / fetch-failed state;
+/// an empty list means the server found no skills.
+pub(super) fn skills_lines(s: &SessionState) -> Vec<Line<'static>> {
+    let Some(entries) = s.skills.as_ref() else {
+        return vec![Line::from(Span::styled(
+            "Loading skills...",
+            Style::default().fg(Color::DarkGray),
+        ))];
+    };
+    if entries.is_empty() {
+        return vec![Line::from(Span::styled(
+            "No skills loaded.",
+            Style::default().fg(Color::DarkGray),
+        ))];
+    }
+    let mut lines: Vec<Line> = Vec::with_capacity(entries.len() * 2);
+    for e in entries {
+        lines.push(Line::from(vec![
+            Span::styled(
+                format!("• {}", e.name),
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!("  ({})", e.source),
+                Style::default().fg(Color::DarkGray),
+            ),
+        ]));
+        if !e.description.is_empty() {
+            lines.push(Line::from(Span::styled(
+                format!("  {}", e.description),
+                Style::default().fg(Color::Gray),
+            )));
+        }
+    }
+    lines
 }
 
 pub(super) fn theme_lines() -> Vec<Line<'static>> {

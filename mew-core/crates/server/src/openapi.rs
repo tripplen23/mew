@@ -36,6 +36,7 @@ pub struct ErrorResponse {
     paths(
         routes::health::health,
         routes::models::list_models,
+        routes::skills::list_skills,
         routes::storage::status,
         routes::sessions::list,
         routes::sessions::get_one,
@@ -53,6 +54,7 @@ pub struct ErrorResponse {
             SessionPatch,
             crate::routes::health::HealthResponse,
             crate::routes::models::ModelEntry,
+            crate::routes::skills::SkillEntry,
             crate::routes::sessions::CreateSessionRequest,
             crate::routes::storage::StorageStatus,
             mewcode_protocol::event::ChatRequest,
