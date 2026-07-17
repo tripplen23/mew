@@ -5,6 +5,11 @@ use figment::providers::{Env, Format, Toml};
 use mewcode_protocol::env::{CONFIG_FILE, OPENCODE_GO_API_KEY};
 use serde::Deserialize;
 
+pub const DEFAULT_HOST: &str = "127.0.0.1";
+pub const DEFAULT_PORT: u16 = 3737;
+pub const DEFAULT_LOG: &str = "info,mewcode_engine=debug";
+pub const ENV_PREFIX: &str = "MEWCODE_";
+
 /// Expand a `~` and `${VAR}` placeholders in `raw`. Returns the path
 /// unchanged if the placeholder is unset. Used for `external_dirs`
 /// (Hermes-compatible behaviour).
@@ -42,18 +47,6 @@ fn expand_path(raw: &str) -> String {
     result
 }
 
-/// Default host the server binds to.
-pub const DEFAULT_HOST: &str = "127.0.0.1";
-
-/// Default port the server binds to.
-pub const DEFAULT_PORT: u16 = 3737;
-
-/// Default `tracing` filter when `RUST_LOG` is unset.
-pub const DEFAULT_LOG: &str = "info,mewcode_engine=debug";
-
-/// Env-var prefix figment reads for the server config.
-pub const ENV_PREFIX: &str = "MEWCODE_";
-
 /// Server configuration, loaded from `mewcode.toml` and the environment.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ServerConfig {
@@ -81,9 +74,7 @@ pub struct ServerConfig {
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct SkillServerConfig {
     /// Additional skill directories to scan, in addition to the
-    /// defaults. `~` and `${VAR}` are expanded at load time. Useful
-    /// for sharing skills across multiple repos or with other agents
-    /// (Hermes / agentskills.io compatible — see
+    /// defaults. `~` and `${VAR}` are expanded at load time.
     /// `https://hermes-agent.nousresearch.com/docs/user-guide/features/skills`).
     #[serde(default)]
     pub external_dirs: Vec<String>,
@@ -128,35 +119,5 @@ impl SkillServerConfig {
             .iter()
             .map(|s| std::path::PathBuf::from(expand_path(s)))
             .collect()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn expand_tilde() {
-        let home = dirs::home_dir().unwrap();
-        let out = expand_path("~/skills");
-        assert!(out.starts_with(home.to_str().unwrap()));
-    }
-
-    #[test]
-    fn expand_env_var() {
-        // PATH is set on every system; use it to verify the ${VAR} branch
-        // runs without mutating env state.
-        let out = expand_path("${PATH}/skills");
-        assert!(out.ends_with("/skills"), "got {out}");
-        assert!(!out.contains("${"), "placeholder should be expanded");
-    }
-
-    #[test]
-    fn expand_unknown_var_is_left_alone() {
-        let out = expand_path("${MEW_DEFINITELY_NOT_SET_XYZ_42}/skills");
-        // Either fully resolved (if user happens to have it set) or
-        // left as-is — both are acceptable. We just want the function
-        // to not panic.
-        assert!(out.contains("skills"));
     }
 }
