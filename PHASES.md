@@ -14,12 +14,13 @@ A phase is complete only when its acceptance criteria pass in a clean environmen
 | M2 | Isolated acquisition and reproduction | Planned |
 | M3 | Behavioral DNA extraction | Planned |
 | M4 | Contract review and evolution planning | Planned |
-| M5 | Checkpointed implementation loop | Planned |
-| M6 | Differential verification and handoff | Planned |
-| M7 | Browser-observed application reconstruction | Planned |
-| M8 | Computer-use and non-web drivers | Planned |
-| M9 | Overnight reliability and team operation | Planned |
-| M10 | Installable product and operator CLI | Planned |
+| M5 | Task orchestration and context lifecycle | Planned |
+| M6 | Checkpointed implementation loop | Planned |
+| M7 | Differential verification and handoff | Planned |
+| M8 | Browser-observed application reconstruction | Planned |
+| M9 | Computer-use and non-web drivers | Planned |
+| M10 | Overnight reliability and team operation | Planned |
+| M11 | Installable product and operator CLI | Planned |
 
 ## Foundation: coding-agent substrate
 
@@ -55,6 +56,10 @@ UI polish, extra tool-card markers, command-palette work, and similar improvemen
 - At least three golden tasks spanning more than one system shape.
 - A Hermes laboratory profile with minimal tools and explicit safety policy.
 - A record of human approvals, failed assumptions, repeated mechanics, and missing runtime primitives from real runs.
+- Evaluation of manual, supervised, and delegated builders against the same
+  contract and verification criteria.
+- Per-task context, input-token, output-token, retrieval, retry, and wall-clock
+  measurements for the golden runs.
 
 ### Golden task categories (M0)
 
@@ -74,17 +79,22 @@ UI polish, extra tool-card markers, command-palette work, and similar improvemen
   owner and classified by the promotion rule below as runtime candidate or
   skill-level reasoning.
 - No task writes outside its approved workspace or leaks a secret into artifacts.
+- At least one task rotates to a fresh worker and completes from structured
+  artifacts without injecting the prior transcript.
+- Any context optimization reports total token cost and task outcome against an
+  uncompressed baseline; prompt-size reduction alone is not a pass.
 
 ## M1: durable migration runs
 
 **Goal:** make a migration run a first-class durable object independent from chat history.
 
-**PRD coverage:** FR-1, FR-3, FR-12; NFR-1, NFR-4, NFR-6.
+**PRD coverage:** FR-1, FR-3, FR-12, FR-16; NFR-1, NFR-4, NFR-6.
 
 ### Deliverables (M1)
 
 - Protocol types for run ID, phase, status, policy summary, approval request, artifact reference, checkpoint, and failure reason.
-- Persistent `RunRecord` with atomic updates.
+- Persistent `RunRecord` with atomic updates, current task, and latest context
+  checkpoint.
 - Append-only event and evidence logs.
 - Run APIs for create, inspect, list, pause, resume, cancel, and approve.
 - SSE events for phase transitions, approvals, evidence, checkpoints, and completion.
@@ -165,6 +175,8 @@ UI polish, extra tool-card markers, command-palette work, and similar improvemen
 - Target architecture and dependency decision records.
 - Official-SDK and license provenance checks.
 - Migration slices, each tied to contracts, validation, risk, and rollback.
+- Dependency-aware task graph whose nodes are small enough to execute within an
+  explicit context, cost, and deadline budget.
 - Contract amendment flow that retains prior versions and decisions.
 
 ### Acceptance criteria (M4)
@@ -175,13 +187,57 @@ UI polish, extra tool-card markers, command-palette work, and similar improvemen
 - Community bindings or custom protocols require a documented reason when no approved first-party path is available.
 - Each slice can be implemented, reviewed, and rolled back independently.
 
-## M5: checkpointed implementation loop
+## M5: task orchestration and context lifecycle
+
+**Goal:** turn an approved plan into bounded, resumable assignments so long runs
+do not depend on one growing model conversation.
+
+**PRD coverage:** FR-15, FR-16; NFR-1, NFR-6, NFR-8, NFR-10.
+
+### Deliverables (M5)
+
+- Versioned `TaskSpec` schema with ID, goal, dependencies, contract coverage,
+  artifact inputs, workspace roots, completion criteria, validation commands,
+  outputs, budgets, and stop conditions.
+- Persistent task DAG with ready, running, blocked, passed, failed, and cancelled
+  states.
+- Minimal context-pack builder that selects task-relevant artifacts by identity
+  instead of replaying the full transcript.
+- Versioned `ContextCheckpoint` schema for decisions, discoveries, changed files,
+  command and test outcomes, failure classification, unresolved questions,
+  artifact references, and next task.
+- Configurable context-headroom threshold and worker-rotation policy.
+- Builder interface supporting `manual`, `supervised`, and `delegated` modes on
+  the same task and verification contracts.
+- Token and context accounting that includes retries, retrieval, compaction, and
+  provider calls per task and phase.
+- Shape-specific densification interface for eligible structured outputs, with
+  original artifacts retained by hash and equivalence tests for each transform.
+
+### Acceptance criteria (M5)
+
+- A fresh worker completes the next task from its task packet and context
+  checkpoint without access to the previous worker transcript.
+- Task completion is impossible without its declared outputs, validation results,
+  and artifact references.
+- Context rotation preserves decision IDs, hashes, failures, unknowns, blockers,
+  and unresolved questions; primary evidence is never replaced by a summary.
+- A task that cannot fit its budget is split or blocked before execution rather
+  than silently truncating context or exceeding cost policy.
+- Manual and delegated builders can implement the same fixture and receive the
+  same parity verdict from the same contract.
+- Supervised mode is the default; a delegated builder cannot approve its own
+  contract amendment, deviation, destructive action, or final handoff.
+- A context optimization ships only when representative evaluations show equal
+  task outcomes and lower total token cost, including retrieval and retries.
+
+## M6: checkpointed implementation loop
 
 **Goal:** evolve the candidate in small slices while protecting the approved contract.
 
-**PRD coverage:** FR-9, FR-11; NFR-1, NFR-8.
+**PRD coverage:** FR-9, FR-11, FR-15, FR-16; NFR-1, NFR-8, NFR-10.
 
-### Deliverables (M5)
+### Deliverables (M6)
 
 - Git-native checkpoint and rollback support.
 - Slice executor with focused budgets and completion criteria.
@@ -190,8 +246,10 @@ UI polish, extra tool-card markers, command-palette work, and similar improvemen
 - Failure taxonomy: baseline defect, candidate defect, environment failure, nondeterminism, policy violation, intentional change, or inconclusive.
 - Repeated-action and no-progress detection.
 - Decision request when a failure needs semantic input.
+- Worker rotation at task or headroom boundaries using the latest durable context
+  checkpoint.
 
-### Acceptance criteria (M5)
+### Acceptance criteria (M6)
 
 - Each passing slice ends at a reproducible checkpoint.
 - A failed slice can roll back without affecting earlier passing slices.
@@ -199,13 +257,13 @@ UI polish, extra tool-card markers, command-palette work, and similar improvemen
 - Loop exhaustion pauses with evidence and a recovery proposal.
 - Restarting the runtime resumes from the last durable checkpoint.
 
-## M6: differential verification and handoff
+## M7: differential verification and handoff
 
 **Goal:** prove what the evolved implementation preserves, changes, and leaves unknown.
 
 **PRD coverage:** FR-10; NFR-2, NFR-4.
 
-### Deliverables (M6)
+### Deliverables (M7)
 
 - Common scenario runner for baseline and candidate.
 - Comparators for exact data, normalized text, structured HTTP behavior, numerical tolerance, errors, timing, resource use, and side effects.
@@ -215,7 +273,7 @@ UI polish, extra tool-card markers, command-palette work, and similar improvemen
 - Pull-request exporter with reproduction commands, contract coverage, deviations, risks, and rollback.
 - GitHub status suitable for team review.
 
-### Acceptance criteria (M6)
+### Acceptance criteria (M7)
 
 - A reviewer can reproduce each final verdict from structured artifacts.
 - Every contract item is pass, fail, accepted deviation, or inconclusive.
@@ -224,13 +282,13 @@ UI polish, extra tool-card markers, command-palette work, and similar improvemen
 - The pull request contains only the approved migration scope.
 - Mew does not merge or deploy without a separate explicit approval.
 
-## M7: browser-observed application reconstruction
+## M8: browser-observed application reconstruction
 
 **Goal:** apply the same evidence and contract model to authorized web applications.
 
 **PRD coverage:** FR-4, FR-5, FR-6, FR-10, FR-13; NFR-3, NFR-5, NFR-6.
 
-### Deliverables (M7)
+### Deliverables (M8)
 
 - Playwright driver running as an external managed process or service.
 - Named-state screenshot capture with viewport and region metadata.
@@ -248,7 +306,7 @@ UI polish, extra tool-card markers, command-palette work, and similar improvemen
 - Content and asset inventory with provenance.
 - Visual-direction contract that separates preserved behavior from intended redesign.
 
-### Reference journey (M7)
+### Reference journey (M8)
 
 ```text
 Input:
@@ -263,7 +321,7 @@ Expected run:
   -> compare behavior, accessibility, console, network, and approved visuals
 ```
 
-### Acceptance criteria (M7)
+### Acceptance criteria (M8)
 
 - Browser actions use real input events rather than synthetic DOM shortcuts.
 - A finite journey suite replays from a clean browser context.
@@ -280,13 +338,13 @@ Expected run:
 - Without a configured vision provider, deterministic checks continue and
   semantic visual items block or request human review rather than silently pass.
 
-## M8: computer-use and non-web drivers
+## M9: computer-use and non-web drivers
 
 **Goal:** observe and reconstruct authorized applications beyond the browser.
 
 **PRD coverage:** FR-4, FR-6, FR-10, FR-11; NFR-3, NFR-5.
 
-### Deliverables (M8)
+### Deliverables (M9)
 
 - Computer-use driver for screen, keyboard, pointer, window, and clipboard state.
 - Native accessibility and UI metadata as the first choice, with screenshot-based
@@ -297,7 +355,7 @@ Expected run:
 - Privacy zones and capture redaction.
 - Human takeover and emergency stop.
 
-### Acceptance criteria (M8)
+### Acceptance criteria (M9)
 
 - Every action is tied to an approved application and scope.
 - Sensitive screen regions and clipboard values can be excluded from evidence.
@@ -305,13 +363,13 @@ Expected run:
 - Unsupported or nondeterministic interactions are marked inconclusive.
 - Authentication bypass, purchases, publishing, and production changes remain approval-gated.
 
-## M9: overnight reliability and team operation
+## M10: overnight reliability and team operation
 
 **Goal:** make long-running migration work safe to leave unattended and easy to review as a team.
 
-**PRD coverage:** FR-1, FR-3, FR-12; NFR-1, NFR-4, NFR-7, NFR-8.
+**PRD coverage:** FR-1, FR-3, FR-12, FR-16; NFR-1, NFR-4, NFR-7, NFR-8, NFR-10.
 
-### Deliverables (M9)
+### Deliverables (M10)
 
 - Supervisor integration and automatic restart.
 - Resource, disk, cost, rate-limit, and deadline budgets.
@@ -321,23 +379,26 @@ Expected run:
 - Role and policy separation for operator, reviewer, and approver.
 - Evaluation corpus and regression runner across supported migration lanes.
 - Stable external API and versioned MCP surface.
+- Context-cost dashboard by run, phase, task, model, and artifact class.
 
-### Acceptance criteria (M9)
+### Acceptance criteria (M10)
 
 - A multi-hour run survives runtime restart, transient provider failure, and client disconnect.
 - Stuck work is detected and paused without corrupting baseline or candidate state.
 - Team members can audit and approve without sharing the original agent session.
 - Runtime releases pass the golden migration and browser-reconstruction corpus.
 - Cost and resource ceilings stop work predictably and preserve a resumable state.
+- Multi-hour runs rotate workers without unbounded transcript growth or loss of
+  task, decision, and evidence references.
 
-## M10: installable product and operator CLI
+## M11: installable product and operator CLI
 
 **Goal:** make Mew a one-command install with a stable operator surface, not a
 build-from-source research project.
 
 **PRD coverage:** FR-14; NFR-9.
 
-### Deliverables (M10)
+### Deliverables (M11)
 
 - One-command installer for supported platforms (Linux, macOS; Windows if viable).
 - Stable `mew` executable that starts or connects to the local runtime and opens
@@ -350,7 +411,7 @@ build-from-source research project.
 - Configuration migration for breaking CLI or config changes between versions.
 - Rollback path that preserves user data and run artifacts.
 
-### Acceptance criteria (M10)
+### Acceptance criteria (M11)
 
 - A new machine can install Mew with one command and reach a working TUI without
   manually starting a server.
@@ -377,7 +438,7 @@ Mew owns mechanics and proof. Skills retain evolving procedures and judgment unt
 
 ## Product-level definition of done
 
-The roadmap's first complete loop is M0 through M6. Its release gate is the
+The roadmap's first complete loop is M0 through M7. Its release gate is the
 detailed checklist in [PRD section 19](docs/PRD.md#19-release-criteria-for-the-first-complete-loop).
 
-M7 extends the same guarantees to websites. M8 extends them to computer-use targets. M10 makes the whole package installable and operable as a product. Neither lane is considered complete if it bypasses the contract, evidence, approval, durability, or verification model established in M0 through M6.
+M8 extends the same guarantees to websites. M9 extends them to computer-use targets. M11 makes the whole package installable and operable as a product. Neither lane is considered complete if it bypasses the contract, evidence, approval, durability, or verification model established in M0 through M7.

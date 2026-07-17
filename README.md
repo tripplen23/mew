@@ -65,7 +65,7 @@ Mew is experimental. Keep a human in the loop for production and irreversible ac
 ## Getting started
 
 ```bash
-# Build from source (until one-command install ships in M10):
+# Build from source (until one-command install ships in M11):
 git clone https://github.com/tripplen23/mew && cd mew/mew-core
 cargo run -p mewcode-client -- tui
 ```

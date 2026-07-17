@@ -1,6 +1,6 @@
 # Mew product requirements document
 
-**Status:** Draft 2
+**Status:** Draft 3
 
 **Product:** Mew
 
@@ -47,9 +47,10 @@ authority on intent.
 
 ## 3. Problem
 
-Mew addresses three connected problems: preserving behavior during migration,
-learning behavior when only an observable product is available, and sustaining
-the resulting work over long-running agent sessions.
+Mew addresses four connected problems: preserving behavior during migration,
+learning behavior when only an observable product is available, sustaining the
+resulting work over long-running agent sessions, and letting different builders
+participate without surrendering control or exhausting one model context.
 
 ### 3.1 Prototype-to-production migration
 
@@ -67,6 +68,19 @@ Screenshots alone are insufficient. They omit routes, responsive states, keyboar
 
 Migration and reconstruction runs can take hours or days. They cross network, filesystem, browser, process, and repository boundaries. A chat loop without durable state cannot safely resume after a crash, explain why a decision was made, or prove which source revision and environment produced an observation.
 
+### 3.4 Builder control and context rot
+
+Some operators want an agent to implement approved slices autonomously. Others
+want Mew to observe and verify while they write every line. A single immortal
+coding conversation serves neither group well: it couples proof to one builder,
+accumulates stale assumptions, repeatedly injects irrelevant history, and makes
+token cost grow with elapsed time rather than the current task.
+
+Mew therefore separates a durable orchestrator from short-lived builders. The
+orchestrator owns state, evidence, contracts, tasks, policy, and proof. A human or
+agent builder receives a bounded task packet and can be replaced at a checkpoint
+without reconstructing the run from transcript history.
+
 ## 4. Goals
 
 Mew must:
@@ -83,7 +97,12 @@ Mew must:
 9. emit an auditable artifact bundle and a reviewable code change;
 10. support external agents through stable integration surfaces such as MCP;
 11. install, launch, diagnose, update, and remove Mew through one stable public
-    command.
+    command;
+12. support manual, supervised, and delegated implementation without changing
+    the evidence or verification model;
+13. keep long-running work within explicit context and cost budgets by dividing
+    plans into bounded tasks and resuming fresh workers from durable context
+    checkpoints.
 
 ## 5. Non-goals
 
@@ -109,7 +128,11 @@ Target users are:
 - designers or developers reconstructing a product they are authorized to use,
   with selected behavior preserved and a deliberate new design direction;
 - agent operators who need long-running work to be inspectable, resumable,
-  policy-bound, and safe to leave unattended.
+  policy-bound, and safe to leave unattended;
+- hands-on engineers who want Mew to verify human-authored changes without
+  granting an agent write access;
+- builders who prefer supervised or delegated implementation inside explicit
+  scope, budget, and approval boundaries.
 
 Mew distinguishes four run roles:
 
@@ -172,7 +195,9 @@ capture timestamp; any remaining ambiguity is recorded.
 
 ### 8.2 Candidate
 
-The evolved implementation created by Mew. The candidate always lives in a separate writable workspace from the baseline.
+The evolved implementation written by a human, an external coding agent, or a
+Mew-managed builder. The candidate always lives in a separate writable workspace
+from the baseline. Verification guarantees do not depend on who authored it.
 
 ### 8.3 Behavioral contract
 
@@ -223,6 +248,36 @@ browser or computer-use driver records the state, while a configured multimodal
 provider or external vision service produces structured visual observations. A
 visual observation records the image hash, inspected region, analysis rubric,
 provider and model identity, confidence, and resulting claims.
+
+### 8.11 Builder and autonomy mode
+
+A builder is the replaceable human or agent that edits the candidate for one
+approved task. Mew supports three implementation modes on the same run model:
+
+- `manual`: Mew does not ask an agent to edit the candidate; it observes and
+  verifies human-authored changes;
+- `supervised`: a builder proposes a bounded patch, Mew verifies it, and the
+  operator reviews the semantic checkpoint before the next task;
+- `delegated`: a builder may iterate within one approved task until its completion,
+  stop, or budget conditions fire.
+
+`supervised` is the default. Autonomy never permits a builder to approve its own
+contract amendment, accepted deviation, destructive action, or final handoff.
+
+### 8.12 Task packet and context checkpoint
+
+A task packet is the immutable, machine-readable assignment for one bounded unit
+of work. It includes the task ID, goal, dependencies, relevant contract items,
+input artifact hashes, allowed workspace roots, completion criteria, validation
+commands, budgets, stop conditions, and expected outputs.
+
+A context checkpoint is a compact, structured handoff between workers. It records
+decisions, discoveries, changed files, command and test outcomes, unresolved
+questions, current failure classification, artifact references, and the next task.
+It is derived from durable run data and never replaces primary evidence, source
+artifacts, or the approved contract. The full transcript may be retained for
+debugging, but a fresh worker must be able to continue from the task packet and
+context checkpoint without loading that transcript.
 
 ## 9. Product workflow
 
@@ -302,18 +357,38 @@ Mew maps source responsibilities to target components and proposes slices. Each 
 
 The plan must prefer official SDKs and documented standards. Community bindings or custom protocol implementations require an explicit rationale and approval when a first-party path is unavailable.
 
+Before implementation, each approved slice is expanded into a dependency-aware
+task graph. Every runnable task has one independently testable outcome and a task
+packet as defined in section 8.12. Tasks that cannot fit their context, cost, or
+deadline budget must be split before a builder starts.
+
 ### 9.7 Implementation loop
 
-For each approved slice Mew:
+The operator selects `manual`, `supervised`, or `delegated` mode for each slice.
+Mode changes are recorded as run decisions; they do not change the approved
+contract or verification criteria. For each runnable task Mew:
 
-1. creates a checkpoint;
-2. writes tests or fixtures for the relevant contract;
-3. makes the smallest implementation change;
-4. builds and runs focused validation;
-5. compares baseline and candidate;
-6. classifies failures;
-7. repeats or pauses for a semantic decision;
-8. commits a reviewable checkpoint when the slice passes.
+1. materializes the task packet and a minimal context pack from durable artifacts;
+2. creates a candidate checkpoint;
+3. writes tests or fixtures for the relevant contract;
+4. lets the selected human or agent builder make the smallest implementation
+   change permitted by the mode;
+5. builds and runs focused validation;
+6. compares baseline and candidate;
+7. classifies failures;
+8. repeats within budget or pauses for a semantic decision;
+9. persists a context checkpoint before rotating workers or compacting context;
+10. commits a reviewable checkpoint when the task passes.
+
+No worker is assumed to retain the entire run. A worker normally ends at a task
+boundary. When context usage reaches the configured headroom threshold, Mew
+persists the checkpoint and starts a fresh worker rather than allowing emergency
+truncation to silently discard state.
+
+Mew may use shape-specific, demonstrably lossless representations for repetitive
+tool output when the original artifact is retained by hash. It must not represent
+generic compression or cache markers as equivalent context unless retrieval is
+enforced and the representation preserves distinctions relevant to the task.
 
 Mew must not weaken tests, widen tolerances, or rewrite the contract solely to obtain a passing result.
 
@@ -472,6 +547,32 @@ may remain separate components, but their names, locations, and lifecycle are no
 part of the normal user workflow. CLI and configuration changes that affect
 automation are versioned or migrated explicitly.
 
+### FR-15: builder modes and interface
+
+Each implementation slice selects `manual`, `supervised`, or `delegated` mode.
+The runtime uses the same task, policy, evidence, checkpoint, and verification
+contracts in every mode. A builder interface can prepare a task, propose or report
+changes, request clarification, report validation, and yield a checkpoint without
+granting the builder authority to approve semantic decisions or final handoff.
+
+Manual mode must support externally authored candidate commits without agent write
+access. Supervised mode stops at configured semantic checkpoints. Delegated mode
+may iterate only inside the current task's roots, budgets, and stop conditions.
+
+### FR-16: bounded tasks and context lifecycle
+
+An approved plan is executable only after it is represented as bounded tasks with
+explicit dependencies, inputs, outputs, contract coverage, completion criteria,
+validation, budgets, and stop conditions. The runtime creates a minimal context
+pack for each task and persists a schema-valid context checkpoint before worker
+rotation, context compaction, pause, or interruption.
+
+A fresh worker must be able to continue from durable artifacts without loading the
+prior transcript. Summaries and dense representations cannot overwrite primary
+evidence or erase identifiers, hashes, decisions, failures, unknowns, or unresolved
+questions. Any lossy reduction is labeled and cannot be the sole source for a
+contract claim or parity verdict.
+
 ### Goal-to-requirement traceability
 
 | Product goal | Primary requirements |
@@ -487,6 +588,8 @@ automation are versioned or migrated explicitly.
 | Emit auditable artifacts and code changes | FR-3, FR-10, NFR-4 |
 | Support external agents | FR-12, NFR-5, NFR-6 |
 | Install and operate Mew as a product | FR-14, NFR-9 |
+| Let humans and agents build under one proof model | FR-15, NFR-5, NFR-6 |
+| Bound context growth and resume fresh workers | FR-1, FR-16, NFR-1, NFR-10 |
 
 ## 12. Non-functional requirements
 
@@ -543,6 +646,20 @@ an existing installation, preserve user data by default, and provide a documente
 rollback path. Secrets never appear in command-line arguments, installer logs, or
 release artifacts.
 
+### NFR-10: context efficiency and information integrity
+
+Token and context use are measured per task, phase, model, and artifact class.
+Mew reserves configurable context headroom and rotates workers before provider
+limits force uncontrolled truncation. Context reuse is selective: unchanged
+artifacts are referenced by identity, and only task-relevant excerpts or verified
+shape-specific dense forms are injected.
+
+Optimization claims require a baseline, representative corpus, answer-equivalence
+or task-outcome checks, and total-token accounting that includes retrieval. A
+smaller prompt is not a success if it increases retries, omits relevant state, or
+changes the answer. Correctness, evidence integrity, and reproducibility take
+priority over compression ratio.
+
 ## 13. Run artifacts
 
 The initial on-disk shape is:
@@ -560,6 +677,8 @@ The initial on-disk shape is:
 ├── behavioral-contract.yaml
 ├── migration-plan.yaml
 ├── decisions.jsonl
+├── tasks/
+├── context-checkpoints/
 ├── checkpoints/
 ├── parity-report.json
 └── migration-report.md
@@ -638,8 +757,8 @@ The first browser slice supports public or locally hosted websites with finite r
 General desktop control, mobile applications, authenticated third-party systems, hardware, production cutover, and open-ended black-box discovery follow only after the underlying run, evidence, contract, and verification model is reliable.
 
 The implementation sequence and milestone ownership for these slices are defined
-in [`PHASES.md`](../PHASES.md). M0 through M6 deliver the first complete
-source-available loop; M7 applies the same guarantees to browser-observed targets.
+in [`PHASES.md`](../PHASES.md). M0 through M7 deliver the first complete
+source-available loop; M8 applies the same guarantees to browser-observed targets.
 
 ## 17. Risks
 
@@ -657,7 +776,25 @@ Mitigation: require authorization and provenance, separate interaction contracts
 
 ### Long runs drift or loop
 
-Mitigation: durable phase budgets, heartbeats, checkpoints, repeated-action detection, cost limits, and pause states with a clear reason.
+Mitigation: durable phase and task budgets, heartbeats, checkpoints,
+repeated-action detection, cost limits, and pause states with a clear reason.
+Workers receive bounded task packets instead of the full run transcript. Before
+context rotation or compaction, Mew persists a context checkpoint and verifies its
+artifact references; a fresh worker resumes from that checkpoint.
+
+### Context compression hides required information or increases total cost
+
+Mitigation: primary evidence and approved artifacts are never replaced by a
+summary. Prefer task-scoped retrieval and shape-specific lossless densification.
+Treat generic cache markers and lossy summaries as optimization hypotheses, count
+retrieval and retry tokens, and verify task outcomes on a representative corpus
+before enabling an optimization by default.
+
+### Autonomy removes useful operator control
+
+Mitigation: manual, supervised, and delegated builders share one run and proof
+model. Supervised is the default, autonomy is selected per slice, and semantic
+approvals remain external to the builder.
 
 ### Skills become an untestable collection of prompts
 
@@ -675,6 +812,8 @@ The existing Rust engine, protocol, server, TUI, skills runtime, persistence, an
 - per-run baseline and candidate workspaces instead of server-wide current-directory context;
 - durable state and evidence stores;
 - approval and artifact events in the protocol;
+- bounded task graphs, task packets, context packs, and context checkpoints;
+- a replaceable builder interface with manual, supervised, and delegated modes;
 - sandbox and process lifecycle management;
 - driver bridges for CLI, HTTP, fixtures, browser, and later computer use;
 - a provider-neutral visual-analyzer bridge with screenshot preprocessing,
@@ -687,17 +826,21 @@ The model reasons about ambiguity. Mew owns mechanics, policy, durable state, an
 
 ## 19. Release criteria for the first complete loop
 
-The first complete Mew release, corresponding to M0 through M6 in
+The first complete Mew release, corresponding to M0 through M7 in
 [`PHASES.md`](../PHASES.md), is ready when an operator can:
 
 1. create a run from a source repository and evolution goal;
 2. reproduce the baseline in an isolated workspace;
 3. obtain an evidence-backed contract and approve it;
 4. approve a sliced migration plan;
-5. interrupt and resume implementation;
-6. compare baseline and candidate on deterministic fixtures;
-7. receive a reviewable pull request and artifact bundle;
-8. reproduce the parity verdict from a clean environment;
-9. complete the process without editing runtime state by hand.
+5. choose manual, supervised, or delegated implementation per slice;
+6. inspect the bounded task graph and its completion criteria;
+7. rotate to a fresh worker and continue from a context checkpoint without the
+   prior transcript;
+8. interrupt and resume implementation;
+9. compare baseline and candidate on deterministic fixtures;
+10. receive a reviewable pull request and artifact bundle;
+11. reproduce the parity verdict from a clean environment;
+12. complete the process without editing runtime state by hand.
 
 Browser and computer-use capability is considered mature only when the same contract, evidence, approval, durability, and verification guarantees apply to externally observed applications.
