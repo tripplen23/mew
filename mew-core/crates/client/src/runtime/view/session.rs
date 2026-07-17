@@ -1,8 +1,8 @@
+use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Paragraph, Wrap};
-use ratatui::Frame;
 
 use mewcode_protocol::Mode;
 
@@ -12,7 +12,7 @@ use super::overlay::{
     theme_lines, tools_lines,
 };
 use super::park_cursor_in_field;
-use super::theme::{Theme, COMPOSER_HORIZONTAL_PAD, COMPOSER_LEFT_PAD};
+use super::theme::{COMPOSER_HORIZONTAL_PAD, COMPOSER_LEFT_PAD, Theme};
 use super::transcript::render_transcript;
 
 /// Maximum height (rows) the input field may grow to. Wrapped text beyond

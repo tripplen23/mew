@@ -1,14 +1,14 @@
+use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Clear, Paragraph, Wrap};
-use ratatui::Frame;
 
-use mewcode_protocol::tool::tools_for_mode;
 use mewcode_protocol::Mode;
 use mewcode_protocol::ModelId;
+use mewcode_protocol::tool::tools_for_mode;
 
-use super::super::model::{SessionState, ThemeId, SLASH_COMMANDS};
+use super::super::model::{SLASH_COMMANDS, SessionState, ThemeId};
 
 /// The `/tools` overlay body: the tools available in the active mode plus
 /// the total count. Mirrors the mode gating in the engine's tool registry
@@ -135,11 +135,7 @@ pub(super) fn render_slash_picker(frame: &mut Frame, area: Rect, s: &SessionStat
 }
 
 fn fallback(value: u16, default: u16) -> u16 {
-    if value == 0 {
-        default
-    } else {
-        value
-    }
+    if value == 0 { default } else { value }
 }
 
 /// Body of the `/model` overlay: every entry from `GET /models`, with the

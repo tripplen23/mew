@@ -8,12 +8,12 @@ use mewcode_protocol::{Message, MessagePart, Mode};
 use crate::net::{CreateSessionRequest, SessionPatch};
 
 use super::super::model::{
-    Cmd, Overlay, PastedText, SessionState, StreamingState, Toast, QUIT_COMMAND,
+    Cmd, Overlay, PastedText, QUIT_COMMAND, SessionState, StreamingState, Toast,
 };
 use super::key_to_input;
 use super::picker::{on_model_picker_key, on_session_list_key};
 use super::slash::{
-    on_slash_picker_key, open_slash_picker, slash_default_cursor, SlashPickerResult,
+    SlashPickerResult, on_slash_picker_key, open_slash_picker, slash_default_cursor,
 };
 
 const COMPACT_PASTE_CHARS: usize = 120;

@@ -19,8 +19,7 @@ use std::sync::Arc;
 use axum::Router;
 use mewcode_engine::memory::MemoryStore;
 use mewcode_protocol::routes::{
-    CHAT, HEALTH, MEMORY_GET, MEMORY_POST, MODELS, SESSION_BY_ID, SESSIONS, SKILLS,
-    STORAGE_STATUS,
+    CHAT, HEALTH, MEMORY_GET, MEMORY_POST, MODELS, SESSION_BY_ID, SESSIONS, SKILLS, STORAGE_STATUS,
 };
 use tower_http::trace::TraceLayer;
 use utoipa::OpenApi;
