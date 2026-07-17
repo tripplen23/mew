@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for contributing to mewcode.
+Thanks for contributing to Mew.
 
 ## Build
 
@@ -192,10 +192,31 @@ for d in &descriptors {
 
 ## Pull requests
 
-- Title: one-line summary of the change.
+- Title: one-line summary following [Conventional Commits](https://www.conventionalcommits.org/) format (see below).
 - Body: 2–3 sentences on *why*. If you're fixing a bug, link the issue.
 - Run `cargo test` and `cargo clippy` before opening.
 - If you change the public protocol (`protocol::` types, `StreamEvent`, etc.), call it out in the description — downstream consumers need to know.
+
+### Commits and PR titles
+
+PR titles and squash-merge commit titles are the **source of the changelog and the next version number**. The repo uses [release-please](https://github.com/googleapis/release-please-action) which reads these titles automatically on every merge to `master`.
+
+Format:
+
+```text
+feat: add schema_validate worker tool
+fix: keep baseline files immutable on read-only workers
+docs: clarify builder modes in PRD
+chore: bump tokio to 1.40
+feat!: replace global project root with per-run RunContext
+```
+
+Rules:
+
+- One of `feat`, `fix`, `perf`, `refactor`, `docs`, `test`, `chore`, `build`, `ci` at the start.
+- Lowercase summary, no trailing period, ≤72 characters.
+- Breaking changes: append `!` after the type (e.g. `feat!:`) and explain under the **Breaking change** heading in the PR template.
+- Version bumps: `feat` → minor, `fix`/`perf` → patch, `feat!`/`fix!` → major.
 
 ### Stacked PRs
 
@@ -222,3 +243,7 @@ PR (`feat(tui): /model and /session slash commands`) ships the picker
 overlays and `PATCH /sessions`, and the follow-up (`@-mention` popover)
 branches off that first PR's head because the mention picker needs the
 picker-overlay machinery the first slice introduced.
+
+## License
+
+By contributing, you agree that your contributions will be licensed under the [MIT License](LICENSE) at the root of this repository.
