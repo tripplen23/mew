@@ -33,7 +33,7 @@
 
 **Extract behavioral DNA. Evolve the implementation. Prove parity.**
 
-Mew is a Rust AI agent harness for migrating and reconstructing software. It reproduces an existing system, observes what users and dependent systems can see, turns those findings into an evidence-linked contract, and builds the replacement against that contract.
+Mew is an AI agent harness for migrating and reconstructing software. It reproduces an existing system, observes what users and dependent systems can see, turns those findings into an evidence-linked contract, and builds the replacement against that contract.
 
 Typical goals:
 
@@ -67,6 +67,7 @@ Mew is experimental. Keep a human in the loop for production and irreversible ac
 ```bash
 # Build from source (until one-command install ships in M11):
 git clone https://github.com/tripplen23/mew && cd mew/mew-core
+cargo run -p mewcode-server
 cargo run -p mewcode-client -- tui
 ```
 
