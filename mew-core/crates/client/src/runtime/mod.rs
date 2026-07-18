@@ -229,7 +229,17 @@ fn dispatch(cmd: Cmd, api: &ApiClient, tx: &mpsc::Sender<Msg>) {
             let api = api.clone();
             let tx = tx.clone();
             tokio::spawn(async move {
-                let result = api.models().await.map_err(|e| e.to_string());
+                let result = api
+                    .providers()
+                    .await
+                    .map(|providers| {
+                        providers
+                            .into_iter()
+                            .filter(|provider| provider.available)
+                            .flat_map(|provider| provider.models)
+                            .collect()
+                    })
+                    .map_err(|e| e.to_string());
                 let _ = tx.send(Msg::ModelsFetched(result)).await;
             });
         }

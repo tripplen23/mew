@@ -150,7 +150,7 @@ impl Harness {
         // Build the system prompt, optionally injecting durable memory.
         let system_prompt = self.compose_system_prompt();
 
-        let provider = Provider::for_model(self.model, &cfg.api_key, &cfg.base_url)?;
+        let provider = Provider::for_model(self.model, &cfg)?;
         trace::record_turn_input(&tracing::Span::current(), &system_prompt, &user_text);
 
         // Emit Start before the first token so the client can prepare.

@@ -92,7 +92,7 @@ impl Agent {
                     .build();
                 stream::run_agent_stream(agent, user_text, history, tx).await
             }
-            Provider::OpenAi(p) => {
+            Provider::OpenCodeGo(p) | Provider::OpenAi(p) => {
                 let agent = p
                     .client()
                     .agent(model_id)

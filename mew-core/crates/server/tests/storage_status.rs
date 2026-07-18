@@ -1,5 +1,3 @@
-//! Property 9: Status truthfulness.
-//!
 //! `GET /storage/status` always reports the backend that was actually selected
 //! at startup, and its `data_dir` matches that backend: a memory-backed app
 //! reports `"memory"` / `null`; an `FsStore`-over-tempdir app reports
@@ -9,8 +7,6 @@
 //! Driven app-level (via `tower`'s `oneshot` against `build_app`) so the
 //! property covers routing and JSON serialization, matching the harness in
 //! `sessions_api.rs`.
-//!
-//! **Validates: Requirements 5.2, 5.3**
 
 use std::sync::Arc;
 
@@ -34,6 +30,7 @@ fn test_config() -> ServerConfig {
         host: "127.0.0.1".into(),
         port: 0,
         opencode_go_api_key: "test-key".into(),
+        openai_api_key: None,
         default_model: None,
         log: "off".into(),
         skills: Default::default(),

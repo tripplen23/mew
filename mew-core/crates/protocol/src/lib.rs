@@ -20,7 +20,7 @@ pub mod tool;
 pub use event::StreamEvent;
 pub use message::{Message, MessagePart, Role, ToolCall, ToolResult};
 pub use mode::{Mode, ModeParseError};
-pub use model::{ModelId, ModelKind};
+pub use model::{ModelId, ModelKind, ProviderId};
 pub use skill::{
     GLOBAL_SKILLS_DIR, PROJECT_SKILLS_DIR, SKILL_FILE, Skill, SkillError, parse_skill_md,
     read_skill_subfile,

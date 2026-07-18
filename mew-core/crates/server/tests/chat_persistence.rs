@@ -29,6 +29,7 @@ fn test_config() -> ServerConfig {
         host: "127.0.0.1".into(),
         port: 0,
         opencode_go_api_key: "test-key".into(),
+        openai_api_key: None,
         default_model: None,
         log: "off".into(),
         skills: Default::default(),
@@ -39,6 +40,7 @@ fn user_turn(session_id: Uuid, text: &str) -> ChatRequest {
     ChatRequest {
         session_id,
         model: ModelId::default(),
+        provider: None,
         mode: Mode::default(),
         messages: vec![Message {
             id: Uuid::new_v4(),

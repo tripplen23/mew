@@ -1,4 +1,4 @@
-use crate::{Message, MessagePart, Mode, ModelId};
+use crate::{Message, MessagePart, Mode, ModelId, ProviderId};
 
 /// Server → client streaming events. Sent over SSE as JSON lines; the
 /// shape mirrors the AI SDK's `UIMessageStreamResponse`.
@@ -69,6 +69,9 @@ pub struct ChatRequest {
     pub session_id: uuid::Uuid,
     /// Model to use.
     pub model: ModelId,
+    /// Provider to route through. `None` defaults to OpenCodeGo.
+    #[serde(default)]
+    pub provider: Option<ProviderId>,
     /// Mode (Build or Plan).
     pub mode: Mode,
     /// Full message history. The last entry is the user's new turn;

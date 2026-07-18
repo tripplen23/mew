@@ -3,8 +3,8 @@
 use eventsource_stream::Eventsource;
 use futures::{Stream, StreamExt};
 use mewcode_protocol::event::ChatRequest;
-use mewcode_protocol::routes::{CHAT, HEALTH, MODELS, SESSION_BY_ID, SESSIONS, SKILLS};
-use mewcode_protocol::{Message, Mode, ModelId, ModelKind, StreamEvent};
+use mewcode_protocol::routes::{CHAT, HEALTH, PROVIDERS, SESSION_BY_ID, SESSIONS, SKILLS};
+use mewcode_protocol::{Message, Mode, ModelId, ModelKind, ProviderId, StreamEvent};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
@@ -47,15 +47,30 @@ pub struct HealthResponse {
     pub version: String,
 }
 
-/// One entry in the model registry returned by `GET /models`.
+/// One model entry inside the provider registry.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ModelEntry {
     /// Provider-side model id.
     pub id: String,
     /// Human-friendly display name.
     pub display_name: String,
-    /// Which OpenCode Go endpoint serves the model.
+    /// Which provider serves this model.
+    pub provider: ProviderId,
+    /// Which endpoint protocol this model speaks.
     pub kind: ModelKind,
+}
+
+/// One provider entry returned by `GET /providers`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ProviderEntry {
+    /// Provider id used on the wire.
+    pub id: ProviderId,
+    /// Human-friendly provider name.
+    pub display_name: String,
+    /// Whether this provider can currently be used.
+    pub available: bool,
+    /// Available models for this provider.
+    pub models: Vec<ModelEntry>,
 }
 
 /// One entry in the skill catalog returned by `GET /skills`. Mirrors the
@@ -158,16 +173,16 @@ impl ApiClient {
             .await
     }
 
-    /// `GET /models` — fetch the model registry.
+    /// `GET /providers` — fetch the provider registry.
     ///
     /// A per-request 10 s timeout bounds exactly this call, so a hung registry
     /// fetch fails fast (into the picker's fallback) instead of wedging the
     /// dialog open forever. Transport error, non-success status, decode
     /// failure, or timeout all surface as one [`NetError`].
-    pub async fn models(&self) -> Result<Vec<ModelEntry>, NetError> {
+    pub async fn providers(&self) -> Result<Vec<ProviderEntry>, NetError> {
         let resp = self
             .inner
-            .get(format!("{}{}", self.base_url, MODELS))
+            .get(format!("{}{}", self.base_url, PROVIDERS))
             .timeout(Duration::from_secs(10))
             .send()
             .await?;

@@ -58,14 +58,16 @@ pub struct ServerConfig {
     pub port: u16,
     /// OpenCode Go API key. Required.
     pub opencode_go_api_key: String,
+    /// Native OpenAI API key. Optional.
+    #[serde(default)]
+    pub openai_api_key: Option<String>,
     /// Default model.
     #[serde(default)]
     pub default_model: Option<String>,
     /// Log level.
     #[serde(default = "default_log")]
     pub log: String,
-    /// Skill configuration. Optional — when absent, only the default
-    /// discovery locations (global + project + dev) are used.
+    /// Skill configuration.
     #[serde(default)]
     pub skills: SkillServerConfig,
 }
@@ -102,6 +104,13 @@ impl ServerConfig {
         if let Ok(key) = std::env::var(OPENCODE_GO_API_KEY) {
             if figment.find_metadata("opencode_go_api_key").is_none() {
                 figment = figment.merge(("opencode_go_api_key", key));
+            }
+        }
+
+        // `OPENAI_API_KEY` is the canonical env var for native OpenAI.
+        if let Ok(key) = std::env::var("OPENAI_API_KEY") {
+            if figment.find_metadata("openai_api_key").is_none() {
+                figment = figment.merge(("openai_api_key", key));
             }
         }
 

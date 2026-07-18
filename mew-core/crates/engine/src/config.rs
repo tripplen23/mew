@@ -1,7 +1,7 @@
 use std::env;
 
 use mewcode_protocol::ModelId;
-use mewcode_protocol::env::OPENCODE_GO_API_KEY;
+use mewcode_protocol::env::{OPENAI_API_KEY, OPENCODE_GO_API_KEY};
 
 use crate::error::EngineError;
 
@@ -19,6 +19,10 @@ pub const ENV_DEFAULT_MODEL: &str = "MEWCODE_DEFAULT_MODEL";
 pub struct EngineConfig {
     /// OpenCode Go subscription key.
     pub api_key: String,
+    /// Native OpenAI API key.
+    pub openai_api_key: Option<String>,
+    /// Base URL for the native OpenAI API.
+    pub openai_base_url: Option<String>,
     /// Default model used when the client does not specify one.
     pub default_model: ModelId,
     /// Base URL of the OpenCode Go API. Defaults to the production endpoint.
@@ -29,7 +33,8 @@ impl EngineConfig {
     /// Load the configuration from process environment.
     ///
     /// Required: `OPENCODE_GO_API_KEY`.
-    /// Optional: `MEWCODE_ENGINE_BASE_URL` (defaults to OpenCode Go production).
+    /// Optional: `MEWCODE_ENGINE_BASE_URL` (defaults to OpenCode Go production),
+    /// `OPENAI_API_KEY`.
     pub fn from_env() -> Result<Self, EngineError> {
         let api_key = env::var(OPENCODE_GO_API_KEY)
             .ok()
@@ -43,8 +48,14 @@ impl EngineConfig {
             .and_then(|s| s.parse().ok())
             .unwrap_or(ModelId::DEFAULT);
 
+        let openai_api_key = env::var(OPENAI_API_KEY)
+            .ok()
+            .filter(|s| !s.trim().is_empty());
+
         Ok(Self {
             api_key,
+            openai_api_key,
+            openai_base_url: None,
             default_model,
             base_url,
         })

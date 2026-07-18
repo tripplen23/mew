@@ -6,6 +6,7 @@ use ratatui::widgets::{Block, Clear, Paragraph, Wrap};
 
 use mewcode_protocol::Mode;
 use mewcode_protocol::ModelId;
+use mewcode_protocol::ProviderId;
 use mewcode_protocol::tool::tools_for_mode;
 
 use super::super::model::{SLASH_COMMANDS, SessionState, ThemeId};
@@ -138,9 +139,10 @@ fn fallback(value: u16, default: u16) -> u16 {
     if value == 0 { default } else { value }
 }
 
-/// Body of the `/model` overlay: every entry from `GET /models`, with the
-/// active session's current model tagged and the cursor row highlighted.
-/// `None` `s.model_picker.models` is the "fetch in flight" / "fetch failed" state.
+/// Body of the `/model` overlay: every provider model entry, grouped
+/// by provider, with the active session's current model tagged and the
+/// cursor row highlighted. `None` `s.model_picker.models` is the "fetch
+/// in flight" / "fetch failed" state.
 ///
 /// The helper returns the **visible window** of rows (after applying
 /// `s.model_picker.scroll`) so the list scrolls cleanly when there are
@@ -150,9 +152,7 @@ fn fallback(value: u16, default: u16) -> u16 {
 ///
 /// `max_width` is the inner width of the overlay panel; each row is
 /// truncated to fit so the picker never wraps a model onto two visual
-/// lines. Without that, `model_picker.cursor` (one per model) would desync
-/// from the visual-row cursor (one per wrapped line) and the highlight
-/// would drift by the wrap count on every Down press.
+/// lines.
 pub fn model_picker_lines(s: &SessionState, max_width: usize) -> Vec<Line<'static>> {
     let Some(entries) = s.model_picker.models.as_ref() else {
         return vec![Line::from(Span::styled(
@@ -171,25 +171,74 @@ pub fn model_picker_lines(s: &SessionState, max_width: usize) -> Vec<Line<'stati
         .as_ref()
         .map(|sess| sess.model)
         .or(s.pending_model);
-    let start = s.model_picker.scroll.min(entries.len().saturating_sub(1));
-    entries
-        .iter()
+
+    // Build flat rows with an offset map so the cursor still indexes into
+    // entries while we insert group headers.
+    let mut rows: Vec<Row> = Vec::with_capacity(entries.len() + 4);
+    let mut prev_provider: Option<ProviderId> = None;
+    for (i, m) in entries.iter().enumerate() {
+        if prev_provider != Some(m.provider) {
+            rows.push(Row::Header {
+                label: m.provider.to_string(),
+            });
+            prev_provider = Some(m.provider);
+        }
+        rows.push(Row::Model {
+            entry_idx: i,
+            is_current: m.id.parse::<ModelId>().ok() == current,
+        });
+    }
+
+    // Translate cursor from entry-index to row-index.
+    let cursor_row = cursor_to_row(&rows, s.model_picker.cursor);
+
+    let start = s.model_picker.scroll.min(rows.len().saturating_sub(1));
+    rows.iter()
         .enumerate()
         .skip(start)
-        .map(|(i, m)| {
-            let is_current = m.id.parse::<ModelId>().ok() == current;
-            let marker = if is_current { "*" } else { " " };
-            let style = if i == s.model_picker.cursor {
-                Style::default().fg(Color::Black).bg(Color::Cyan)
-            } else {
-                Style::default()
-            };
-            Line::from(Span::styled(
-                format_model_row(marker, &m.display_name, &m.id, max_width),
-                style,
-            ))
+        .map(|(row_i, row)| match row {
+            Row::Header { label } => {
+                let style = Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD);
+                Line::from(Span::styled(format!(" {} ", label), style))
+            }
+            Row::Model {
+                entry_idx,
+                is_current,
+            } => {
+                let m = &entries[*entry_idx];
+                let marker = if *is_current { "*" } else { " " };
+                let style = if row_i == cursor_row {
+                    Style::default().fg(Color::Black).bg(Color::Cyan)
+                } else {
+                    Style::default()
+                };
+                Line::from(Span::styled(
+                    format_model_row(marker, &m.display_name, &m.id, max_width),
+                    style,
+                ))
+            }
         })
         .collect()
+}
+
+enum Row {
+    Header { label: String },
+    Model { entry_idx: usize, is_current: bool },
+}
+
+fn cursor_to_row(rows: &[Row], cursor: usize) -> usize {
+    let mut model_count = 0;
+    for (i, row) in rows.iter().enumerate() {
+        if let Row::Model { .. } = row {
+            if model_count == cursor {
+                return i;
+            }
+            model_count += 1;
+        }
+    }
+    cursor.min(rows.len().saturating_sub(1))
 }
 
 /// Format a single model-picker row, truncated to fit `max_width` so
