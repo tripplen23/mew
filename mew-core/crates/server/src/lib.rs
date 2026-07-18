@@ -19,7 +19,8 @@ use std::sync::Arc;
 use axum::Router;
 use mewcode_engine::memory::MemoryStore;
 use mewcode_protocol::routes::{
-    CHAT, HEALTH, MEMORY_GET, MEMORY_POST, MODELS, SESSION_BY_ID, SESSIONS, SKILLS, STORAGE_STATUS,
+    CHAT, HEALTH, MEMORY_GET, MEMORY_POST, PROVIDERS, SESSION_BY_ID, SESSIONS, SKILLS,
+    STORAGE_STATUS,
 };
 use tower_http::trace::TraceLayer;
 use utoipa::OpenApi;
@@ -57,7 +58,10 @@ impl AppState {
 pub fn build_app(state: AppState) -> Router {
     Router::new()
         .route(HEALTH, axum::routing::get(routes::health::health))
-        .route(MODELS, axum::routing::get(routes::models::list_models))
+        .route(
+            PROVIDERS,
+            axum::routing::get(routes::providers::list_providers),
+        )
         .route(SKILLS, axum::routing::get(routes::skills::list_skills))
         .route(
             SESSIONS,

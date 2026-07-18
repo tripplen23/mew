@@ -1,38 +1,47 @@
-//! OpenCode Go provider routing. Hides which endpoint (`/v1/messages`
-//! vs `/v1/chat/completions`) a given [`ModelId`] needs so the agent layer
-//! can ask for a provider by model alone.
+//! Provider routing. Selects the right Rig client + credentials for the
+//! model's provider, so the agent layer can ask for a provider by model alone.
 //!
 //! Thin wrappers over [rig-core](https://docs.rs/rig-core/latest/rig_core/)'
 //! [Anthropic](https://docs.rs/rig-core/latest/rig_core/providers/anthropic/index.html)
 //! and [OpenAI](https://docs.rs/rig-core/latest/rig_core/providers/openai/index.html)
-//! provider clients. The actual Rig
-//! [`Agent`](https://docs.rs/rig-core/latest/rig_core/agent/struct.Agent.html)
-//! is built and driven by [`crate::agent::Agent`]; this module only selects
-//! the right Rig client for the model kind.
+//! provider clients.
 
-use mewcode_protocol::{ModelId, ModelKind};
+use mewcode_protocol::{ModelId, ModelKind, ProviderId};
 
+use crate::config::EngineConfig;
 use crate::error::EngineError;
 
 /// A provider client capable of issuing chat-completion requests.
 #[derive(Clone)]
 pub enum Provider {
-    /// Anthropic-compatible provider, hits `/v1/messages`.
+    /// OpenCode Go Anthropic-compatible endpoint (`/v1/messages`).
     Anthropic(AnthropicProvider),
-    /// OpenAI-compatible provider, hits `/v1/chat/completions`.
+    /// OpenCode Go OpenAI-compatible endpoint (`/v1/chat/completions`).
+    OpenCodeGo(OpenAiProvider),
+    /// Native OpenAI API at `api.openai.com/v1`.
     OpenAi(OpenAiProvider),
 }
 
 impl Provider {
-    /// Build a provider for the given model.
-    pub fn for_model(model: ModelId, api_key: &str, base_url: &str) -> Result<Self, EngineError> {
+    /// Build a provider for the given model, reading credentials from config.
+    pub fn for_model(model: ModelId, cfg: &EngineConfig) -> Result<Self, EngineError> {
+        let (api_key, base_url) = match model.provider() {
+            ProviderId::OpenCodeGo => (cfg.api_key.as_str(), cfg.base_url.as_str()),
+            ProviderId::OpenAi => {
+                let key = cfg
+                    .openai_api_key
+                    .as_deref()
+                    .ok_or(EngineError::MissingNativeApiKey("OPENAI_API_KEY"))?;
+                (key, "https://api.openai.com/v1")
+            }
+        };
+
         let provider = match model.kind() {
             ModelKind::AnthropicMessages => {
                 Provider::Anthropic(AnthropicProvider::new(api_key, base_url))
             }
-            ModelKind::OpenAiChatCompletions => {
-                Provider::OpenAi(OpenAiProvider::new(api_key, base_url))
-            }
+            ModelKind::OpenCodeGo => Provider::OpenCodeGo(OpenAiProvider::new(api_key, base_url)),
+            ModelKind::OpenAi => Provider::OpenAi(OpenAiProvider::new(api_key, base_url)),
         };
         Ok(provider)
     }

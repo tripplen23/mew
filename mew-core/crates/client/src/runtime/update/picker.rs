@@ -91,10 +91,19 @@ fn cursor_move(s: &mut SessionState, delta: i32) {
             }
             let max = (models.len() - 1) as i32;
             s.model_picker.cursor = (s.model_picker.cursor as i32 + delta).clamp(0, max) as usize;
+            let cursor_row = model_cursor_row(models, s.model_picker.cursor);
+            let header_row = model_header_row(models, s.model_picker.cursor);
+            let len = model_visual_len(models);
             s.model_picker.scroll = clamp_picker_scroll(
                 s.model_picker.scroll,
-                s.model_picker.cursor,
-                models.len(),
+                cursor_row,
+                len,
+                s.model_picker.viewport.max(s.model_picker.viewport_max) as usize,
+            );
+            s.model_picker.scroll = prefer_visible_header(
+                s.model_picker.scroll,
+                header_row,
+                cursor_row,
                 s.model_picker.viewport.max(s.model_picker.viewport_max) as usize,
             );
         }
@@ -131,10 +140,86 @@ fn clamp_picker_scroll(scroll: usize, cursor: usize, len: usize, visible_rows: u
 
 /// Re-clamp model picker scroll after async model data changes.
 pub(super) fn clamp_model_picker_scroll(s: &mut SessionState) {
-    let len = s.model_picker.models.as_ref().map(Vec::len).unwrap_or(0);
+    let (len, cursor) = s
+        .model_picker
+        .models
+        .as_ref()
+        .map(|models| {
+            (
+                model_visual_len(models),
+                model_cursor_row(models, s.model_picker.cursor),
+            )
+        })
+        .unwrap_or((0, 0));
     let viewport = s.model_picker.viewport.max(s.model_picker.viewport_max) as usize;
-    s.model_picker.scroll =
-        clamp_picker_scroll(s.model_picker.scroll, s.model_picker.cursor, len, viewport);
+    s.model_picker.scroll = clamp_picker_scroll(s.model_picker.scroll, cursor, len, viewport);
+    if let Some(models) = s.model_picker.models.as_ref() {
+        s.model_picker.scroll = prefer_visible_header(
+            s.model_picker.scroll,
+            model_header_row(models, s.model_picker.cursor),
+            cursor,
+            viewport,
+        );
+    }
+}
+
+fn prefer_visible_header(
+    scroll: usize,
+    header: usize,
+    cursor: usize,
+    visible_rows: usize,
+) -> usize {
+    if visible_rows == 0 || header >= scroll || cursor.saturating_sub(header) >= visible_rows {
+        return scroll;
+    }
+    header
+}
+
+fn model_header_row(models: &[crate::net::ModelEntry], cursor: usize) -> usize {
+    let mut row = 0;
+    let mut prev = None;
+    let mut header = 0;
+    for (i, model) in models.iter().enumerate() {
+        if prev != Some(model.provider) {
+            header = row;
+            row += 1;
+            prev = Some(model.provider);
+        }
+        if i == cursor {
+            return header;
+        }
+        row += 1;
+    }
+    header
+}
+
+fn model_cursor_row(models: &[crate::net::ModelEntry], cursor: usize) -> usize {
+    let mut row = 0;
+    let mut prev = None;
+    for (i, model) in models.iter().enumerate() {
+        if prev != Some(model.provider) {
+            row += 1;
+            prev = Some(model.provider);
+        }
+        if i == cursor {
+            return row;
+        }
+        row += 1;
+    }
+    row.saturating_sub(1)
+}
+
+fn model_visual_len(models: &[crate::net::ModelEntry]) -> usize {
+    let mut len = 0;
+    let mut prev = None;
+    for model in models {
+        if prev != Some(model.provider) {
+            len += 1;
+            prev = Some(model.provider);
+        }
+        len += 1;
+    }
+    len
 }
 
 /// Re-clamp session list scroll after async list data changes.

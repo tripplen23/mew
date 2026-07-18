@@ -35,7 +35,7 @@ pub struct ErrorResponse {
     ),
     paths(
         routes::health::health,
-        routes::models::list_models,
+        routes::providers::list_providers,
         routes::skills::list_skills,
         routes::storage::status,
         routes::sessions::list,
@@ -53,7 +53,8 @@ pub struct ErrorResponse {
             SessionSummary,
             SessionPatch,
             crate::routes::health::HealthResponse,
-            crate::routes::models::ModelEntry,
+            crate::routes::providers::ModelEntry,
+            crate::routes::providers::ProviderEntry,
             crate::routes::skills::SkillEntry,
             crate::routes::sessions::CreateSessionRequest,
             crate::routes::storage::StorageStatus,
@@ -67,6 +68,7 @@ pub struct ErrorResponse {
             mewcode_protocol::Mode,
             mewcode_protocol::ModelId,
             mewcode_protocol::ModelKind,
+            mewcode_protocol::ProviderId,
         )
     ),
     tags(

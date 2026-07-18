@@ -7,8 +7,8 @@
 /// `GET /health` — liveness probe.
 pub const HEALTH: &str = "/health";
 
-/// `GET /models` — model registry.
-pub const MODELS: &str = "/models";
+/// `GET /providers` — provider registry with their models.
+pub const PROVIDERS: &str = "/providers";
 
 /// `GET /skills` — loaded skill catalog.
 pub const SKILLS: &str = "/skills";

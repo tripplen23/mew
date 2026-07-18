@@ -65,6 +65,7 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
                     return Cmd::StartChat(ChatRequest {
                         session_id: live.id,
                         model: live.model,
+                        provider: None,
                         mode: live.mode,
                         messages: live.messages.clone(),
                     });

@@ -1,10 +1,11 @@
 // Feature: session-flow-and-engine-v0, provider routing matches the model kind
 //
 // For any `ModelId`, `Provider::for_model` builds the `Anthropic` variant
-// exactly when `model.kind()` is `AnthropicMessages`, and the `OpenAi` variant
-// exactly when it is `OpenAiChatCompletions`.
+// exactly when `model.kind()` is `AnthropicMessages`, and the `OpenCodeGo`
+// variant exactly when it is `OpenCodeGo`.
 
 use mewcode_engine::Provider;
+use mewcode_engine::config::EngineConfig;
 use mewcode_protocol::{ModelId, ModelKind};
 use proptest::prelude::*;
 
@@ -19,7 +20,14 @@ proptest! {
     #[test]
     fn provider_variant_matches_model_kind(model in any_model()) {
         // Dummy credentials/base: provider construction is offline (no request).
-        let provider = Provider::for_model(model, "test-key", "https://example.invalid")
+        let cfg = EngineConfig {
+            api_key: "test-key".into(),
+            openai_api_key: Some("test-openai-key".into()),
+            openai_base_url: None,
+            default_model: ModelId::default(),
+            base_url: "https://example.invalid".into(),
+        };
+        let provider = Provider::for_model(model, &cfg)
             .expect("for_model is infallible");
 
         match model.kind() {
@@ -29,7 +37,13 @@ proptest! {
                     "expected Anthropic variant for {model:?}"
                 );
             }
-            ModelKind::OpenAiChatCompletions => {
+            ModelKind::OpenCodeGo => {
+                prop_assert!(
+                    matches!(provider, Provider::OpenCodeGo(_)),
+                    "expected OpenCodeGo variant for {model:?}"
+                );
+            }
+            ModelKind::OpenAi => {
                 prop_assert!(
                     matches!(provider, Provider::OpenAi(_)),
                     "expected OpenAi variant for {model:?}"

@@ -226,6 +226,7 @@ pub(super) fn on_session_submit(s: &mut SessionState, toast: &mut Option<Toast>)
         Cmd::StartChat(ChatRequest {
             session_id: session.id,
             model: session.model,
+            provider: None,
             mode: session.mode,
             messages: session.messages.clone(),
         })

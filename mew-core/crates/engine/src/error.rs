@@ -7,7 +7,11 @@ pub enum EngineError {
     #[error("OPENCODE_GO_API_KEY is not set")]
     MissingApiKey,
 
-    /// The HTTP request to OpenCode Go failed.
+    /// A native provider's API key was not found.
+    #[error("{0} is not set")]
+    MissingNativeApiKey(&'static str),
+
+    /// The HTTP request upstream failed.
     #[error("upstream error: {0}")]
     Upstream(#[from] reqwest::Error),
 

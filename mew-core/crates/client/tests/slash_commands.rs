@@ -272,7 +272,8 @@ fn model_picker_enter_emits_patch_session_cmd() {
     active_state(&mut app).model_picker.models = Some(vec![mewcode_client::net::ModelEntry {
         id: "minimax-m3".into(),
         display_name: "MiniMax M3".into(),
-        kind: mewcode_protocol::ModelKind::OpenAiChatCompletions,
+        provider: mewcode_protocol::ProviderId::OpenCodeGo,
+        kind: mewcode_protocol::ModelKind::OpenCodeGo,
     }]);
 
     // Open the picker and press Enter on the only row.
@@ -299,11 +300,13 @@ fn model_picker_before_session_sets_pending_model() {
         mewcode_client::net::ModelEntry {
             id: "minimax-m3".into(),
             display_name: "MiniMax M3".into(),
+            provider: mewcode_protocol::ProviderId::OpenCodeGo,
             kind: mewcode_protocol::ModelKind::AnthropicMessages,
         },
         mewcode_client::net::ModelEntry {
             id: "minimax-m2.5".into(),
             display_name: "MiniMax M2.5".into(),
+            provider: mewcode_protocol::ProviderId::OpenCodeGo,
             kind: mewcode_protocol::ModelKind::AnthropicMessages,
         },
     ]);
@@ -824,7 +827,8 @@ fn seed_models(n: usize) -> Vec<mewcode_client::net::ModelEntry> {
         .map(|i| mewcode_client::net::ModelEntry {
             id: format!("id-{i}"),
             display_name: format!("Model {i}"),
-            kind: mewcode_protocol::ModelKind::OpenAiChatCompletions,
+            provider: mewcode_protocol::ProviderId::OpenCodeGo,
+            kind: mewcode_protocol::ModelKind::OpenCodeGo,
         })
         .collect()
 }
@@ -862,7 +866,7 @@ fn model_picker_rows_fit_on_one_visual_line() {
 
     let max_width = 30; // tight enough to force truncation for long ids
     let lines = model_picker_lines(s, max_width);
-    assert_eq!(lines.len(), 5);
+    assert_eq!(lines.len(), 6); // one provider header + five models
     for (i, line) in lines.iter().enumerate() {
         let text: String = line.spans.iter().map(|sp| sp.content.as_ref()).collect();
         assert!(

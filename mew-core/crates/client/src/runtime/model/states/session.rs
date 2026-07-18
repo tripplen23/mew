@@ -61,7 +61,7 @@ pub enum Overlay {
     Tools,
     /// The skills list overlay.
     Skills,
-    /// The model picker: lists `GET /models` entries.
+    /// The model picker: lists flattened `GET /providers` model entries.
     ModelPicker,
     /// The session list: lists every saved session
     SessionList,

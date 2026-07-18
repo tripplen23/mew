@@ -24,6 +24,7 @@ fn test_config() -> ServerConfig {
         host: "127.0.0.1".into(),
         port: 0,
         opencode_go_api_key: "test-key".into(),
+        openai_api_key: None,
         default_model: None,
         log: "off".into(),
         skills: Default::default(),

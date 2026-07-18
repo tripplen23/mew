@@ -8,6 +8,10 @@
 /// proxies it to the engine.
 pub const OPENCODE_GO_API_KEY: &str = "OPENCODE_GO_API_KEY";
 
+/// Native OpenAI API key. Optional — when set, native OpenAI models
+/// become available.
+pub const OPENAI_API_KEY: &str = "OPENAI_API_KEY";
+
 /// Optional override for the data directory where sessions are stored.
 /// Falls back to `$XDG_DATA_HOME/mewcode`, then `~/.local/share/mewcode`.
 pub const MEWCODE_DATA_DIR: &str = "MEWCODE_DATA_DIR";
