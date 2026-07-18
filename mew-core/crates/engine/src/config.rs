@@ -1,7 +1,7 @@
 use std::env;
 
-use mewcode_protocol::env::{OPENAI_API_KEY, OPENCODE_GO_API_KEY};
 use mewcode_protocol::ModelId;
+use mewcode_protocol::env::{OPENAI_API_KEY, OPENCODE_GO_API_KEY};
 
 use crate::error::EngineError;
 
