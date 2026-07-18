@@ -24,6 +24,11 @@ Before implementing:
 - No error handling for impossible scenarios.
 - If you write 200 lines and it could be 50, rewrite it.
 
+Simplicity means the smallest **complete** solution, not an incomplete one.
+Do not cut required behavior, tests, validation, or user-visible states to keep
+the diff small. If the minimal complete solution is larger than expected, explain
+why before implementing.
+
 Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
 
 ## 3. Surgical Changes
