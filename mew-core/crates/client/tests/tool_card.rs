@@ -332,9 +332,10 @@ fn diff_result(
     start_line: Option<u64>,
     old: &str,
     new: &str,
+    call_id: &str,
 ) -> ToolResult {
     ToolResult {
-        call_id: "id".into(),
+        call_id: call_id.into(),
         name: name.into(),
         output: json!({ "path": path }),
         is_error: false,
@@ -407,6 +408,7 @@ fn edit_file_result_with_display_renders_diff_not_summary() {
                 Some(7),
                 "fn old_name()\n",
                 "fn new_name()\n",
+                &call_id,
             )),
         ],
         ModelId::default().as_str(),

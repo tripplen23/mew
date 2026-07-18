@@ -107,7 +107,9 @@ pub fn render_diff(diff: &DiffDisplay) -> Vec<Line<'static>> {
     let (mut adds, mut dels) = (0usize, 0usize);
     for change in text_diff.iter_all_changes() {
         let line = change.value();
-        let content = line.strip_suffix('\n').unwrap_or(line).to_string();
+        let content = line
+            .trim_end_matches(|c| c == '\n' || c == '\r')
+            .to_string();
         match change.tag() {
             ChangeTag::Insert => {
                 adds += 1;
@@ -192,11 +194,7 @@ fn diff_header(path: &str, adds: usize, dels: usize) -> Line<'static> {
 
 /// Number of decimal digits in `n` (min 1).
 fn decimal_width(n: u64) -> usize {
-    if n == 0 {
-        1
-    } else {
-        (n.ilog10() as usize) + 1
-    }
+    if n == 0 { 1 } else { (n.ilog10() as usize) + 1 }
 }
 
 /// Display width of `s` (unicode-aware).

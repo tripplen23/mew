@@ -123,11 +123,12 @@ impl ToolContracts for WriteFileTool {
 
         // Capture the pre-image for the display channel BEFORE overwriting.
         // Only read when a UI is listening; a new file (or unreadable/binary
-        // content) yields an empty old side, rendering as pure additions.
+        // content) yields None, suppressing the diff so a destructive overwrite
+        // never renders as a pure addition.
         let old = if self.ctx.display.is_some() && resolved.exists() {
-            std::fs::read_to_string(&resolved).unwrap_or_default()
+            std::fs::read_to_string(&resolved).ok()
         } else {
-            String::new()
+            Some(String::new())
         };
 
         // Create parent directories if needed.
@@ -139,10 +140,13 @@ impl ToolContracts for WriteFileTool {
         std::fs::write(&resolved, content).map_err(ToolError::Io)?;
 
         // Render-only diff (old -> new). Never enters the model's context.
-        self.ctx.push_display(
-            input.clone(),
-            ToolDisplay::Diff(DiffDisplay::new(path, None, &old, content)),
-        );
+        // Suppressed when the pre-image could not be read (e.g. binary file).
+        if let Some(old) = old {
+            self.ctx.push_display(
+                input.clone(),
+                ToolDisplay::Diff(DiffDisplay::new(path, None, &old, content)),
+            );
+        }
 
         Ok(ToolOutput(json!({
             "path": path,
