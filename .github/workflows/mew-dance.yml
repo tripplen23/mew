@@ -1,9 +1,4 @@
-name: Mew Agent Mua
-
-# Manual trigger only. Binh clicks "Run workflow" from the Actions tab
-# to have mew-agent-bot[bot] dance a tiny commit onto a branch + open a PR.
-# Author of the resulting commit is the Mew GitHub App (avatar = Mew),
-# so the PR and Contributors tab show up correctly.
+name: Mew Agent Dance
 
 on:
   workflow_dispatch:
@@ -19,7 +14,7 @@ permissions:
   pull-requests: write
 
 jobs:
-  mua:
+  dance:
     name: Mew dances
     runs-on: ubuntu-latest
     steps:
@@ -39,7 +34,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
           EMOJI: ${{ inputs.emoji }}
-          BRANCH: mew/mua-${{ github.run_id }}
+          BRANCH: mew/dance-${{ github.run_id }}
         run: |
           git switch -c "$BRANCH" origin/master
           ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -56,13 +51,13 @@ jobs:
       - name: Push branch
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
-          BRANCH: mew/mua-${{ github.run_id }}
+          BRANCH: mew/dance-${{ github.run_id }}
         run: git push -u origin "$BRANCH"
 
       - name: Open Pull Request
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
-          BRANCH: mew/mua-${{ github.run_id }}
+          BRANCH: mew/dance-${{ github.run_id }}
         run: |
           gh pr create \
             --base master \
