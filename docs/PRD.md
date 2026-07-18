@@ -136,12 +136,12 @@ Target users are:
 
 Mew distinguishes four run roles:
 
-| Role | Responsibility |
-| --- | --- |
-| Requester | Defines the desired evolution and product intent. |
-| Operator | Confirms authorization, configures policy, and manages execution. |
-| Reviewer | Audits evidence, contracts, plans, and verification results. |
-| Approver | Accepts gated decisions, deviations, and final handoff. |
+| Role      | Responsibility                                                    |
+| --------- | ----------------------------------------------------------------- |
+| Requester | Defines the desired evolution and product intent.                 |
+| Operator  | Confirms authorization, configures policy, and manages execution. |
+| Reviewer  | Audits evidence, contracts, plans, and verification results.      |
+| Approver  | Accepts gated decisions, deviations, and final handoff.           |
 
 One person may hold all four roles in the initial release. The run manifest
 records which identity acted in each role so team separation can be added later.
@@ -575,21 +575,21 @@ contract claim or parity verdict.
 
 ### Goal-to-requirement traceability
 
-| Product goal | Primary requirements |
-| --- | --- |
-| Reproduce an existing system safely | FR-2, FR-11, NFR-2, NFR-3 |
-| Observe static and runtime behavior | FR-4, FR-5, FR-13 |
-| Produce an evidence-backed contract | FR-3, FR-6, FR-7, NFR-4 |
-| Expose uncertainty and request decisions | FR-7 |
-| Create an independently reviewable plan | FR-8 |
-| Implement without modifying the baseline | FR-2, FR-9, FR-11 |
-| Compare baseline and candidate | FR-10 |
-| Survive interruption and resume | FR-1, NFR-1, NFR-8 |
-| Emit auditable artifacts and code changes | FR-3, FR-10, NFR-4 |
-| Support external agents | FR-12, NFR-5, NFR-6 |
-| Install and operate Mew as a product | FR-14, NFR-9 |
-| Let humans and agents build under one proof model | FR-15, NFR-5, NFR-6 |
-| Bound context growth and resume fresh workers | FR-1, FR-16, NFR-1, NFR-10 |
+| Product goal                                      | Primary requirements       |
+| ------------------------------------------------- | -------------------------- |
+| Reproduce an existing system safely               | FR-2, FR-11, NFR-2, NFR-3  |
+| Observe static and runtime behavior               | FR-4, FR-5, FR-13          |
+| Produce an evidence-backed contract               | FR-3, FR-6, FR-7, NFR-4    |
+| Expose uncertainty and request decisions          | FR-7                       |
+| Create an independently reviewable plan           | FR-8                       |
+| Implement without modifying the baseline          | FR-2, FR-9, FR-11          |
+| Compare baseline and candidate                    | FR-10                      |
+| Survive interruption and resume                   | FR-1, NFR-1, NFR-8         |
+| Emit auditable artifacts and code changes         | FR-3, FR-10, NFR-4         |
+| Support external agents                           | FR-12, NFR-5, NFR-6        |
+| Install and operate Mew as a product              | FR-14, NFR-9               |
+| Let humans and agents build under one proof model | FR-15, NFR-5, NFR-6        |
+| Bound context growth and resume fresh workers     | FR-1, FR-16, NFR-1, NFR-10 |
 
 ## 12. Non-functional requirements
 
@@ -724,6 +724,28 @@ These are tracked outcome metrics, not first-release gates. M0 establishes a
 baseline from at least three golden tasks; each subsequent release sets its target
 against that baseline. Lower time and fewer post-handoff semantic corrections are
 better, but not at the expense of evidence quality or honest blockers.
+
+### M0 skill-hardening model
+
+M0 demonstrates that a skill-driven migration loop can work on real tasks; it
+does not freeze the skill pack as complete. Mew treats the pack as a
+**self-healing skill system**: after handoff and user review, a run may propose
+evidence-backed changes to instructions, references, schemas, fixtures, or
+validators. This is reviewed prompt/artifact evolution.
+
+Feedback is split into hard oracles (formatters, linters, tests, schemas,
+behavior probes, and differential results) and soft oracles (taste, naming, and
+direction). Hard-oracle changes require a regression fixture. Soft-oracle
+changes remain proposals until a human approves them. Lessons are stored at the
+narrowest correct tier: universal rules in skill bodies, stack-specific gotchas
+in conditional references, and repository-specific knowledge in repository
+context or ADRs.
+
+To prevent overfitting and prompt bloat, universal changes must pass a pinned
+non-Mew holdout from a different stack, skill bodies have a validated size cap,
+and new lessons must merge with or prune existing guidance unless they add an
+executable fixture. The regression corpus grows across M0, M1, M2, M3, and later
+modules as Mew adopts capabilities from independent reference projects.
 
 ### Evidence quality
 

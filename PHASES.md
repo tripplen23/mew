@@ -50,6 +50,14 @@ UI polish, extra tool-card markers, command-palette work, and similar improvemen
 
 **Goal:** prove the workflow before turning every step into Rust infrastructure.
 
+M0 proves that the initial skill-driven workflow can complete real migrations;
+it does not claim the skills are final or broadly generalized. The pack is
+hardened along the way through diverse regression tasks: each reviewed run may
+propose a fixture, gate, schema field, reference, or pruned instruction. These
+self-healing proposals never update the shared skills automatically. Universal
+changes require human approval and a non-Mew holdout evaluation so improvement
+does not become Mew- or Rust-specific overfitting.
+
 ### Deliverables (M0)
 
 - Product requirements document and shared vocabulary.
@@ -58,6 +66,9 @@ UI polish, extra tool-card markers, command-palette work, and similar improvemen
 - At least three golden tasks spanning more than one system shape.
 - A Hermes laboratory profile with minimal tools and explicit safety policy.
 - A record of human approvals, failed assumptions, repeated mechanics, and missing runtime primitives from real runs.
+- A post-handoff retro for each reviewed run, producing proposed skill changes classified by oracle type and generality tier.
+- A pinned holdout corpus outside Mew and outside the primary Mew stack for evaluating universal skill changes.
+- Regression fixtures earned from real failures, plus pruning rules and a hard skill-body budget to prevent instruction bloat.
 - Evaluation of manual, supervised, and delegated builders against the same contract and verification criteria.
 - Per-task context, input-token, output-token, retrieval, retry, and wall-clock measurements for the golden runs.
 
@@ -74,6 +85,9 @@ UI polish, extra tool-card markers, command-palette work, and similar improvemen
 - Each task succeeds twice from a clean workspace with pinned source and tools.
 - Unexplained contract deviations are zero.
 - Every workflow mechanic observed in at least two tasks is recorded with an owner and classified by the promotion rule below as runtime candidate or skill-level reasoning.
+- Every accepted hard-oracle skill change includes a regression fixture that fails before the fix and passes after it.
+- Every accepted universal skill change passes the pinned holdout without increasing required human corrections.
+- No skill body exceeds its validated size budget; overlapping lessons are merged or moved to references instead of appended indefinitely.
 - No task writes outside its approved workspace or leaks a secret into artifacts.
 - At least one task rotates to a fresh worker and completes from structured artifacts without injecting the prior transcript.
 - Any context optimization reports total token cost and task outcome against an uncompressed baseline; prompt-size reduction alone is not a pass.

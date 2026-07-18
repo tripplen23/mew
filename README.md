@@ -61,6 +61,7 @@ Mew is experimental. Keep a human in the loop for production and irreversible ac
 
 - `mew-core`: Rust protocol, engine, server, and TUI client
 - `mew-mcp`: Go MCP adapter for external agents
+- [`mew-skills`](https://github.com/tripplen23/mew-skills): companion migration workflow and evaluation pack (separate repository)
 
 ## Getting started
 
