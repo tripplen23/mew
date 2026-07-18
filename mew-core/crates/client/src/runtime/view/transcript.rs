@@ -12,13 +12,14 @@ use ratatui::widgets::{Block, BorderType, Paragraph, Wrap};
 
 use mewcode_protocol::{MessagePart, Role};
 
-use super::super::model::SessionState;
+use super::super::model::{SessionState, TurnItem};
 use super::markdown::render_markdown;
 use super::spinner::spinner_frame;
 use super::theme::Theme;
 use super::tool_card::{
-    render_tool_call_header, render_tool_result_body, render_tool_result_header,
+    render_diff, render_tool_call_header, render_tool_result_body, render_tool_result_header,
 };
+use mewcode_protocol::{ToolCall, ToolDisplay, ToolResult};
 
 /// Render the transcript panel and update its scroll bounds.
 pub(super) fn render_transcript(
@@ -53,8 +54,39 @@ pub(super) fn render_transcript(
                 .fg(theme.mew_gold)
                 .add_modifier(Modifier::BOLD),
         )));
-        if !st.buffer.is_empty() {
-            lines.extend(render_markdown(&st.buffer));
+        // Render the in-flight turn in arrival order
+        // so the live view matches the runtime stream
+        for item in &st.items {
+            match item {
+                TurnItem::Text(text) => {
+                    if !text.is_empty() {
+                        lines.extend(render_markdown(text));
+                    }
+                }
+                TurnItem::Tool(view) => {
+                    let call = ToolCall {
+                        id: view.id.clone(),
+                        name: view.name.clone(),
+                        input: view.input.clone(),
+                    };
+                    lines.push(render_tool_call_header(&call));
+                    match &view.display {
+                        Some(ToolDisplay::Diff(diff)) => lines.extend(render_diff(diff)),
+                        None => {
+                            if let Some(output) = &view.output {
+                                let res = ToolResult {
+                                    call_id: view.id.clone(),
+                                    name: view.name.clone(),
+                                    output: output.clone(),
+                                    is_error: false,
+                                    display: None,
+                                };
+                                lines.extend(render_tool_result_body(&res));
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -102,27 +134,33 @@ fn render_message(msg: &mewcode_protocol::Message, theme: Theme) -> Vec<Line<'st
         label_style.add_modifier(Modifier::BOLD),
     ))];
 
-    let mut last_tool_call_id: Option<&str> = None;
+    let mut last_tool_call: Option<&ToolCall> = None;
     for part in &msg.parts {
         match part {
             MessagePart::Text { text } => {
-                last_tool_call_id = None;
+                last_tool_call = None;
                 out.extend(render_markdown(text));
             }
             MessagePart::ToolCall(call) => {
-                last_tool_call_id = Some(&call.id);
+                last_tool_call = Some(call);
                 out.push(render_tool_call_header(call));
             }
             MessagePart::ToolResult(res) => {
-                let paired = last_tool_call_id == Some(&res.call_id);
-                last_tool_call_id = None;
+                let paired = last_tool_call.map(|c| c.id == res.call_id).unwrap_or(false);
+                last_tool_call = None;
                 if !paired {
                     out.push(render_tool_result_header(res));
                 }
-                out.extend(render_tool_result_body(res));
+                // A tool that supplied render-only display data (a diff) shows
+                // a colored inline diff instead of the generic JSON summary;
+                // every other tool keeps the existing body.
+                match &res.display {
+                    Some(ToolDisplay::Diff(diff)) => out.extend(render_diff(diff)),
+                    None => out.extend(render_tool_result_body(res)),
+                }
             }
             MessagePart::FileMention { path } => {
-                last_tool_call_id = None;
+                last_tool_call = None;
                 out.push(Line::from(Span::styled(
                     format!("@{path}"),
                     Style::default().fg(theme.mew_gold),

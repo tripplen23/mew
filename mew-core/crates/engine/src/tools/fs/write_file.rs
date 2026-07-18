@@ -3,7 +3,8 @@
 use async_trait::async_trait;
 use mewcode_protocol::tool::names;
 use mewcode_protocol::{
-    ToolAnnotations, ToolContracts, ToolDescriptor, ToolError, ToolExample, ToolOutput,
+    DiffDisplay, ToolAnnotations, ToolContracts, ToolDescriptor, ToolDisplay, ToolError,
+    ToolExample, ToolOutput,
 };
 use serde_json::{Value, json};
 
@@ -120,6 +121,15 @@ impl ToolContracts for WriteFileTool {
             }
         }
 
+        // Capture the pre-image for the display channel BEFORE overwriting.
+        // Only read when a UI is listening; a new file (or unreadable/binary
+        // content) yields an empty old side, rendering as pure additions.
+        let old = if self.ctx.display.is_some() && resolved.exists() {
+            std::fs::read_to_string(&resolved).unwrap_or_default()
+        } else {
+            String::new()
+        };
+
         // Create parent directories if needed.
         if let Some(parent) = resolved.parent() {
             std::fs::create_dir_all(parent).map_err(ToolError::Io)?;
@@ -127,6 +137,12 @@ impl ToolContracts for WriteFileTool {
 
         let bytes = content.len();
         std::fs::write(&resolved, content).map_err(ToolError::Io)?;
+
+        // Render-only diff (old -> new). Never enters the model's context.
+        self.ctx.push_display(
+            input.clone(),
+            ToolDisplay::Diff(DiffDisplay::new(path, None, &old, content)),
+        );
 
         Ok(ToolOutput(json!({
             "path": path,

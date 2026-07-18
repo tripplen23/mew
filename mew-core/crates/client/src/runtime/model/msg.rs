@@ -71,6 +71,13 @@ pub enum StreamMsg {
         /// JSON output.
         output: serde_json::Value,
     },
+    /// Render-only display data (e.g. a diff) for a tool call.
+    ToolDisplay {
+        /// Id of the call this display is for.
+        id: String,
+        /// The render payload.
+        display: mewcode_protocol::ToolDisplay,
+    },
     /// Stream finished successfully.
     Finished {
         /// Wall-clock duration in milliseconds.

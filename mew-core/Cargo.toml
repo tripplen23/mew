@@ -1,11 +1,6 @@
 [workspace]
 resolver = "2"
-members = [
-    "crates/protocol",
-    "crates/engine",
-    "crates/server",
-    "crates/client",
-]
+members = ["crates/protocol", "crates/engine", "crates/server", "crates/client"]
 
 [workspace.package]
 version = "0.1.0"
@@ -33,7 +28,11 @@ async-trait = "0.1"
 axum = "0.8"
 tower = "0.5"
 tower-http = { version = "0.6", features = ["trace", "cors"] }
-reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "stream",
+    "rustls-tls",
+] }
 eventsource-stream = "0.2"
 http = "1"
 
@@ -43,7 +42,11 @@ rig-core = { version = "0.38" }
 # Tracing
 opentelemetry = "0.31"
 opentelemetry-langfuse = "0.6"
-opentelemetry_sdk = { version = "0.31", features = ["trace", "rt-tokio", "experimental_trace_batch_span_processor_with_async_runtime"] }
+opentelemetry_sdk = { version = "0.31", features = [
+    "trace",
+    "rt-tokio",
+    "experimental_trace_batch_span_processor_with_async_runtime",
+] }
 tracing = "0.1"
 tracing-opentelemetry = "0.32"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
@@ -55,6 +58,7 @@ crossterm = "0.29"
 tui-textarea = "0.7"
 tui-markdown = "0.3"
 syntect = "5"
+similar = "2"
 
 # CLI & config
 clap = { version = "4", features = ["derive", "env"] }

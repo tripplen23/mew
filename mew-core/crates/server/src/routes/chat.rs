@@ -63,7 +63,12 @@ pub async fn chat_stream(
     let root = std::env::current_dir()
         .or_else(|_| std::fs::canonicalize("."))
         .unwrap_or_else(|_| ".".into());
-    let ctx = ProjectContext::new(root);
+    // Shared display sink: mutating tools drop render-only diffs here during
+    // execution; the stream layer correlates them to tool calls and emits
+    // `ToolDisplayAvailable`. Never enters the model's context.
+    let display_sink: mewcode_engine::tools::DisplaySink =
+        Arc::new(std::sync::Mutex::new(Vec::new()));
+    let ctx = ProjectContext::new(root).with_display(display_sink.clone());
     let tools = Arc::new(default_registry(
         ctx,
         skills.clone(),
@@ -73,7 +78,8 @@ pub async fn chat_stream(
 
     let harness = Harness::new(req.model, req.mode, skills, tools)
         .with_session(req.session_id)
-        .with_memory(state.memory.clone());
+        .with_memory(state.memory.clone())
+        .with_display_sink(display_sink);
 
     // The client sends the full history each turn; the new user message should
     // be the last entry. Filter by role so a malformed trailing assistant/tool

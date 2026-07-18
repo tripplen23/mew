@@ -3,7 +3,8 @@
 use async_trait::async_trait;
 use mewcode_protocol::tool::names;
 use mewcode_protocol::{
-    ToolAnnotations, ToolContracts, ToolDescriptor, ToolError, ToolExample, ToolOutput,
+    DiffDisplay, ToolAnnotations, ToolContracts, ToolDescriptor, ToolDisplay, ToolError,
+    ToolExample, ToolOutput,
 };
 use serde_json::{Value, json};
 
@@ -152,6 +153,17 @@ impl ToolContracts for EditFileTool {
 
         // Report the 1-based line number where the edit starts.
         let line_number = content[..byte_start].lines().count() + 1;
+
+        // Push diff to display sink.
+        self.ctx.push_display(
+            input.clone(),
+            ToolDisplay::Diff(DiffDisplay::new(
+                path,
+                Some(line_number as u64),
+                old_string,
+                new_string,
+            )),
+        );
 
         Ok(ToolOutput(json!({
             "path": path,

@@ -35,6 +35,7 @@ pub struct Harness {
     session_id: Option<Uuid>,
     history_strategy: HistoryStrategy,
     memory: Option<MemoryStore>,
+    display_sink: Option<crate::tools::DisplaySink>,
 }
 
 impl std::fmt::Debug for Harness {
@@ -65,7 +66,15 @@ impl Harness {
             session_id: None,
             history_strategy: HistoryStrategy::default_raw(),
             memory: None,
+            display_sink: None,
         }
+    }
+
+    /// Attach the display sink so mutating tools' render-only data (diffs) is
+    /// correlated to tool calls and streamed as `ToolDisplayAvailable`.
+    pub fn with_display_sink(mut self, sink: crate::tools::DisplaySink) -> Self {
+        self.display_sink = Some(sink);
+        self
     }
 
     /// Record the chat session id so reported turns are grouped by session in Langfuse.
@@ -167,7 +176,10 @@ impl Harness {
         // Stream the reply through the agent layer. Token/turn caps are
         // owned by Agent's defaults; the harness doesn't override them.
         let tools = crate::tools::adapter::rig_tools(&self.tools);
-        let agent = Agent::new(provider, self.model, system_prompt).with_tools(tools);
+        let mut agent = Agent::new(provider, self.model, system_prompt).with_tools(tools);
+        if let Some(sink) = self.display_sink.clone() {
+            agent = agent.with_display_sink(sink);
+        }
         let reply = agent.run_turn(user_text, history, tx).await?;
         trace::record_turn_output(&tracing::Span::current(), &reply);
 

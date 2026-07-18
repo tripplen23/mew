@@ -1,6 +1,6 @@
 use mewcode_protocol::{Message, MessagePart, ModelId, ToolCall, ToolResult};
 
-use super::super::model::{SessionState, StreamMsg, StreamingState, Toast, ToolCallView};
+use super::super::model::{SessionState, StreamMsg, StreamingState, Toast, ToolCallView, TurnItem};
 
 /// Fold one SSE sub-message into the in-flight turn.
 ///
@@ -18,25 +18,34 @@ pub(super) fn apply_stream_event(s: &mut SessionState, ev: StreamMsg) -> Option<
         }
         StreamMsg::Delta(delta) => {
             if let Some(st) = &mut s.streaming {
-                st.buffer.push_str(&delta);
+                st.push_text(&delta);
             }
             None
         }
         StreamMsg::ToolInput { id, name, input } => {
             if let Some(st) = &mut s.streaming {
-                st.tool_calls.push(ToolCallView {
+                st.push_tool_call(ToolCallView {
                     id,
                     name,
                     input,
                     output: None,
+                    display: None,
                 });
             }
             None
         }
         StreamMsg::ToolOutput { id, output } => {
             if let Some(st) = &mut s.streaming {
-                if let Some(call) = st.tool_calls.iter_mut().find(|c| c.id == id) {
+                if let Some(call) = st.tool_mut(&id) {
                     call.output = Some(output);
+                }
+            }
+            None
+        }
+        StreamMsg::ToolDisplay { id, display } => {
+            if let Some(st) = &mut s.streaming {
+                if let Some(call) = st.tool_mut(&id) {
+                    call.display = Some(display);
                 }
             }
             None
@@ -61,33 +70,41 @@ pub(super) fn apply_stream_event(s: &mut SessionState, ev: StreamMsg) -> Option<
     }
 }
 
-/// Assemble the committed assistant message from the streaming buffer and tool
-/// calls. Text comes first, then each tool call followed by its output, so the
-/// arrival order of tool parts is preserved.
+/// Assemble the committed assistant message from the turn's ordered items, so
+/// text and tool parts land in the transcript in the exact order the runtime
+/// streamed them (`text -> tool -> text -> ...`), each tool call immediately
+/// followed by its result.
 fn commit_assistant_message(st: StreamingState, model: ModelId) -> Message {
     let mut parts: Vec<MessagePart> = Vec::new();
-    if !st.buffer.is_empty() {
-        parts.push(MessagePart::Text { text: st.buffer });
-    }
-    for call in st.tool_calls {
-        let ToolCallView {
-            id,
-            name,
-            input,
-            output,
-        } = call;
-        parts.push(MessagePart::ToolCall(ToolCall {
-            id: id.clone(),
-            name: name.clone(),
-            input,
-        }));
-        if let Some(output) = output {
-            parts.push(MessagePart::ToolResult(ToolResult {
-                call_id: id,
+    for item in st.items {
+        match item {
+            TurnItem::Text(text) => {
+                if !text.is_empty() {
+                    parts.push(MessagePart::Text { text });
+                }
+            }
+            TurnItem::Tool(ToolCallView {
+                id,
                 name,
+                input,
                 output,
-                is_error: false,
-            }));
+                display,
+            }) => {
+                parts.push(MessagePart::ToolCall(ToolCall {
+                    id: id.clone(),
+                    name: name.clone(),
+                    input,
+                }));
+                if let Some(output) = output {
+                    parts.push(MessagePart::ToolResult(ToolResult {
+                        call_id: id,
+                        name,
+                        output,
+                        is_error: false,
+                        display,
+                    }));
+                }
+            }
         }
     }
     Message::assistant(parts, model.as_str())

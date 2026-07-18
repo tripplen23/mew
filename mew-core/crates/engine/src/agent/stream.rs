@@ -5,13 +5,26 @@
 //! Kept separate from [`super::Agent`] so the turn lifecycle and the wire
 //! protocol don't tangle.
 
+use std::collections::HashMap;
+
 use futures::StreamExt;
 use mewcode_protocol::StreamEvent;
 use rig_core::agent::MultiTurnStreamItem;
 use rig_core::streaming::{StreamedAssistantContent, StreamingPrompt};
+use serde_json::Value;
 use tokio::sync::mpsc;
 
 use crate::error::EngineError;
+use crate::tools::DisplaySink;
+
+/// Pop the display record matching `args`. Tools don't see Rig's call id, so
+/// we correlate by the only stable signal: the argument JSON the model sent.
+// O(n) scan, first-match. Identical-arg calls are interchangeable for display.
+fn take_display(sink: &DisplaySink, args: &Value) -> Option<mewcode_protocol::ToolDisplay> {
+    let mut records = sink.lock().ok()?;
+    let pos = records.iter().position(|r| &r.args == args)?;
+    Some(records.remove(pos).display)
+}
 
 /// Stream one Rig agent prompt to completion, emitting `TextDelta`,
 /// `ToolInputAvailable`, and `ToolOutputAvailable` events through `tx`.
@@ -23,12 +36,16 @@ pub async fn run_agent_stream<M: rig_core::completion::CompletionModel + 'static
     user_text: String,
     history: Vec<rig_core::completion::Message>,
     tx: &mpsc::Sender<StreamEvent>,
+    display_sink: Option<DisplaySink>,
 ) -> Result<String, EngineError> {
     let mut stream = agent.stream_prompt(user_text).with_history(history).await;
 
     let mut full_reply = String::new();
     let mut total_cache_read = 0u64;
     let mut total_cache_creation = 0u64;
+    // Remember each tool call's arguments by id so a tool result can be
+    // correlated with the display record its execution left in the sink.
+    let mut call_args: HashMap<String, Value> = HashMap::new();
 
     while let Some(item) = stream.next().await {
         match item {
@@ -45,6 +62,7 @@ pub async fn run_agent_stream<M: rig_core::completion::CompletionModel + 'static
                 tool_call,
                 ..
             })) => {
+                call_args.insert(tool_call.id.clone(), tool_call.function.arguments.clone());
                 let _ = tx
                     .send(StreamEvent::ToolInputAvailable {
                         tool_call_id: tool_call.id.clone(),
@@ -69,12 +87,29 @@ pub async fn run_agent_stream<M: rig_core::completion::CompletionModel + 'static
                     .unwrap_or_default();
                 let parsed = serde_json::from_str::<serde_json::Value>(&output)
                     .unwrap_or(serde_json::Value::String(output));
+                let call_id = tool_result.id;
                 let _ = tx
                     .send(StreamEvent::ToolOutputAvailable {
-                        tool_call_id: tool_result.id,
+                        tool_call_id: call_id.clone(),
                         output: parsed,
                     })
                     .await;
+
+                // Emit any render-only display the tool recorded during
+                // execution, keyed to this call by argument match. Kept
+                // strictly after ToolOutputAvailable and off the model path.
+                if let Some(sink) = &display_sink {
+                    if let Some(args) = call_args.get(&call_id) {
+                        if let Some(display) = take_display(sink, args) {
+                            let _ = tx
+                                .send(StreamEvent::ToolDisplayAvailable {
+                                    tool_call_id: call_id,
+                                    display,
+                                })
+                                .await;
+                        }
+                    }
+                }
             }
             Ok(MultiTurnStreamItem::CompletionCall(call)) => {
                 if let Some(usage) = &call.usage {
