@@ -48,3 +48,7 @@ mew-mcp/bin/
 # Proptest regression seeds — regenerable, pollutes diffs if committed.
 *.proptest-regressions
 **/*.proptest-regressions
+
+# Local GitHub App private keys + helper scripts (never commit)
+.secrets/
+**/.secrets/
