@@ -233,6 +233,14 @@ fn dispatch(cmd: Cmd, api: &ApiClient, tx: &mpsc::Sender<Msg>) {
                 let _ = tx.send(Msg::ModelsFetched(result)).await;
             });
         }
+        Cmd::FetchSkills => {
+            let api = api.clone();
+            let tx = tx.clone();
+            tokio::spawn(async move {
+                let result = api.skills().await.map_err(|e| e.to_string());
+                let _ = tx.send(Msg::SkillsFetched(result)).await;
+            });
+        }
         Cmd::FetchSessions => {
             let api = api.clone();
             let tx = tx.clone();

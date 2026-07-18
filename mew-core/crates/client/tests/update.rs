@@ -377,9 +377,12 @@ fn slash_tools_opens_tools_overlay() {
 }
 
 #[test]
-fn slash_skills_opens_skills_overlay() {
+fn slash_skills_opens_skills_overlay_and_fetches_when_uncached() {
     let mut app = type_into_session("/skills");
-    assert!(matches!(update(&mut app, key(KeyCode::Enter)), Cmd::None));
+    assert!(matches!(
+        update(&mut app, key(KeyCode::Enter)),
+        Cmd::FetchSkills
+    ));
     assert_eq!(sess(&app).overlay, Overlay::Skills);
 }
 

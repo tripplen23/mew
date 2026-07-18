@@ -1,6 +1,6 @@
-# mew
+# Mew
 
-```
+```text
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣤⣶⣶⣶⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣴⣿⣿⣿⣿⣿⠇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣴⣿⣿⣿⣿⣿⣿⡿⠃⠀⠀⠀⠀⠀⠀⠀⢀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
@@ -31,45 +31,54 @@
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠃⠻⠿⠃⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
 ```
 
-**A terminal coding agent that clones, audits, and ships better apps.**
+**Extract behavioral DNA. Evolve the implementation. Prove parity.**
 
-## Repository layout
+Mew is an AI agent harness for migrating and reconstructing software. It reproduces an existing system, observes what users and dependent systems can see, turns those findings into an evidence-linked contract, and builds the replacement against that contract.
 
-This is a polyrepo workspace — multiple components in a single repo, each
-in its own top-level directory:
+Typical goals:
 
-```
-mew/
-  mew-core/   Rust workspace: protocol, engine, server, TUI client
-  mew-mcp/    Go MCP server: exposes mew to external AI agents (Claude, Cursor, Hermes)
-  .github/    CI workflows (Rust + Go)
-  .env.example
-```
+- move a measured Python bottleneck to Rust without changing API or numerical behavior;
+- rebuild an authorized application with a new design while preserving selected journeys;
+- run long migrations with durable state, checkpoints, approvals, and resumable verification.
 
-### mew-core
+For visual systems, Mew combines browser evidence with optional multimodal analysis. Vision can interpret screenshots, but it does not replace deterministic checks or human-approved intent.
 
-```
-mew-core/
-  .mewcode/  component-local project skills
-  crates/
-    protocol/  shared types, wire format (no I/O)
-    engine/    Rig-based agent harness, tools, skills, streaming, memory
-    server/    axum backend + session store + memory API
-    client/    ratatui terminal UI + CLI dispatcher
-```
+## How it works
+
+`reproduce -> observe -> contract -> approve -> evolve -> compare -> hand off`
+
+Mew owns the durable run, policy, workspaces, evidence, checkpoints, and verification. Models and skills handle ambiguous reasoning; proven workflows can move into the Rust runtime.
+
+## Status
+
+Mew currently has a working Rust engine, server, Ratatui client, tool and skill loop, persistent conversations, tracing, and a Go MCP adapter. Durable migration runs, sandboxes, behavioral contracts, differential verification, browser, and computer-use support are on the roadmap.
+
+Mew is experimental. Keep a human in the loop for production and irreversible actions.
+
+[Product requirements](docs/PRD.md) · [Roadmap](PHASES.md)
+
+## Repository
+
+- `mew-core`: Rust protocol, engine, server, and TUI client
+- `mew-mcp`: Go MCP adapter for external agents
 
 ## Getting started
 
 ```bash
-cp .env.example .env
-# Set OPENCODE_GO_API_KEY to an OpenCode Go or compatible endpoint key.
-
-cd mew-core
-cargo run -p mewcode-server &      # start the backend
-cargo run -p mewcode-client -- tui # open the TUI
+# Build from source (until one-command install ships in M11):
+git clone https://github.com/tripplen23/mew && cd mew/mew-core
+cargo run -p mewcode-server
+cargo run -p mewcode-client -- tui
 ```
 
-Requires Rust 1.85+ (edition 2024).
+Requires Rust 1.85+ (edition 2024). The client starts or connects to the server automatically.
+
+To build the MCP adapter separately:
+
+```bash
+cd mew-mcp
+go build ./cmd/mew-mcp
+```
 
 ## License
 
