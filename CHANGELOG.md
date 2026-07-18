@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/tripplen23/mew/compare/v0.1.0...v0.2.0) (2026-07-18)
+
+
+### Features
+
+* **tui/engine:** ([#54](https://github.com/tripplen23/mew/issues/54)) ([1419444](https://github.com/tripplen23/mew/commit/14194449a8ce628baf2915af6f608d144e1b7efd))
+
 ## 0.1.0 (2026-07-17)
 
 
