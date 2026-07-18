@@ -97,8 +97,8 @@ struct DiffRow {
 /// Styling mirrors a real diff viewer: a `⎿ path  +A -B` header, then only the
 /// changed lines, each drawn as a filled band — dim-green for additions,
 /// dim-red for deletions — with a right-aligned line-number gutter. Rows are
-/// padded to a common width so the bands align, bounded to [`MAX_DIFF_LINES`]
-/// rows and [`MAX_DIFF_CONTENT_COLS`] columns.
+/// padded to a common width so the bands align, bounded to the local row and
+/// column caps.
 pub fn render_diff(diff: &DiffDisplay) -> Vec<Line<'static>> {
     let base = diff.start_line.unwrap_or(1);
     let text_diff = TextDiff::from_lines(&diff.old, &diff.new);

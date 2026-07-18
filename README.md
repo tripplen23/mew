@@ -66,20 +66,31 @@ Mew is experimental. Keep a human in the loop for production and irreversible ac
 ## Getting started
 
 ```bash
-# Build from source (until one-command install ships in M11):
-git clone https://github.com/tripplen23/mew && cd mew/mew-core
-cargo run -p mewcode-server
-cargo run -p mewcode-client -- tui
+git clone https://github.com/tripplen23/mew && cd mew
+make build        # build everything (Rust + Go MCP)
+make run          # server + TUI, auto-cleanup on exit
 ```
 
-Requires Rust 1.85+ (edition 2024). The client starts or connects to the server automatically.
+Requires Rust 1.85+ (edition 2024) and Go 1.26+.
 
-To build the MCP adapter separately:
+### Dev commands
 
-```bash
-cd mew-mcp
-go build ./cmd/mew-mcp
 ```
+make build        build everything (Rust + Go MCP)
+make build-core   Rust workspace only
+make build-mcp    Go MCP adapter only
+make run          server + TUI
+make run-server   server only, useful for runtime logs
+make run-tui      TUI only, expects a running server
+make test         all tests
+make lint         clippy + go vet
+make fmt          auto-format
+make check        CI gate (fmt-check + lint + test)
+make ci           full CI gate (build + check + docs)
+make clean        remove build artifacts
+```
+
+Run `make help` for the full list.
 
 ## License
 
