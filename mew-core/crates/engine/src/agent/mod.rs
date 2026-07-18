@@ -35,6 +35,7 @@ pub struct Agent {
     tools: Vec<Box<dyn rig_core::tool::ToolDyn>>,
     max_tokens: u64,
     max_turns: usize,
+    display_sink: Option<crate::tools::DisplaySink>,
 }
 
 impl Agent {
@@ -47,12 +48,19 @@ impl Agent {
             tools: Vec::new(),
             max_tokens: DEFAULT_MAX_TOKENS,
             max_turns: DEFAULT_MAX_TURNS,
+            display_sink: None,
         }
     }
 
     /// Attach tools the model may call during the turn.
     pub fn with_tools(mut self, tools: Vec<Box<dyn rig_core::tool::ToolDyn>>) -> Self {
         self.tools = tools;
+        self
+    }
+
+    /// Attach the display sink so tool render-data is streamed to the client.
+    pub fn with_display_sink(mut self, sink: crate::tools::DisplaySink) -> Self {
+        self.display_sink = Some(sink);
         self
     }
 
@@ -90,7 +98,7 @@ impl Agent {
                     .default_max_turns(self.max_turns)
                     .tools(self.tools)
                     .build();
-                stream::run_agent_stream(agent, user_text, history, tx).await
+                stream::run_agent_stream(agent, user_text, history, tx, self.display_sink).await
             }
             Provider::OpenCodeGo(p) | Provider::OpenAi(p) => {
                 let agent = p
@@ -102,7 +110,7 @@ impl Agent {
                     .default_max_turns(self.max_turns)
                     .tools(self.tools)
                     .build();
-                stream::run_agent_stream(agent, user_text, history, tx).await
+                stream::run_agent_stream(agent, user_text, history, tx, self.display_sink).await
             }
         }
     }

@@ -470,11 +470,12 @@ fn stream_delta_accumulates_buffer() {
     let mut app = streaming_session();
     stream(&mut app, StreamMsg::Delta("Hel".to_string()));
     stream(&mut app, StreamMsg::Delta("lo".to_string()));
-    assert_eq!(sess(&app).streaming.as_ref().unwrap().buffer, "Hello");
+    assert_eq!(sess(&app).streaming.as_ref().unwrap().text(), "Hello");
 }
 
 #[test]
 fn stream_tool_input_then_output_is_recorded() {
+    use mewcode_client::runtime::model::TurnItem;
     let mut app = streaming_session();
     stream(
         &mut app,
@@ -491,10 +492,49 @@ fn stream_tool_input_then_output_is_recorded() {
             output: serde_json::json!({"ok": true}),
         },
     );
-    let calls = &sess(&app).streaming.as_ref().unwrap().tool_calls;
-    assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].name, "readFile");
-    assert_eq!(calls[0].output, Some(serde_json::json!({"ok": true})));
+    let items = &sess(&app).streaming.as_ref().unwrap().items;
+    let tools: Vec<_> = items
+        .iter()
+        .filter_map(|it| match it {
+            TurnItem::Tool(v) => Some(v),
+            TurnItem::Text(_) => None,
+        })
+        .collect();
+    assert_eq!(tools.len(), 1);
+    assert_eq!(tools[0].name, "readFile");
+    assert_eq!(tools[0].output, Some(serde_json::json!({"ok": true})));
+}
+
+#[test]
+fn stream_preserves_interleaved_text_and_tool_order() {
+    use mewcode_client::runtime::model::TurnItem;
+    // Regression: text before and after a tool call must keep their order
+    // (text -> tool -> text), not be collapsed into "all text then all tools".
+    let mut app = streaming_session();
+    stream(&mut app, StreamMsg::Delta("before ".to_string()));
+    stream(
+        &mut app,
+        StreamMsg::ToolInput {
+            id: "c1".to_string(),
+            name: "bash".to_string(),
+            input: serde_json::json!({"command": "ls"}),
+        },
+    );
+    stream(&mut app, StreamMsg::Delta("after".to_string()));
+
+    let items = &sess(&app).streaming.as_ref().unwrap().items;
+    assert!(
+        matches!(&items[0], TurnItem::Text(t) if t == "before "),
+        "first item should be the leading text: {items:?}"
+    );
+    assert!(
+        matches!(&items[1], TurnItem::Tool(v) if v.name == "bash"),
+        "second item should be the tool call: {items:?}"
+    );
+    assert!(
+        matches!(&items[2], TurnItem::Text(t) if t == "after"),
+        "third item should be the trailing text (a new run): {items:?}"
+    );
 }
 
 #[test]

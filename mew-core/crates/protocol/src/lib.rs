@@ -8,6 +8,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod display;
 pub mod env;
 pub mod event;
 pub mod message;
@@ -17,6 +18,7 @@ pub mod routes;
 pub mod skill;
 pub mod tool;
 
+pub use display::{DiffDisplay, ToolDisplay};
 pub use event::StreamEvent;
 pub use message::{Message, MessagePart, Role, ToolCall, ToolResult};
 pub use mode::{Mode, ModeParseError};

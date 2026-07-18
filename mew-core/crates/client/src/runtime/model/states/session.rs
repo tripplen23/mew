@@ -209,6 +209,20 @@ pub struct ToolCallView {
     pub input: serde_json::Value,
     /// JSON output, once the call finishes.
     pub output: Option<serde_json::Value>,
+    /// Render-only display (e.g. a code diff), once it arrives. Never sent to
+    /// the model — purely for the transcript card.
+    pub display: Option<mewcode_protocol::ToolDisplay>,
+}
+
+/// One ordered element of an in-flight assistant turn: a run of assistant text
+/// or a tool call (with its eventual result/display). Kept in arrival order so
+/// both the live view and the committed message match the runtime stream.
+#[derive(Debug, Clone)]
+pub enum TurnItem {
+    /// A run of assistant text (consecutive deltas merged).
+    Text(String),
+    /// A tool call and its result/display as they arrive.
+    Tool(ToolCallView),
 }
 
 /// State of an in-flight assistant turn.
@@ -216,10 +230,8 @@ pub struct ToolCallView {
 pub struct StreamingState {
     /// Id of the assistant message being produced.
     pub assistant_id: Uuid,
-    /// Accumulated assistant text so far.
-    pub buffer: String,
-    /// Tool calls seen during this turn.
-    pub tool_calls: Vec<ToolCallView>,
+    /// Turn content in arrival order (text runs interleaved with tool calls).
+    pub items: Vec<TurnItem>,
     /// When the turn started (for elapsed-time display / animations).
     pub started_at: Instant,
 }
@@ -229,9 +241,46 @@ impl StreamingState {
     pub fn new(assistant_id: Uuid) -> Self {
         Self {
             assistant_id,
-            buffer: String::new(),
-            tool_calls: Vec::new(),
+            items: Vec::new(),
             started_at: Instant::now(),
         }
+    }
+
+    /// Append a text delta, merging into a trailing text run so consecutive
+    /// deltas stay one paragraph but text after a tool starts a new run.
+    pub fn push_text(&mut self, delta: &str) {
+        match self.items.last_mut() {
+            Some(TurnItem::Text(t)) => t.push_str(delta),
+            _ => self.items.push(TurnItem::Text(delta.to_string())),
+        }
+    }
+
+    /// Record a new tool call in arrival order.
+    pub fn push_tool_call(&mut self, view: ToolCallView) {
+        self.items.push(TurnItem::Tool(view));
+    }
+
+    /// Find the most recent tool call with `id` to attach its output/display.
+    pub fn tool_mut(&mut self, id: &str) -> Option<&mut ToolCallView> {
+        self.items.iter_mut().rev().find_map(|it| match it {
+            TurnItem::Tool(v) if v.id == id => Some(v),
+            _ => None,
+        })
+    }
+
+    /// Concatenated assistant text across the whole turn.
+    pub fn text(&self) -> String {
+        let mut out = String::new();
+        for it in &self.items {
+            if let TurnItem::Text(t) = it {
+                out.push_str(t);
+            }
+        }
+        out
+    }
+
+    /// `true` if no text or tool activity has been recorded yet.
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
     }
 }

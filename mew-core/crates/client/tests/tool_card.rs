@@ -11,10 +11,12 @@
 use mewcode_client::net::Session;
 use mewcode_client::runtime::model::{App, Screen, SessionState};
 use mewcode_client::runtime::view::{
-    render, render_tool_call_header, render_tool_result_body, render_tool_result_header,
-    summarise_json, truncate_one_line,
+    render, render_diff, render_tool_call_header, render_tool_result_body,
+    render_tool_result_header, summarise_json, truncate_one_line,
 };
-use mewcode_protocol::{Message, MessagePart, Mode, ModelId, ToolCall, ToolResult};
+use mewcode_protocol::{
+    DiffDisplay, Message, MessagePart, Mode, ModelId, ToolCall, ToolDisplay, ToolResult,
+};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use serde_json::json;
@@ -34,6 +36,7 @@ fn result(name: &str, output: serde_json::Value, is_error: bool) -> ToolResult {
         name: name.into(),
         output,
         is_error,
+        display: None,
     }
 }
 
@@ -277,6 +280,7 @@ fn paired_tool_call_and_result_render_one_card() {
                 name: "bash".into(),
                 output: json!("file.txt\n"),
                 is_error: false,
+                display: None,
             }),
         ],
         ModelId::default().as_str(),
@@ -308,6 +312,7 @@ fn standalone_tool_result_keeps_the_arrow_header() {
             name: "bash".into(),
             output: json!("late result"),
             is_error: false,
+            display: None,
         })],
         ModelId::default().as_str(),
     );
@@ -317,6 +322,125 @@ fn standalone_tool_result_keeps_the_arrow_header() {
         "expected standalone header: {buf:?}"
     );
     assert!(buf.contains("⎿ late result"), "expected body: {buf:?}");
+}
+
+// --- edit_file diff card --------------------------------------------------
+
+fn diff_result(
+    name: &str,
+    path: &str,
+    start_line: Option<u64>,
+    old: &str,
+    new: &str,
+    call_id: &str,
+) -> ToolResult {
+    ToolResult {
+        call_id: call_id.into(),
+        name: name.into(),
+        output: json!({ "path": path }),
+        is_error: false,
+        display: Some(ToolDisplay::Diff(DiffDisplay::new(
+            path, start_line, old, new,
+        ))),
+    }
+}
+
+#[test]
+fn diff_display_renders_removed_and_added_lines() {
+    // The unified diff renderer: removed lines as `-`, added as `+`, with a
+    // `@@ start_line @@` header. Works for any tool that supplies a DiffDisplay.
+    let diff = DiffDisplay::new("src/lib.rs", Some(7), "fn old_name()\n", "fn new_name()\n");
+    let body = render_diff(&diff);
+    let text: String = body.iter().map(line_text).collect::<Vec<_>>().join("\n");
+    assert!(
+        text.contains("- fn old_name()"),
+        "expected removed line: {text:?}"
+    );
+    assert!(
+        text.contains("+ fn new_name()"),
+        "expected added line: {text:?}"
+    );
+    assert!(
+        text.contains("src/lib.rs") && text.contains("+1") && text.contains("-1"),
+        "expected header with path and change counts: {text:?}"
+    );
+    // The removed line maps to file line 7 (start_line base) in the gutter.
+    assert!(
+        text.contains(" 7 "),
+        "expected line-number gutter: {text:?}"
+    );
+}
+
+#[test]
+fn new_file_diff_is_all_additions() {
+    // A write_file on a new file: empty old side -> every line is an addition.
+    let diff = DiffDisplay::new("new.rs", None, "", "line one\nline two\n");
+    let text: String = render_diff(&diff)
+        .iter()
+        .map(line_text)
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        text.contains("+ line one") && text.contains("+ line two"),
+        "{text:?}"
+    );
+    assert!(
+        !text.contains("- "),
+        "new file has no removed lines: {text:?}"
+    );
+}
+
+#[test]
+fn edit_file_result_with_display_renders_diff_not_summary() {
+    // End to end through the transcript: a paired edit_file result carrying a
+    // DiffDisplay shows the colored diff instead of the `{path: …}` summary.
+    let call_id = "edit-1".to_string();
+    let msg = Message::assistant(
+        vec![
+            MessagePart::ToolCall(ToolCall {
+                id: call_id.clone(),
+                name: "edit_file".into(),
+                input: json!({"path": "src/lib.rs", "old_string": "a", "new_string": "b"}),
+            }),
+            MessagePart::ToolResult(diff_result(
+                "edit_file",
+                "src/lib.rs",
+                Some(7),
+                "fn old_name()\n",
+                "fn new_name()\n",
+                &call_id,
+            )),
+        ],
+        ModelId::default().as_str(),
+    );
+    let buf = draw_session(vec![msg]);
+    assert!(
+        buf.contains("🛠️ edit_file"),
+        "expected call header: {buf:?}"
+    );
+    assert!(
+        buf.contains("- fn old_name()"),
+        "expected removed line: {buf:?}"
+    );
+    assert!(
+        buf.contains("+ fn new_name()"),
+        "expected added line: {buf:?}"
+    );
+    assert!(
+        buf.contains("src/lib.rs"),
+        "expected diff header with path: {buf:?}"
+    );
+}
+
+#[test]
+fn tool_result_without_display_keeps_generic_body() {
+    // Regression: a tool with no DiffDisplay still renders the JSON summary.
+    let body = render_tool_result_body(&result("write_file", json!({"bytes_written": 12}), false));
+    let text: String = body.iter().map(line_text).collect::<Vec<_>>().join("\n");
+    assert!(
+        text.contains("bytes_written"),
+        "expected generic summary: {text:?}"
+    );
 }
 
 #[test]
@@ -340,6 +464,7 @@ fn tool_result_after_text_is_standalone() {
                 name: "bash".into(),
                 output: json!("late"),
                 is_error: false,
+                display: None,
             }),
         ],
         ModelId::default().as_str(),

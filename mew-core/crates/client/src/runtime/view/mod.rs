@@ -44,8 +44,8 @@ pub use markdown::highlight_code_block;
 pub use spinner::spinner_frame;
 pub use toast::toast_alpha;
 pub use tool_card::{
-    render_tool_call_header, render_tool_result_body, render_tool_result_header, summarise_json,
-    truncate_one_line,
+    render_diff, render_tool_call_header, render_tool_result_body, render_tool_result_header,
+    summarise_json, truncate_one_line,
 };
 
 use session::render_session;

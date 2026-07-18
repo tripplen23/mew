@@ -35,6 +35,13 @@ pub enum StreamEvent {
         /// Tool output (already serialised to JSON).
         output: serde_json::Value,
     },
+    /// Render-only display data for a tool call (e.g. a code diff).
+    ToolDisplayAvailable {
+        /// Id of the call this display is for.
+        tool_call_id: String,
+        /// The render payload.
+        display: crate::ToolDisplay,
+    },
     /// Stream finished successfully.
     Finish {
         /// Wall-clock duration in milliseconds.

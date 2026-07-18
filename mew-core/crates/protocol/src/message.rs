@@ -96,4 +96,7 @@ pub struct ToolResult {
     /// `true` if the tool reported an error.
     #[serde(default)]
     pub is_error: bool,
+    /// Optional render-only display (e.g. a code diff).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display: Option<crate::ToolDisplay>,
 }

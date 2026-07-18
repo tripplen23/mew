@@ -354,6 +354,13 @@ async fn run_chat_stream(api: ApiClient, req: ChatRequest, tx: mpsc::Sender<Msg>
                 id: tool_call_id,
                 output,
             },
+            Ok(StreamEvent::ToolDisplayAvailable {
+                tool_call_id,
+                display,
+            }) => StreamMsg::ToolDisplay {
+                id: tool_call_id,
+                display,
+            },
             Ok(StreamEvent::Finish { duration_ms, .. }) => {
                 let _ = tx
                     .send(Msg::Stream(StreamMsg::Finished { duration_ms }))

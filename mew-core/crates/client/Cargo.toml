@@ -30,6 +30,7 @@ tracing-subscriber = { workspace = true }
 
 ratatui = { workspace = true, features = ["unstable-rendered-line-info"] }
 crossterm = { workspace = true }
+similar = { workspace = true }
 tui-textarea = { workspace = true }
 tui-markdown = { workspace = true }
 syntect = { workspace = true }

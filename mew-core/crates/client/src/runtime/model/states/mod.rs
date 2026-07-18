@@ -11,7 +11,7 @@ mod session;
 
 pub use session::{
     ModelPickerState, Overlay, PastedText, SLASH_COMMANDS, SessionListState, SessionState,
-    SlashCommand, StreamingState, ToolCallView,
+    SlashCommand, StreamingState, ToolCallView, TurnItem,
 };
 
 /// Active TUI theme. More variants can be added without changing render call sites.
