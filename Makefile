@@ -71,6 +71,11 @@ fmt:
 
 fmt-check:
 	cd $(CORE_DIR) && $(CARGO) fmt --all --check
+	@files="$$($(GOFMT) -l $(MCP_DIR))"; \
+	if [ -n "$$files" ]; then \
+		printf '%s\n' "$$files"; \
+		exit 1; \
+	fi
 
 check: fmt-check lint test
 
