@@ -107,9 +107,7 @@ pub fn render_diff(diff: &DiffDisplay) -> Vec<Line<'static>> {
     let (mut adds, mut dels) = (0usize, 0usize);
     for change in text_diff.iter_all_changes() {
         let line = change.value();
-        let content = line
-            .trim_end_matches(|c| c == '\n' || c == '\r')
-            .to_string();
+        let content = line.trim_end_matches(['\n', '\r']).to_string();
         match change.tag() {
             ChangeTag::Insert => {
                 adds += 1;
