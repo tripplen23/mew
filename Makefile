@@ -6,8 +6,8 @@ CURL ?= curl
 CORE_DIR = mew-core
 MCP_DIR = mew-mcp
 MCP_BIN = mew-mcp
-SERVER_PKG = mewcode-server
-CLIENT_PKG = mewcode-client
+SERVER_BIN = $(CORE_DIR)/target/debug/mewcode-server
+CLIENT_BIN = $(CORE_DIR)/target/debug/mewcode
 MEW_URL ?= http://127.0.0.1:3737
 SERVER_WAIT_ATTEMPTS ?= 50
 
@@ -28,7 +28,7 @@ build-mcp:
 	cd $(MCP_DIR) && $(GO) build -o $(MCP_BIN) ./cmd/mew-mcp
 
 run: build-core
-	(cd $(CORE_DIR) && $(CARGO) run -p $(SERVER_PKG)) \
+	$(SERVER_BIN) \
 		> /dev/null 2>&1 & \
 	server_pid=$$!; \
 	trap 'kill $$server_pid 2>/dev/null' EXIT INT TERM; \
@@ -41,13 +41,13 @@ run: build-core
 		fi; \
 		sleep 0.3; \
 	done; \
-	cd $(CORE_DIR) && $(CARGO) run -p $(CLIENT_PKG) -- tui
+	$(CLIENT_BIN) tui
 
-run-server:
-	cd $(CORE_DIR) && $(CARGO) run -p $(SERVER_PKG)
+run-server: build-core
+	$(SERVER_BIN)
 
-run-tui:
-	cd $(CORE_DIR) && $(CARGO) run -p $(CLIENT_PKG) -- tui
+run-tui: build-core
+	$(CLIENT_BIN) tui
 
 test: test-core test-mcp
 
