@@ -54,7 +54,7 @@ use mewcode_protocol::event::ChatRequest;
 use crate::config::ClientConfig;
 use crate::net::{ApiClient, NetError};
 
-use model::CreateError;
+use model::{CreateError, FileEntry};
 
 const CHANNEL_CAPACITY: usize = 256;
 const TICK_INTERVAL: Duration = Duration::from_millis(50);
@@ -259,6 +259,13 @@ fn dispatch(cmd: Cmd, api: &ApiClient, tx: &mpsc::Sender<Msg>) {
                 let _ = tx.send(Msg::SessionsFetched(result)).await;
             });
         }
+        Cmd::FetchFiles => {
+            let tx = tx.clone();
+            tokio::task::spawn_blocking(move || {
+                let result = list_files().map_err(|e| e.to_string());
+                let _ = tx.blocking_send(Msg::FilesFetched(result));
+            });
+        }
         Cmd::PatchSession {
             id,
             patch,
@@ -295,6 +302,45 @@ fn dispatch(cmd: Cmd, api: &ApiClient, tx: &mpsc::Sender<Msg>) {
             });
         }
     }
+}
+
+fn list_files() -> io::Result<Vec<FileEntry>> {
+    const MAX_FILES: usize = 2000;
+    const SKIPPED_DIRS: &[&str] = &[".git", "target", "node_modules"];
+    let root = std::env::current_dir()?;
+    let mut out = Vec::new();
+    let mut stack = vec![root.clone()];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            let kind = entry.file_type()?;
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if should_skip(&name, SKIPPED_DIRS) {
+                continue;
+            }
+            if kind.is_dir() {
+                stack.push(path);
+            } else if kind.is_file() {
+                if let Ok(rel) = path.strip_prefix(&root) {
+                    out.push(FileEntry {
+                        path: rel.to_string_lossy().replace('\\', "/"),
+                    });
+                    if out.len() >= MAX_FILES {
+                        out.sort_by(|a, b| a.path.cmp(&b.path));
+                        return Ok(out);
+                    }
+                }
+            }
+        }
+    }
+    out.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(out)
+}
+
+fn should_skip(name: &str, skipped_dirs: &[&str]) -> bool {
+    skipped_dirs.contains(&name)
 }
 
 /// Map a [`NetError`] from `create_session` into a [`CreateError`] at the

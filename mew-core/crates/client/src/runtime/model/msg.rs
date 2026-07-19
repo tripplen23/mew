@@ -2,6 +2,7 @@ use uuid::Uuid;
 
 use crossterm::event::KeyEvent;
 
+use super::FileEntry;
 use crate::net::{ModelEntry, Session, SessionSummary, SkillEntry};
 
 /// Messages that drive the [`super::App`] through `update`.
@@ -23,6 +24,7 @@ pub enum Msg {
     SkillsFetched(Result<Vec<SkillEntry>, String>),
     /// The session list was fetched (or failed).
     SessionsFetched(Result<Vec<SessionSummary>, String>),
+    FilesFetched(Result<Vec<FileEntry>, String>),
     /// A `PATCH /sessions/{id}` returned a refreshed session (or failed).
     /// `from_rename` is `true` when the request originated from
     /// `/session rename` so the update loop can clear the rename draft.

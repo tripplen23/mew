@@ -6,6 +6,11 @@ use uuid::Uuid;
 use crate::net::{ModelEntry, Session, SessionSummary, SkillEntry};
 use mewcode_protocol::ModelId;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileEntry {
+    pub path: String,
+}
+
 /// One row in the slash-command picker.
 #[derive(Debug, Clone, Copy)]
 pub struct SlashCommand {
@@ -69,6 +74,8 @@ pub enum Overlay {
     RenameSession,
     /// The slash-command picker shown when the composer starts with `/`.
     SlashPicker,
+    /// The file picker shown when the current composer token starts with `@`.
+    FilePicker,
     /// Theme picker overlay.
     Theme,
 }
@@ -89,27 +96,21 @@ pub struct SessionState {
     pub input: TextArea<'static>,
     /// Full pasted bodies hidden behind short composer markers.
     pub pasted: Vec<PastedText>,
-    /// First message of a not-yet-created session, kept so it can be sent
-    /// as the user message the moment `SessionCreated` arrives.
+    /// First message of a not-yet-created session.
     pub pending_chat: Option<String>,
     /// Model picked before the first session exists.
     pub pending_model: Option<ModelId>,
     /// `true` while a `POST /sessions` is in flight for `pending_chat`.
     pub creating: bool,
-    /// When `creating` was set true; used by the view to drive the
-    /// "starting session…" spinner. `None` while not creating so a stale
-    /// instant is never shown.
+    /// When `creating` was set true
     pub creation_started_at: Option<Instant>,
     /// Vertical scroll offset of the transcript, in wrapped lines from the top.
     pub scroll: u16,
     /// When `true`, the transcript stays pinned to its latest line.
     pub follow: bool,
-    /// Largest valid `scroll` for the last rendered frame (content lines minus
-    /// viewport height). Written by the view, read by the key handler so it can
-    /// clamp scrolling and know when the bottom has been reached.
+    /// Largest valid `scroll` for the last rendered frame
     pub max_scroll: u16,
-    /// Transcript viewport height from the last rendered frame, used as the
-    /// PageUp/PageDown step.
+    /// Transcript viewport height from the last rendered frame
     pub viewport: u16,
     /// `Some` while an assistant turn is in flight.
     pub streaming: Option<StreamingState>,
@@ -123,6 +124,8 @@ pub struct SessionState {
     pub skills: Option<Vec<SkillEntry>>,
     /// Highlighted row in the slash-command picker (0-based).
     pub slash_cursor: usize,
+    /// File picker with @ command
+    pub file_picker: FilePickerState,
 }
 
 impl SessionState {
@@ -147,6 +150,7 @@ impl SessionState {
             session_list: SessionListState::default(),
             skills: None,
             slash_cursor: 0,
+            file_picker: FilePickerState::default(),
         }
     }
 
@@ -157,6 +161,12 @@ impl SessionState {
             ..Self::empty()
         }
     }
+}
+
+#[derive(Debug, Default)]
+pub struct FilePickerState {
+    pub files: Option<Vec<FileEntry>>,
+    pub picker: PickerState,
 }
 
 /// A multiline paste represented by a short marker in the composer.
@@ -173,14 +183,7 @@ pub struct PastedText {
 pub struct ModelPickerState {
     /// Cached model registry for the [`Overlay::ModelPicker`] overlay.
     pub models: Option<Vec<ModelEntry>>,
-    /// Highlighted row in the model picker (0-based).
-    pub cursor: usize,
-    /// Vertical scroll offset (in rows) of the model picker.
-    pub scroll: usize,
-    /// Inner height of the model-picker overlay as last rendered.
-    pub viewport: u16,
-    /// Largest model-picker viewport the view has ever reported.
-    pub viewport_max: u16,
+    pub picker: PickerState,
 }
 
 /// State for the session list overlay.
@@ -188,13 +191,19 @@ pub struct ModelPickerState {
 pub struct SessionListState {
     /// Cached session summaries for the [`Overlay::SessionList`] overlay.
     pub summaries: Vec<SessionSummary>,
-    /// Highlighted row in the session list (0-based).
+    pub picker: PickerState,
+}
+
+/// Cursor and viewport state shared by scrollable picker overlays.
+#[derive(Debug, Default)]
+pub struct PickerState {
+    /// Highlighted row (0-based).
     pub cursor: usize,
-    /// Vertical scroll offset of the session list.
+    /// Vertical scroll offset.
     pub scroll: usize,
-    /// Inner height of the session-list overlay as last rendered.
+    /// Inner height of the overlay as last rendered.
     pub viewport: u16,
-    /// Largest session-list viewport the view has ever reported.
+    /// Largest viewport the view has ever reported.
     pub viewport_max: u16,
 }
 

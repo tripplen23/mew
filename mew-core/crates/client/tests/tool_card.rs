@@ -266,6 +266,20 @@ fn draw_session(messages: Vec<Message>) -> String {
 }
 
 #[test]
+fn transcript_renders_user_file_mentions() {
+    let msg = Message::user(vec![MessagePart::Text {
+        text: "read @src/main.rs".to_string(),
+    }]);
+
+    let buf = draw_session(vec![msg]);
+
+    assert!(
+        buf.contains("@src/main.rs"),
+        "expected file mention: {buf:?}"
+    );
+}
+
+#[test]
 fn paired_tool_call_and_result_render_one_card() {
     let call_id = "call-1".to_string();
     let msg = Message::assistant(
