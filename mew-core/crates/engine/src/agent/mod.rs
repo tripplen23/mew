@@ -4,7 +4,7 @@
 //! [`Agent`](rig_core::agent::struct.Agent.html) abstraction:
 //! - system-prompt construction ([`build_system_prompt`])
 //! - Rig agent execution ([`Agent::run_turn`])
-//! - streaming translation from Rig items to [`StreamEvent`]s ([`stream`])
+//! - streaming translation from Rig items to [`StreamEvent`]s (the stream module)
 //!
 //! The [`Harness`](crate::harness::Harness) consumes an [`Agent`] each turn:
 //! it builds the system prompt, creates an [`Agent`], and delegates execution.

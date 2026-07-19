@@ -240,7 +240,7 @@ impl ApiClient {
     /// `PATCH /sessions/{id}` — apply a partial update and return the
     /// refreshed session.
     ///
-    /// A per-request 10 s timeout matches [`Self::models`] so a hung server
+    /// A per-request 10 s timeout matches [`Self::providers`] so a hung server
     /// response surfaces as an error rather than wedging the rename/model
     /// switch overlay open.
     pub async fn patch_session(
@@ -261,7 +261,7 @@ impl ApiClient {
     }
 
     /// `DELETE /sessions/{id}` — delete a session. A 10 s timeout matches
-    /// [`Self::models`] so a hung server response surfaces as an error
+    /// [`Self::providers`] so a hung server response surfaces as an error
     /// rather than wedging the session list overlay open.
     pub async fn delete_session(&self, id: uuid::Uuid) -> Result<(), NetError> {
         let path = SESSION_BY_ID.replace("{id}", &id.to_string());
