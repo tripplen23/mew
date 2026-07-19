@@ -7,8 +7,11 @@ mod completion;
 mod trace;
 
 pub use self::completion::last_user_text;
+#[doc(hidden)]
+pub use self::completion::user_text_with_file_context;
 pub use self::trace::{chat_turn_span, record_turn_input, record_turn_output};
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use mewcode_protocol::{Message, Mode, ModelId, Role, StreamEvent};
@@ -36,6 +39,7 @@ pub struct Harness {
     history_strategy: HistoryStrategy,
     memory: Option<MemoryStore>,
     display_sink: Option<crate::tools::DisplaySink>,
+    project_root: Option<PathBuf>,
 }
 
 impl std::fmt::Debug for Harness {
@@ -67,7 +71,14 @@ impl Harness {
             history_strategy: HistoryStrategy::default_raw(),
             memory: None,
             display_sink: None,
+            project_root: None,
         }
+    }
+
+    /// Set the project root used to resolve `@file` mentions.
+    pub fn with_project_root(mut self, root: impl Into<PathBuf>) -> Self {
+        self.project_root = Some(root.into());
+        self
     }
 
     /// Attach the display sink so mutating tools' render-only data (diffs) is
@@ -141,8 +152,12 @@ impl Harness {
 
         // The turn always answers the most recent user message. With no
         // user message there is nothing to send, so fail without a provider.
-        let user_text = last_user_text(messages)
-            .ok_or_else(|| EngineError::Other("no user message in chat history".to_string()))?;
+        let user_text = if let Some(root) = self.project_root.as_deref() {
+            completion::user_text_with_file_context(messages, root)
+        } else {
+            last_user_text(messages)
+        }
+        .ok_or_else(|| EngineError::Other("no user message in chat history".to_string()))?;
 
         // Build history from messages before the current user prompt, so
         // the prompt text is not duplicated when invoke_agent sends it

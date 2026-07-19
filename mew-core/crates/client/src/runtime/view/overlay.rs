@@ -10,6 +10,7 @@ use mewcode_protocol::ProviderId;
 use mewcode_protocol::tool::tools_for_mode;
 
 use super::super::model::{SLASH_COMMANDS, SessionState, ThemeId};
+use super::super::update::picker::filtered_files;
 
 /// The `/tools` overlay body: the tools available in the active mode plus
 /// the total count. Mirrors the mode gating in the engine's tool registry
@@ -135,6 +136,42 @@ pub(super) fn render_slash_picker(frame: &mut Frame, area: Rect, s: &SessionStat
     );
 }
 
+pub(super) fn file_picker_lines(s: &SessionState, max_width: usize) -> Vec<Line<'static>> {
+    const ELLIPSIS: &str = "…";
+    if s.file_picker.files.is_none() {
+        return vec![Line::from(Span::styled(
+            "Loading files...",
+            Style::default().fg(Color::DarkGray),
+        ))];
+    }
+    let files = filtered_files(s);
+    if files.is_empty() {
+        return vec![Line::from(Span::styled(
+            "No matching files.",
+            Style::default().fg(Color::DarkGray),
+        ))];
+    }
+    files
+        .iter()
+        .enumerate()
+        .skip(s.file_picker.picker.scroll)
+        .map(|(i, file)| {
+            let style = if i == s.file_picker.picker.cursor {
+                Style::default().fg(Color::Black).bg(Color::Cyan)
+            } else {
+                Style::default()
+            };
+            Line::from(Span::styled(
+                format!(
+                    " {}",
+                    truncate_with_ellipsis(&file.path, max_width.saturating_sub(1), ELLIPSIS)
+                ),
+                style,
+            ))
+        })
+        .collect()
+}
+
 fn fallback(value: u16, default: u16) -> u16 {
     if value == 0 { default } else { value }
 }
@@ -145,7 +182,7 @@ fn fallback(value: u16, default: u16) -> u16 {
 /// in flight" / "fetch failed" state.
 ///
 /// The helper returns the **visible window** of rows (after applying
-/// `s.model_picker.scroll`) so the list scrolls cleanly when there are
+/// `s.model_picker.picker.scroll`) so the list scrolls cleanly when there are
 /// more models than the overlay can fit on screen. The cursor highlight
 /// still reflects the full-list index, so the caller doesn't need to
 /// translate between window-local and global rows.
@@ -190,9 +227,13 @@ pub fn model_picker_lines(s: &SessionState, max_width: usize) -> Vec<Line<'stati
     }
 
     // Translate cursor from entry-index to row-index.
-    let cursor_row = cursor_to_row(&rows, s.model_picker.cursor);
+    let cursor_row = cursor_to_row(&rows, s.model_picker.picker.cursor);
 
-    let start = s.model_picker.scroll.min(rows.len().saturating_sub(1));
+    let start = s
+        .model_picker
+        .picker
+        .scroll
+        .min(rows.len().saturating_sub(1));
     rows.iter()
         .enumerate()
         .skip(start)
@@ -291,7 +332,7 @@ fn truncate_with_ellipsis(s: &str, max_width: usize, ellipsis: &str) -> String {
 
 /// Body of the `/session` overlay: every saved session as a one-line
 /// summary, newest-first, with the cursor row highlighted. Sliced by
-/// `s.session_list.scroll` so long lists stay usable.
+/// `s.session_list.picker.scroll` so long lists stay usable.
 ///
 /// `max_width` is the inner width of the overlay panel; each row is
 /// truncated to fit so titles never wrap onto two visual lines (see
@@ -305,6 +346,7 @@ pub fn session_list_lines(s: &SessionState, max_width: usize) -> Vec<Line<'stati
     }
     let start = s
         .session_list
+        .picker
         .scroll
         .min(s.session_list.summaries.len().saturating_sub(1));
     s.session_list
@@ -313,7 +355,7 @@ pub fn session_list_lines(s: &SessionState, max_width: usize) -> Vec<Line<'stati
         .enumerate()
         .skip(start)
         .map(|(i, summary)| {
-            let style = if i == s.session_list.cursor {
+            let style = if i == s.session_list.picker.cursor {
                 Style::default().fg(Color::Black).bg(Color::Cyan)
             } else {
                 Style::default()

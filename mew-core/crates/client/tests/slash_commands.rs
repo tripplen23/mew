@@ -73,7 +73,7 @@ fn slash_model_opens_picker_and_fetches_when_uncached() {
     );
     let s = active_state(&mut app);
     assert_eq!(s.overlay, Overlay::ModelPicker);
-    assert_eq!(s.model_picker.cursor, 0);
+    assert_eq!(s.model_picker.picker.cursor, 0);
     assert!(
         s.input.lines().join("\n").is_empty(),
         "input should be cleared after dispatch"
@@ -131,7 +131,7 @@ fn slash_session_opens_list_and_fetches_when_uncached() {
     );
     let s = active_state(&mut app);
     assert_eq!(s.overlay, Overlay::SessionList);
-    assert_eq!(s.session_list.cursor, 0);
+    assert_eq!(s.session_list.picker.cursor, 0);
 }
 
 #[test]
@@ -159,7 +159,7 @@ fn slash_session_always_refetches_to_pick_up_new_sessions() {
     assert!(matches!(cmd, Cmd::FetchSessions));
     let s = active_state(&mut app);
     assert_eq!(s.overlay, Overlay::SessionList);
-    assert_eq!(s.session_list.cursor, 0);
+    assert_eq!(s.session_list.picker.cursor, 0);
 }
 
 #[test]
@@ -861,8 +861,8 @@ fn model_picker_rows_fit_on_one_visual_line() {
     let s = active_state(&mut app);
     s.session = Some(session());
     s.model_picker.models = Some(seed_models(5));
-    s.model_picker.cursor = 0;
-    s.model_picker.scroll = 0;
+    s.model_picker.picker.cursor = 0;
+    s.model_picker.picker.scroll = 0;
 
     let max_width = 30; // tight enough to force truncation for long ids
     let lines = model_picker_lines(s, max_width);
@@ -905,7 +905,7 @@ fn model_picker_last_row_is_visible_in_small_terminal() {
     }
     let buf = draw(&mut app, 100, 28);
 
-    assert_eq!(active_state(&mut app).model_picker.cursor, 14);
+    assert_eq!(active_state(&mut app).model_picker.picker.cursor, 14);
     assert!(
         buf.contains("Model 14"),
         "last cursor row should be visible, not replaced by the footer:\n{buf}"

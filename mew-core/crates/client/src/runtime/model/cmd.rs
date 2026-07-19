@@ -21,6 +21,7 @@ pub enum Cmd {
     FetchSkills,
     /// Fetch the session list for the picker overlay.
     FetchSessions,
+    FetchFiles,
     /// Apply a partial update to a session via `PATCH /sessions/{id}`.
     /// Carries the whole `SessionPatch` so a single cmd covers rename,
     /// model change, and mode change.

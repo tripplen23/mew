@@ -11,7 +11,10 @@ use super::super::model::{
     Cmd, Overlay, PastedText, QUIT_COMMAND, SessionState, StreamingState, Toast,
 };
 use super::key_to_input;
-use super::picker::{on_model_picker_key, on_session_list_key};
+use super::picker::{
+    on_file_picker_key, on_model_picker_key, on_session_list_key, open_file_picker,
+    refresh_file_picker,
+};
 use super::slash::{
     SlashPickerResult, on_slash_picker_key, open_slash_picker, slash_default_cursor,
 };
@@ -62,6 +65,7 @@ pub(super) fn on_session_key(
             SlashPickerResult::Submit => return on_session_submit(s, toast),
         },
         Overlay::ModelPicker => return on_model_picker_key(s, key),
+        Overlay::FilePicker => return on_file_picker_key(s, key),
         Overlay::SessionList => return on_session_list_key(s, key),
         Overlay::RenameSession => {
             if key.code == KeyCode::Enter {
@@ -90,8 +94,11 @@ pub(super) fn on_session_key(
     }
 
     match key.code {
-        // Typing `/` in an empty composer (or right after backspacing back
-        // to one) opens the slash-command picker.
+        KeyCode::Char('@') => {
+            s.input.input(key_to_input(key));
+            open_file_picker(s)
+        }
+
         KeyCode::Char('/') => {
             s.input.input(key_to_input(key));
             if slash_default_cursor(&s.input.lines().join("\n")).is_some() {
@@ -99,28 +106,33 @@ pub(super) fn on_session_key(
             }
             Cmd::None
         }
+
         KeyCode::Enter => on_session_submit(s, toast),
-        // Transcript scrollback. Up/PageUp release auto-follow; scrolling back
-        // to the bottom re-engages it. `max_scroll`/`viewport` come from the
-        // last rendered frame (see `view::render_session`).
+
         KeyCode::Up => {
             scroll_by(s, -1);
             Cmd::None
         }
+
         KeyCode::Down => {
             scroll_by(s, 1);
             Cmd::None
         }
+
         KeyCode::PageUp => {
             scroll_by(s, -(s.viewport.max(1) as i32));
             Cmd::None
         }
+
         KeyCode::PageDown => {
             scroll_by(s, s.viewport.max(1) as i32);
             Cmd::None
         }
         _ => {
             s.input.input(key_to_input(key));
+            if s.overlay == Overlay::None {
+                return refresh_file_picker(s);
+            }
             Cmd::None
         }
     }
@@ -277,7 +289,7 @@ fn derive_title(text: &str) -> String {
 /// `on_session_key`; this function only opens the dialog.
 fn on_model_command(s: &mut SessionState) -> Cmd {
     s.overlay = Overlay::ModelPicker;
-    s.model_picker.cursor = 0;
+    s.model_picker.picker.cursor = 0;
     if s.model_picker.models.is_none() {
         Cmd::FetchModels
     } else {
@@ -352,7 +364,7 @@ fn on_session_command(s: &mut SessionState, args: &[&str], toast: &mut Option<To
         }
         _ => {
             s.overlay = Overlay::SessionList;
-            s.session_list.cursor = 0;
+            s.session_list.picker.cursor = 0;
             Cmd::FetchSessions
         }
     }

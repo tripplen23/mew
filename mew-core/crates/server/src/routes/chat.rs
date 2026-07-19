@@ -68,7 +68,7 @@ pub async fn chat_stream(
     // `ToolDisplayAvailable`. Never enters the model's context.
     let display_sink: mewcode_engine::tools::DisplaySink =
         Arc::new(std::sync::Mutex::new(Vec::new()));
-    let ctx = ProjectContext::new(root).with_display(display_sink.clone());
+    let ctx = ProjectContext::new(root.clone()).with_display(display_sink.clone());
     let tools = Arc::new(default_registry(
         ctx,
         skills.clone(),
@@ -78,6 +78,7 @@ pub async fn chat_stream(
 
     let harness = Harness::new(req.model, req.mode, skills, tools)
         .with_session(req.session_id)
+        .with_project_root(root)
         .with_memory(state.memory.clone())
         .with_display_sink(display_sink);
 

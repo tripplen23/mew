@@ -14,6 +14,7 @@ use mewcode_protocol::{MessagePart, Role};
 
 use super::super::model::{SessionState, TurnItem};
 use super::markdown::render_markdown;
+use super::session::render_mentions;
 use super::spinner::spinner_frame;
 use super::theme::Theme;
 use super::tool_card::{
@@ -139,7 +140,11 @@ fn render_message(msg: &mewcode_protocol::Message, theme: Theme) -> Vec<Line<'st
         match part {
             MessagePart::Text { text } => {
                 last_tool_call = None;
-                out.extend(render_markdown(text));
+                if msg.role == Role::User {
+                    out.push(Line::from(render_mentions(text, theme)));
+                } else {
+                    out.extend(render_markdown(text));
+                }
             }
             MessagePart::ToolCall(call) => {
                 last_tool_call = Some(call);

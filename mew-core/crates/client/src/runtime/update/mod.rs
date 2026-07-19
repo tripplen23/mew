@@ -16,12 +16,12 @@ use mewcode_protocol::{Message, MessagePart};
 
 use super::model::{App, Cmd, CreateError, Msg, Overlay, Screen, StreamingState, Toast};
 
-mod picker;
+pub(crate) mod picker;
 mod session;
 mod slash;
 mod stream;
 
-use picker::{clamp_model_picker_scroll, clamp_session_list_scroll};
+use picker::{clamp_file_picker_scroll, clamp_model_picker_scroll, clamp_session_list_scroll};
 use session::{on_session_key, on_session_paste};
 use stream::apply_stream_event;
 
@@ -110,8 +110,8 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
                 Ok(entries) => {
                     s.model_picker.models = Some(entries);
                     let len = s.model_picker.models.as_ref().map(Vec::len).unwrap_or(0);
-                    if s.model_picker.cursor >= len {
-                        s.model_picker.cursor = len.saturating_sub(1);
+                    if s.model_picker.picker.cursor >= len {
+                        s.model_picker.picker.cursor = len.saturating_sub(1);
                     }
                     clamp_model_picker_scroll(s);
                 }
@@ -146,14 +146,33 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
                 Ok(summaries) => {
                     s.session_list.summaries = summaries;
                     let len = s.session_list.summaries.len();
-                    if s.session_list.cursor >= len {
-                        s.session_list.cursor = len.saturating_sub(1);
+                    if s.session_list.picker.cursor >= len {
+                        s.session_list.picker.cursor = len.saturating_sub(1);
                     }
                     clamp_session_list_scroll(s);
                 }
                 Err(e) => {
                     if s.overlay == Overlay::SessionList {
                         *toast = Some(Toast::error(format!("/session: {e}")));
+                    }
+                }
+            }
+            Cmd::None
+        }
+
+        Msg::FilesFetched(result) => {
+            match result {
+                Ok(files) => {
+                    s.file_picker.files = Some(files);
+                    let len = picker::filtered_files(s).len();
+                    if s.file_picker.picker.cursor >= len {
+                        s.file_picker.picker.cursor = len.saturating_sub(1);
+                    }
+                    clamp_file_picker_scroll(s);
+                }
+                Err(e) => {
+                    if s.overlay == Overlay::FilePicker {
+                        *toast = Some(Toast::error(format!("@files: {e}")));
                     }
                 }
             }
@@ -212,8 +231,8 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
                         s.session = None;
                     }
                     let len = s.session_list.summaries.len();
-                    if s.session_list.cursor >= len {
-                        s.session_list.cursor = len.saturating_sub(1);
+                    if s.session_list.picker.cursor >= len {
+                        s.session_list.picker.cursor = len.saturating_sub(1);
                     }
                     clamp_session_list_scroll(s);
                 }

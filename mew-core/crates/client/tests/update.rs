@@ -8,7 +8,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use uuid::Uuid;
 
 use mewcode_client::net::Session;
-use mewcode_client::runtime::model::{App, Cmd, Msg, Overlay, Screen, SessionState};
+use mewcode_client::runtime::model::{App, Cmd, FileEntry, Msg, Overlay, Screen, SessionState};
 use mewcode_client::runtime::update;
 use mewcode_protocol::{MessagePart, Mode, ModelId, Role};
 
@@ -266,6 +266,119 @@ fn type_into_session(text: &str) -> App {
         update(&mut app, char_key(c));
     }
     app
+}
+
+#[test]
+fn at_file_picker_inserts_selected_path() {
+    let mut app = on_empty_session();
+    type_chars(&mut app, "read ");
+
+    assert!(matches!(update(&mut app, char_key('@')), Cmd::FetchFiles));
+    update(
+        &mut app,
+        Msg::FilesFetched(Ok(vec![
+            FileEntry {
+                path: "README.md".to_string(),
+            },
+            FileEntry {
+                path: "src/main.rs".to_string(),
+            },
+        ])),
+    );
+    type_chars(&mut app, "src");
+    update(&mut app, key(KeyCode::Enter));
+
+    let s = sess(&app);
+    assert_eq!(s.overlay, Overlay::None);
+    assert_eq!(s.input.lines().join("\n"), "read @src/main.rs");
+}
+
+#[test]
+fn at_file_picker_prefers_basename_prefix_matches() {
+    let mut app = on_empty_session();
+    type_chars(&mut app, "read ");
+
+    assert!(matches!(update(&mut app, char_key('@')), Cmd::FetchFiles));
+    update(
+        &mut app,
+        Msg::FilesFetched(Ok(vec![
+            FileEntry {
+                path: "src/streaming.rs".to_string(),
+            },
+            FileEntry {
+                path: "crates/engine/src/tools/fs/read_file.rs".to_string(),
+            },
+            FileEntry {
+                path: "README.md".to_string(),
+            },
+        ])),
+    );
+    type_chars(&mut app, "rea");
+    update(&mut app, key(KeyCode::Enter));
+
+    assert_eq!(sess(&app).input.lines().join("\n"), "read @README.md");
+}
+
+#[test]
+fn at_file_picker_reopens_when_cursor_returns_to_mention() {
+    let mut app = on_empty_session();
+
+    assert!(matches!(update(&mut app, char_key('@')), Cmd::FetchFiles));
+    update(
+        &mut app,
+        Msg::FilesFetched(Ok(vec![FileEntry {
+            path: "README.md".to_string(),
+        }])),
+    );
+    type_chars(&mut app, "rea ");
+    assert_eq!(sess(&app).overlay, Overlay::None);
+
+    press(&mut app, KeyCode::Left);
+
+    assert_eq!(sess(&app).overlay, Overlay::FilePicker);
+}
+
+#[test]
+fn at_file_picker_hides_dotfiles_by_default() {
+    let mut app = on_empty_session();
+
+    assert!(matches!(update(&mut app, char_key('@')), Cmd::FetchFiles));
+    update(
+        &mut app,
+        Msg::FilesFetched(Ok(vec![
+            FileEntry {
+                path: ".env".to_string(),
+            },
+            FileEntry {
+                path: "README.md".to_string(),
+            },
+        ])),
+    );
+    update(&mut app, key(KeyCode::Enter));
+
+    assert_eq!(sess(&app).input.lines().join("\n"), "@README.md");
+}
+
+#[test]
+fn at_file_picker_shows_dotfiles_for_dot_query() {
+    let mut app = on_empty_session();
+
+    assert!(matches!(update(&mut app, char_key('@')), Cmd::FetchFiles));
+    update(
+        &mut app,
+        Msg::FilesFetched(Ok(vec![
+            FileEntry {
+                path: ".env".to_string(),
+            },
+            FileEntry {
+                path: "README.md".to_string(),
+            },
+        ])),
+    );
+    type_chars(&mut app, ".");
+    update(&mut app, key(KeyCode::Enter));
+
+    assert_eq!(sess(&app).input.lines().join("\n"), "@.env");
 }
 
 /// The text command `quit` (case-insensitive, exact match) is the new

@@ -129,7 +129,7 @@ fn input_line(line: &str, theme: Theme) -> Line<'static> {
 
     while let Some(start) = rest.find("[Pasted ~") {
         if start > 0 {
-            spans.push(Span::raw(rest[..start].to_string()));
+            spans.extend(render_mentions(&rest[..start], theme));
         }
         let marked = &rest[start..];
         let Some(end) = marked.find(']') else {
@@ -148,9 +148,40 @@ fn input_line(line: &str, theme: Theme) -> Line<'static> {
     }
 
     if !rest.is_empty() {
-        spans.push(Span::raw(rest.to_string()));
+        spans.extend(render_mentions(rest, theme));
     }
     Line::from(spans)
+}
+
+pub(super) fn render_mentions(text: &str, theme: Theme) -> Vec<Span<'static>> {
+    let mut spans = Vec::new();
+    let mut pos = 0;
+    while pos < text.len() {
+        let Some(token_start_rel) = text[pos..].find(|c: char| !c.is_whitespace()) else {
+            spans.push(Span::raw(text[pos..].to_string()));
+            return spans;
+        };
+        let token_start = pos + token_start_rel;
+        if token_start > pos {
+            spans.push(Span::raw(text[pos..token_start].to_string()));
+        }
+        let token_end = text[token_start..]
+            .find(char::is_whitespace)
+            .map_or(text.len(), |i| token_start + i);
+        let token = &text[token_start..token_end];
+        if token.starts_with('@') && token.len() > 1 {
+            spans.push(Span::styled(
+                token.to_string(),
+                Style::default()
+                    .fg(theme.mew_gold)
+                    .add_modifier(Modifier::BOLD),
+            ));
+        } else {
+            spans.push(Span::raw(token.to_string()));
+        }
+        pos = token_end;
+    }
+    spans
 }
 
 fn render_active_overlay(frame: &mut Frame, area: Rect, s: &mut SessionState) {
@@ -178,16 +209,16 @@ fn render_active_overlay(frame: &mut Frame, area: Rect, s: &mut SessionState) {
                 "Esc close",
                 body,
                 s.model_picker.models.as_ref().map(Vec::len).unwrap_or(0),
-                s.model_picker.scroll,
-                s.model_picker.cursor,
-                &mut s.model_picker.viewport,
+                s.model_picker.picker.scroll,
+                s.model_picker.picker.cursor,
+                &mut s.model_picker.picker.viewport,
             );
             // Track the largest viewport the view has ever reported so
             // a transient 0 (first frame, resize) doesn't make the
             // clamp think there's no room and leave the cursor
             // off-screen.
-            if s.model_picker.viewport > s.model_picker.viewport_max {
-                s.model_picker.viewport_max = s.model_picker.viewport;
+            if s.model_picker.picker.viewport > s.model_picker.picker.viewport_max {
+                s.model_picker.picker.viewport_max = s.model_picker.picker.viewport;
             }
         }
         Overlay::SessionList => {
@@ -201,12 +232,33 @@ fn render_active_overlay(frame: &mut Frame, area: Rect, s: &mut SessionState) {
                 "Esc close, d delete",
                 body,
                 s.session_list.summaries.len(),
-                s.session_list.scroll,
-                s.session_list.cursor,
-                &mut s.session_list.viewport,
+                s.session_list.picker.scroll,
+                s.session_list.picker.cursor,
+                &mut s.session_list.picker.viewport,
             );
-            if s.session_list.viewport > s.session_list.viewport_max {
-                s.session_list.viewport_max = s.session_list.viewport;
+            if s.session_list.picker.viewport > s.session_list.picker.viewport_max {
+                s.session_list.picker.viewport_max = s.session_list.picker.viewport;
+            }
+        }
+        Overlay::FilePicker => {
+            const FILE_PICKER_WIDTH_PERCENT: u16 = 70;
+            const FILE_PICKER_HEIGHT_PERCENT: u16 = 50;
+            let rect = centered_rect(area, FILE_PICKER_WIDTH_PERCENT, FILE_PICKER_HEIGHT_PERCENT);
+            let inner_w = rect.width.saturating_sub(2) as usize;
+            let body = super::overlay::file_picker_lines(s, inner_w);
+            render_scrolled_overlay(
+                frame,
+                area,
+                "Files",
+                "Enter insert, Esc close",
+                body,
+                super::super::update::picker::filtered_files(s).len(),
+                s.file_picker.picker.scroll,
+                s.file_picker.picker.cursor,
+                &mut s.file_picker.picker.viewport,
+            );
+            if s.file_picker.picker.viewport > s.file_picker.picker.viewport_max {
+                s.file_picker.picker.viewport_max = s.file_picker.picker.viewport;
             }
         }
         Overlay::RenameSession => render_overlay(
