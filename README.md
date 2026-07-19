@@ -45,7 +45,7 @@ For visual systems, Mew combines browser evidence with optional multimodal analy
 
 ## How it works
 
-`reproduce -> observe -> contract -> approve -> evolve -> compare -> hand off`
+`ingest -> reproduce -> observe -> grill -> contract -> plan -> approve -> implement -> compare -> hand off -> evolve`
 
 Mew owns the durable run, policy, workspaces, evidence, checkpoints, and verification. Models and skills handle ambiguous reasoning; proven workflows can move into the Rust runtime.
 
