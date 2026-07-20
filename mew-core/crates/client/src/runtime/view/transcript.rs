@@ -5,7 +5,7 @@
 //! handling can clamp PageUp/PageDown without doing layout work.
 
 use ratatui::Frame;
-use ratatui::layout::Rect;
+use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, BorderType, Paragraph, Wrap};
@@ -13,6 +13,7 @@ use ratatui::widgets::{Block, BorderType, Paragraph, Wrap};
 use mewcode_protocol::{MessagePart, Role};
 
 use super::super::model::{SessionState, TurnItem};
+use super::entry::render_entry_lines;
 use super::markdown::render_markdown;
 use super::session::render_mentions;
 use super::spinner::spinner_frame;
@@ -30,6 +31,24 @@ pub(super) fn render_transcript(
     theme: Theme,
 ) {
     let mut lines: Vec<Line> = Vec::new();
+    let title = s
+        .session
+        .as_ref()
+        .map(|sess| sess.title.as_str())
+        .unwrap_or(" mewcode ");
+    let block = Block::bordered()
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(theme.lavender).bg(theme.ink_bg))
+        .style(Style::default().bg(theme.ink_bg))
+        .title(Span::styled(
+            format!(" {title} "),
+            Style::default()
+                .fg(theme.hot_pink)
+                .bg(theme.ink_bg)
+                .add_modifier(Modifier::BOLD),
+        ));
+    let inner = block.inner(chunk);
+    let is_entry = s.session.is_none();
     match &s.session {
         Some(session) => {
             for msg in &session.messages {
@@ -38,14 +57,7 @@ pub(super) fn render_transcript(
             }
         }
         None => {
-            lines.push(Line::from(Span::styled(
-                if let Some(started) = s.creation_started_at {
-                    format!("{} starting session…", spinner_frame(started.elapsed()))
-                } else {
-                    "Type a message to start a new session.".to_string()
-                },
-                Style::default().fg(theme.muted),
-            )));
+            lines.extend(render_entry_lines(s, theme, inner));
         }
     }
     if let Some(st) = &s.streaming {
@@ -91,31 +103,19 @@ pub(super) fn render_transcript(
         }
     }
 
-    let title = s
-        .session
-        .as_ref()
-        .map(|sess| sess.title.as_str())
-        .unwrap_or(" mewcode ");
-    let block = Block::bordered()
-        .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(theme.lavender).bg(theme.ink_bg))
-        .style(Style::default().bg(theme.ink_bg))
-        .title(Span::styled(
-            format!(" {title} "),
-            Style::default()
-                .fg(theme.hot_pink)
-                .bg(theme.ink_bg)
-                .add_modifier(Modifier::BOLD),
-        ));
-    let inner = block.inner(chunk);
-    let para = Paragraph::new(Text::from(lines))
+    let mut para = Paragraph::new(Text::from(lines))
         .style(Style::default().fg(theme.text).bg(theme.ink_bg))
         .wrap(Wrap { trim: false });
+    if is_entry {
+        para = para.alignment(Alignment::Center);
+    }
     let total = para.line_count(inner.width).min(u16::MAX as usize) as u16;
 
     s.viewport = inner.height;
     s.max_scroll = total.saturating_sub(inner.height);
-    if s.follow {
+    if is_entry {
+        s.scroll = 0;
+    } else if s.follow {
         s.scroll = s.max_scroll;
     } else {
         s.scroll = s.scroll.min(s.max_scroll);

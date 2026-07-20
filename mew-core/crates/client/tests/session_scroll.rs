@@ -54,6 +54,12 @@ fn press(app: &mut App, code: KeyCode) {
     update(app, Msg::Key(KeyEvent::new(code, KeyModifiers::NONE)));
 }
 
+fn type_text(app: &mut App, text: &str) {
+    for c in text.chars() {
+        press(app, KeyCode::Char(c));
+    }
+}
+
 fn press_until(app: &mut App, code: KeyCode, done: impl Fn(&SessionState) -> bool) {
     for _ in 0..200 {
         if done(session(app)) {
@@ -135,9 +141,7 @@ fn input_box_grows_with_wrapped_text() {
     let mut app = app_with_long_transcript();
 
     // Now type a long line that wraps many times.
-    for c in "a".repeat(400).chars() {
-        press(&mut app, KeyCode::Char(c));
-    }
+    type_text(&mut app, &"a".repeat(400));
     let buf = draw(&mut app);
 
     // And the long text must actually be visible in the buffer (not clipped).
@@ -150,5 +154,18 @@ fn input_box_grows_with_wrapped_text() {
             .count()
             > 1,
         "the long input must wrap into multiple rendered rows, not clip off the right"
+    );
+}
+
+#[test]
+fn input_has_no_placeholder_after_typing() {
+    let mut app = App::new();
+    type_text(&mut app, "quit");
+    let typed = draw(&mut app);
+
+    assert!(typed.contains("quit"), "typed text is visible:\n{typed}");
+    assert!(
+        !typed.contains("mewcode to build"),
+        "input must not render stale placeholder text:\n{typed}"
     );
 }
