@@ -16,9 +16,14 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use mewcode_protocol::{Mode, ToolContracts, ToolDescriptor, ToolDisplay, ToolError, ToolOutput};
+use mewcode_protocol::{
+    Mode, StreamEvent, ToolContracts, ToolDescriptor, ToolDisplay, ToolError, ToolOutput,
+};
 use serde_json::Value;
+use tokio::sync::mpsc;
+use uuid::Uuid;
 
+use crate::approval::ApprovalBroker;
 use crate::memory::MemoryStore;
 use crate::skills::SkillRegistry;
 
@@ -95,6 +100,64 @@ impl ToolRegistry {
             },
         }
     }
+
+    /// Return a copy that asks before executing Build-mode write/edit/bash tools.
+    pub fn with_approval(
+        &self,
+        session_id: Uuid,
+        broker: ApprovalBroker,
+        events: mpsc::Sender<StreamEvent>,
+    ) -> Self {
+        let mut reg = ToolRegistry::new();
+        for (name, tool) in &self.inner {
+            if matches!(
+                *name,
+                mewcode_protocol::tool::names::WRITE_FILE
+                    | mewcode_protocol::tool::names::EDIT_FILE
+                    | mewcode_protocol::tool::names::BASH
+            ) {
+                reg.register(Arc::new(ApprovalTool {
+                    inner: tool.clone(),
+                    session_id,
+                    broker: broker.clone(),
+                    events: events.clone(),
+                }));
+            } else {
+                reg.register(tool.clone());
+            }
+        }
+        reg
+    }
+}
+
+struct ApprovalTool {
+    inner: Arc<dyn ToolContracts>,
+    session_id: Uuid,
+    broker: ApprovalBroker,
+    events: mpsc::Sender<StreamEvent>,
+}
+
+#[async_trait]
+impl ToolContracts for ApprovalTool {
+    fn name(&self) -> &'static str {
+        self.inner.name()
+    }
+
+    fn descriptor(&self) -> ToolDescriptor {
+        let mut descriptor = self.inner.descriptor();
+        descriptor.description = format!(
+            "{}\n\n**Approval required:** Build mode asks the user before this tool executes. The user can allow once, allow matching calls in this chat session, or deny.",
+            descriptor.description
+        );
+        descriptor
+    }
+
+    async fn execute(&self, input: Value) -> Result<ToolOutput, ToolError> {
+        self.broker
+            .approve_tool(self.session_id, self.name(), &input, &self.events)
+            .await?;
+        self.inner.execute(input).await
+    }
 }
 
 /// Display record tagged with the tool's input arguments.
@@ -168,7 +231,7 @@ impl ToolContracts for PlanReadOnlyBashTool {
     fn descriptor(&self) -> ToolDescriptor {
         let mut descriptor = self.inner.descriptor();
         descriptor.description = format!(
-            "{}\n\n**Plan mode:** Only read-only inspection commands are allowed here: git status/log/diff/show/branch, ls, pwd, cat, grep, rg, find, wc, head, tail. Commands with shell composition or redirection are blocked. Switch to Build mode for mutating commands.",
+            "{}\n\n**Plan mode:** Only read-only inspection commands are allowed here: git status/log/diff/show/branch, ls, pwd, cat, grep, rg, wc, head, tail. Commands with shell composition or redirection are blocked. Switch to Build mode for mutating commands.",
             descriptor.description
         );
         descriptor
@@ -192,7 +255,7 @@ impl ToolContracts for PlanReadOnlyBashTool {
 fn is_plan_read_only_command(command: &str) -> bool {
     let command = command.trim();
     if command.is_empty()
-        || [";", "&&", "||", ">", "<", "|", "`", "$("]
+        || [";", "&&", "||", "&", ">", "<", "|", "`", "$(", "\n", "\r"]
             .iter()
             .any(|token| command.contains(token))
     {
@@ -210,7 +273,6 @@ fn is_plan_read_only_command(command: &str) -> bool {
         "cat",
         "grep",
         "rg",
-        "find",
         "wc",
         "head",
         "tail",

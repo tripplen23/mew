@@ -4,6 +4,7 @@ use tui_textarea::TextArea;
 use uuid::Uuid;
 
 use crate::net::{ModelEntry, Session, SessionSummary, SkillEntry};
+use mewcode_protocol::event::{ChoiceCancelReason, ChoiceRequest, ChoiceResponse};
 use mewcode_protocol::{Mode, ModelId};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,6 +84,8 @@ pub enum Overlay {
     FilePicker,
     /// Theme picker overlay.
     Theme,
+    /// Structured single-select choice prompt.
+    Choice,
 }
 
 /// State backing [`super::Screen::Session`].
@@ -133,6 +136,8 @@ pub struct SessionState {
     pub slash_cursor: usize,
     /// File picker with @ command
     pub file_picker: FilePickerState,
+    /// Pending structured choice prompt, if any.
+    pub pending_choice: Option<ChoicePromptState>,
 }
 
 impl SessionState {
@@ -159,6 +164,7 @@ impl SessionState {
             skills: None,
             slash_cursor: 0,
             file_picker: FilePickerState::default(),
+            pending_choice: None,
         }
     }
 
@@ -168,6 +174,32 @@ impl SessionState {
             session: Some(session),
             ..Self::empty()
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct ChoicePromptState {
+    pub request: ChoiceRequest,
+    pub picker: PickerState,
+    pub started_at: Instant,
+    pub response: Option<ChoiceResponse>,
+}
+
+impl ChoicePromptState {
+    pub fn new(request: ChoiceRequest) -> Self {
+        Self {
+            request,
+            picker: PickerState::default(),
+            started_at: Instant::now(),
+            response: None,
+        }
+    }
+
+    pub fn cancel(&mut self, reason: ChoiceCancelReason) {
+        self.response = Some(ChoiceResponse::Cancelled {
+            request_id: self.request.request_id.clone(),
+            reason,
+        });
     }
 }
 

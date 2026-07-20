@@ -88,6 +88,47 @@ pub(super) fn theme_lines() -> Vec<Line<'static>> {
     ]
 }
 
+pub(super) fn choice_lines(s: &SessionState) -> Vec<Line<'static>> {
+    let Some(choice) = s.pending_choice.as_ref() else {
+        return vec![Line::from("No pending choice.")];
+    };
+    let mut lines = vec![
+        Line::from(Span::styled(
+            choice.request.title.clone(),
+            Style::default().add_modifier(Modifier::BOLD),
+        )),
+        Line::from(choice.request.prompt.clone()),
+        Line::from(""),
+    ];
+    for (i, option) in choice.request.options.iter().enumerate() {
+        let marker = if i == choice.picker.cursor {
+            "›"
+        } else {
+            " "
+        };
+        lines.push(Line::from(vec![
+            Span::styled(format!("{marker} "), Style::default().fg(Color::Cyan)),
+            Span::styled(
+                option.label.clone(),
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(format!("  [{}]", option.id)),
+        ]));
+        if let Some(description) = &option.description {
+            lines.push(Line::from(Span::styled(
+                format!("    {description}"),
+                Style::default().fg(Color::Gray),
+            )));
+        }
+    }
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "↑↓ move, Enter select, Esc cancel",
+        Style::default().fg(Color::DarkGray),
+    )));
+    lines
+}
+
 pub(super) fn render_slash_picker(frame: &mut Frame, area: Rect, s: &SessionState) {
     let row_count = SLASH_COMMANDS.len() as u16;
     let max_height = fallback(area.height.saturating_sub(4), 1);

@@ -1,10 +1,14 @@
-//! Unit tests for the Phase 12 tools: write_file, edit_file, bash, grep,
-//! and the PLAN mode gate in `default_registry`.
+//! Unit tests for the built-in tools and the PLAN mode gate in `default_registry`.
 
 use std::sync::Arc;
 
+use mewcode_engine::approval::ApprovalBroker;
 use mewcode_engine::tools::{
     BashTool, EditFileTool, GrepTool, ProjectContext, WriteFileTool, default_registry,
+};
+use mewcode_protocol::StreamEvent;
+use mewcode_protocol::event::{
+    CHOICE_ALLOW_ONCE, CHOICE_ALLOW_SESSION, CHOICE_DENY, ChoiceResponse,
 };
 use mewcode_protocol::tool::ToolContracts;
 use mewcode_protocol::{Mode, ToolError};
@@ -12,7 +16,7 @@ use serde_json::json;
 
 fn fresh_project() -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!(
-        "mewcode-phase12-{}-{}",
+        "mewcode-tools-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -23,10 +27,6 @@ fn fresh_project() -> std::path::PathBuf {
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }
-
-// ---------------------------------------------------------------------------
-// write_file
-// ---------------------------------------------------------------------------
 
 #[tokio::test]
 async fn write_file_creates_new_file() {
@@ -135,10 +135,6 @@ async fn write_file_refuses_path_escape() {
     let _ = std::fs::remove_dir_all(&project);
 }
 
-// ---------------------------------------------------------------------------
-// edit_file
-// ---------------------------------------------------------------------------
-
 #[tokio::test]
 async fn edit_file_replaces_unique_string() {
     let project = fresh_project();
@@ -233,10 +229,6 @@ async fn edit_file_rejects_string_not_found() {
     let _ = std::fs::remove_dir_all(&project);
 }
 
-// ---------------------------------------------------------------------------
-// bash
-// ---------------------------------------------------------------------------
-
 #[tokio::test]
 async fn bash_runs_simple_command() {
     let project = fresh_project();
@@ -307,10 +299,6 @@ async fn bash_timeout_kills_command() {
 
     let _ = std::fs::remove_dir_all(&project);
 }
-
-// ---------------------------------------------------------------------------
-// grep
-// ---------------------------------------------------------------------------
 
 #[tokio::test]
 async fn grep_finds_matches() {
@@ -400,10 +388,6 @@ async fn grep_skips_binary_files() {
 
     let _ = std::fs::remove_dir_all(&project);
 }
-
-// ---------------------------------------------------------------------------
-// PLAN mode gate
-// ---------------------------------------------------------------------------
 
 #[test]
 fn plan_mode_exposes_but_denies_write_tools() {
@@ -504,9 +488,152 @@ async fn plan_mode_bash_rejects_mutating_commands() {
     assert!(output.0["hint"].as_str().unwrap().contains("Build mode"));
 }
 
-// ---------------------------------------------------------------------------
-// Regression tests from deep review
-// ---------------------------------------------------------------------------
+#[tokio::test]
+async fn plan_mode_bash_rejects_shell_separators_and_find() {
+    let skills = Arc::new(mewcode_engine::skills::SkillRegistry::new());
+    let ctx = ProjectContext::new(fresh_project());
+
+    let plan_reg = default_registry(ctx, skills, None, Mode::Plan);
+    for command in [
+        "cat Cargo.toml\nls",
+        "cat Cargo.toml\rls",
+        "ls & cat Cargo.toml",
+        "find . -delete",
+        "find . -exec rm {} +",
+    ] {
+        let output = plan_reg
+            .dispatch("bash", json!({"command": command, "timeout_ms": 1000}))
+            .await;
+        assert_eq!(output.0["kind"], "rejected", "{command}");
+    }
+}
+
+#[tokio::test]
+async fn build_write_file_denied_approval_does_not_write() {
+    let project = fresh_project();
+    let skills = Arc::new(mewcode_engine::skills::SkillRegistry::new());
+    let reg = default_registry(
+        ProjectContext::new(project.clone()),
+        skills,
+        None,
+        Mode::Build,
+    );
+    let broker = ApprovalBroker::default();
+    let session_id = uuid::Uuid::new_v4();
+    let (tx, mut rx) = tokio::sync::mpsc::channel(4);
+    let approved = reg.with_approval(session_id, broker.clone(), tx);
+
+    let task = tokio::spawn(async move {
+        approved
+            .dispatch("write_file", json!({"path": "x.txt", "content": "x"}))
+            .await
+    });
+    let request = match rx.recv().await.unwrap() {
+        StreamEvent::ChoiceRequest(request) => request,
+        other => panic!("unexpected event: {other:?}"),
+    };
+    broker.answer(
+        session_id,
+        ChoiceResponse::Selected {
+            request_id: request.request_id,
+            option_id: CHOICE_DENY.into(),
+        },
+    );
+
+    let output = task.await.unwrap();
+    assert_eq!(output.0["kind"], "rejected");
+    assert!(!project.join("x.txt").exists());
+    let _ = std::fs::remove_dir_all(&project);
+}
+
+#[tokio::test]
+async fn build_write_file_allow_once_writes_file() {
+    let project = fresh_project();
+    let skills = Arc::new(mewcode_engine::skills::SkillRegistry::new());
+    let reg = default_registry(
+        ProjectContext::new(project.clone()),
+        skills,
+        None,
+        Mode::Build,
+    );
+    let broker = ApprovalBroker::default();
+    let session_id = uuid::Uuid::new_v4();
+    let (tx, mut rx) = tokio::sync::mpsc::channel(4);
+    let approved = reg.with_approval(session_id, broker.clone(), tx);
+
+    let task = tokio::spawn(async move {
+        approved
+            .dispatch("write_file", json!({"path": "x.txt", "content": "x"}))
+            .await
+    });
+    let request = match rx.recv().await.unwrap() {
+        StreamEvent::ChoiceRequest(request) => request,
+        other => panic!("unexpected event: {other:?}"),
+    };
+    broker.answer(
+        session_id,
+        ChoiceResponse::Selected {
+            request_id: request.request_id,
+            option_id: CHOICE_ALLOW_ONCE.into(),
+        },
+    );
+
+    let output = task.await.unwrap();
+    assert_eq!(output.0["path"], "x.txt");
+    assert_eq!(std::fs::read_to_string(project.join("x.txt")).unwrap(), "x");
+    let _ = std::fs::remove_dir_all(&project);
+}
+
+#[tokio::test]
+async fn build_write_file_allow_session_skips_matching_second_prompt() {
+    let project = fresh_project();
+    let skills = Arc::new(mewcode_engine::skills::SkillRegistry::new());
+    let reg = default_registry(
+        ProjectContext::new(project.clone()),
+        skills,
+        None,
+        Mode::Build,
+    );
+    let broker = ApprovalBroker::default();
+    let session_id = uuid::Uuid::new_v4();
+    let (tx, mut rx) = tokio::sync::mpsc::channel(4);
+    let approved = reg.with_approval(session_id, broker.clone(), tx);
+
+    let first = approved.clone();
+    let task = tokio::spawn(async move {
+        first
+            .dispatch("write_file", json!({"path": "x.txt", "content": "x"}))
+            .await
+    });
+    let request = match rx.recv().await.unwrap() {
+        StreamEvent::ChoiceRequest(request) => request,
+        other => panic!("unexpected event: {other:?}"),
+    };
+    broker.answer(
+        session_id,
+        ChoiceResponse::Selected {
+            request_id: request.request_id,
+            option_id: CHOICE_ALLOW_SESSION.into(),
+        },
+    );
+    let _ = task.await.unwrap();
+
+    let output = approved
+        .dispatch(
+            "write_file",
+            json!({"path": "x.txt", "content": "y", "overwrite": true}),
+        )
+        .await;
+
+    assert_eq!(output.0["path"], "x.txt");
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(50), rx.recv())
+            .await
+            .is_err()
+    );
+    assert_eq!(std::fs::read_to_string(project.join("x.txt")).unwrap(), "y");
+    let _ = std::fs::remove_dir_all(&project);
+}
 
 #[tokio::test]
 async fn edit_file_rejects_empty_old_string() {

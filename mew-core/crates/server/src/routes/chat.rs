@@ -80,7 +80,8 @@ pub async fn chat_stream(
         .with_session(req.session_id)
         .with_project_root(root)
         .with_memory(state.memory.clone())
-        .with_display_sink(display_sink);
+        .with_display_sink(display_sink)
+        .with_approval_broker(state.approvals.clone());
 
     // The client sends the full history each turn; the new user message should
     // be the last entry. Filter by role so a malformed trailing assistant/tool

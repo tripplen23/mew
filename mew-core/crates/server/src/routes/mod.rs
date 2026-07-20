@@ -1,6 +1,7 @@
 //! Route modules.
 
 pub mod chat;
+pub mod choices;
 pub mod health;
 pub mod memory;
 pub mod providers;

@@ -10,8 +10,9 @@ use std::time::Instant;
 mod session;
 
 pub use session::{
-    FileEntry, FilePickerState, ModelPickerState, Overlay, PastedText, PickerState, SLASH_COMMANDS,
-    SessionListState, SessionState, SlashCommand, StreamingState, ToolCallView, TurnItem,
+    ChoicePromptState, FileEntry, FilePickerState, ModelPickerState, Overlay, PastedText,
+    PickerState, SLASH_COMMANDS, SessionListState, SessionState, SlashCommand, StreamingState,
+    ToolCallView, TurnItem,
 };
 
 /// Active TUI theme. More variants can be added without changing render call sites.

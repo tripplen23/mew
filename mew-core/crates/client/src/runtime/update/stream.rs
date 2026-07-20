@@ -50,6 +50,11 @@ pub(super) fn apply_stream_event(s: &mut SessionState, ev: StreamMsg) -> Option<
             }
             None
         }
+        StreamMsg::ChoiceRequest(request) => {
+            s.pending_choice = Some(super::super::model::ChoicePromptState::new(request));
+            s.overlay = super::super::model::Overlay::Choice;
+            None
+        }
         StreamMsg::Finished { .. } => {
             if let Some(st) = s.streaming.take() {
                 if let Some(session) = s.session.as_mut() {

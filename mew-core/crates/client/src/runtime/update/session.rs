@@ -2,7 +2,9 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use tui_textarea::TextArea;
 use uuid::Uuid;
 
-use mewcode_protocol::event::ChatRequest;
+use mewcode_protocol::event::{
+    ChatRequest, ChoiceCancelReason, ChoiceResponse, ChoiceResponseRequest,
+};
 use mewcode_protocol::{Message, MessagePart, Mode};
 
 use crate::net::{CreateSessionRequest, SessionPatch};
@@ -34,6 +36,16 @@ pub(super) fn on_session_key(
     if key.code == KeyCode::Esc {
         // Close an open overlay first
         if s.overlay != Overlay::None {
+            if s.overlay == Overlay::Choice {
+                if let Some(choice) = s.pending_choice.as_mut() {
+                    choice.cancel(ChoiceCancelReason::User);
+                    let response = choice.response.clone().unwrap();
+                    s.overlay = Overlay::None;
+                    return submit_choice_response(s, response);
+                }
+                s.overlay = Overlay::None;
+                return Cmd::None;
+            }
             // `Overlay::RenameSession` seeds `s.input` with the current
             // session title so the user can edit it in place.
             let was_rename = s.overlay == Overlay::RenameSession;
@@ -66,6 +78,7 @@ pub(super) fn on_session_key(
         },
         Overlay::ModelPicker => return on_model_picker_key(s, key),
         Overlay::FilePicker => return on_file_picker_key(s, key),
+        Overlay::Choice => return on_choice_key(s, key),
         Overlay::SessionList => return on_session_list_key(s, key),
         Overlay::RenameSession => {
             if key.code == KeyCode::Enter {
@@ -142,6 +155,49 @@ pub(super) fn on_session_key(
             }
             Cmd::None
         }
+    }
+}
+
+fn on_choice_key(s: &mut SessionState, key: KeyEvent) -> Cmd {
+    let Some(choice) = s.pending_choice.as_mut() else {
+        s.overlay = Overlay::None;
+        return Cmd::None;
+    };
+    let len = choice.request.options.len();
+    match key.code {
+        KeyCode::Up => {
+            if len > 0 {
+                choice.picker.cursor = choice.picker.cursor.saturating_sub(1);
+            }
+        }
+        KeyCode::Down => {
+            if len > 0 {
+                choice.picker.cursor = (choice.picker.cursor + 1).min(len - 1);
+            }
+        }
+        KeyCode::Enter => {
+            if let Some(option) = choice.request.options.get(choice.picker.cursor) {
+                let response = ChoiceResponse::Selected {
+                    request_id: choice.request.request_id.clone(),
+                    option_id: option.id.clone(),
+                };
+                choice.response = Some(response.clone());
+                s.overlay = Overlay::None;
+                return submit_choice_response(s, response);
+            }
+        }
+        _ => {}
+    }
+    Cmd::None
+}
+
+pub(super) fn submit_choice_response(s: &SessionState, response: ChoiceResponse) -> Cmd {
+    match s.session.as_ref() {
+        Some(session) => Cmd::SubmitChoice(ChoiceResponseRequest {
+            session_id: session.id,
+            response,
+        }),
+        None => Cmd::None,
     }
 }
 

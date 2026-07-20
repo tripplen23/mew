@@ -4,6 +4,7 @@ use crossterm::event::KeyEvent;
 
 use super::FileEntry;
 use crate::net::{ModelEntry, Session, SessionSummary, SkillEntry};
+use mewcode_protocol::event::ChoiceRequest;
 
 /// Messages that drive the [`super::App`] through `update`.
 #[derive(Debug)]
@@ -18,6 +19,10 @@ pub enum Msg {
     SessionCreated(Result<Session, CreateError>),
     /// A streaming event arrived.
     Stream(StreamMsg),
+    /// A structured choice request arrived outside a stream.
+    ChoiceRequested(ChoiceRequest),
+    /// A pending structured choice answer was submitted.
+    ChoiceSubmitted(Result<(), String>),
     /// The model registry was fetched (or failed).
     ModelsFetched(Result<Vec<ModelEntry>, String>),
     /// The skill catalog was fetched (or failed).
@@ -87,4 +92,6 @@ pub enum StreamMsg {
     },
     /// Stream failed.
     Failed(String),
+    /// Runtime asks the client to render a structured choice prompt.
+    ChoiceRequest(ChoiceRequest),
 }
