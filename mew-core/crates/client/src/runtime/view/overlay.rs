@@ -156,18 +156,28 @@ pub(super) fn file_picker_lines(s: &SessionState, max_width: usize) -> Vec<Line<
         .enumerate()
         .skip(s.file_picker.picker.scroll)
         .map(|(i, file)| {
-            let style = if i == s.file_picker.picker.cursor {
-                Style::default().fg(Color::Black).bg(Color::Cyan)
+            let is_selected = i == s.file_picker.picker.cursor;
+            let label = if file.is_dir {
+                format!("{}/", file.path)
             } else {
-                Style::default()
+                file.path.clone()
             };
-            Line::from(Span::styled(
-                format!(
-                    " {}",
-                    truncate_with_ellipsis(&file.path, max_width.saturating_sub(1), ELLIPSIS)
-                ),
-                style,
-            ))
+            let display = truncate_with_ellipsis(&label, max_width.saturating_sub(1), ELLIPSIS);
+            if is_selected {
+                Line::from(Span::styled(
+                    format!(" {display}"),
+                    Style::default().fg(Color::Black).bg(Color::Cyan),
+                ))
+            } else if file.is_dir {
+                Line::from(Span::styled(
+                    format!(" {display}"),
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                ))
+            } else {
+                Line::from(Span::styled(format!(" {display}"), Style::default()))
+            }
         })
         .collect()
 }

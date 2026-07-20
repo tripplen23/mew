@@ -173,11 +173,15 @@ pub(super) fn render_mentions(text: &str, theme: Theme) -> Vec<Span<'static>> {
             .map_or(text.len(), |i| token_start + i);
         let token = &text[token_start..token_end];
         if token.starts_with('@') && token.len() > 1 {
+            let is_dir = token.ends_with('/');
+            let color = if is_dir {
+                theme.psy_cyan
+            } else {
+                theme.mew_gold
+            };
             spans.push(Span::styled(
                 token.to_string(),
-                Style::default()
-                    .fg(theme.mew_gold)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(color).add_modifier(Modifier::BOLD),
             ));
         } else {
             spans.push(Span::raw(token.to_string()));
