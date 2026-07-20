@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/tripplen23/mew/compare/v0.2.0...v0.3.0) (2026-07-19)
+
+
+### Features
+
+* **tui+engine:** Enable '@' command to mention file paths ([#58](https://github.com/tripplen23/mew/issues/58)) ([62b88fa](https://github.com/tripplen23/mew/commit/62b88fa2e6d02589efc4be65b3fd777bd6f44d45))
+
 ## [0.2.0](https://github.com/tripplen23/mew/compare/v0.1.0...v0.2.0) (2026-07-18)
 
 
