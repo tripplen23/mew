@@ -61,6 +61,8 @@ const TICK_INTERVAL: Duration = Duration::from_millis(50);
 const INPUT_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
 const NOTIFICATION_SOUND: &[u8] = include_bytes!("../../../../../assets/mew-voice.mp3");
+const NOTIFICATION_SOUND_FILE: &str = "mew-voice.mp3";
+const NOTIFICATION_PLAYER: &str = "ffplay";
 
 /// RAII guard over the terminal: raw mode, the alternate screen, and (on
 /// supporting terminals) the Kitty keyboard flags that make auto-repeat
@@ -227,6 +229,14 @@ fn dispatch(cmd: Cmd, api: &ApiClient, tx: &mpsc::Sender<Msg>) {
             let tx = tx.clone();
             tokio::spawn(run_chat_stream(api, req, tx));
         }
+        Cmd::SubmitChoice(req) => {
+            let api = api.clone();
+            let tx = tx.clone();
+            tokio::spawn(async move {
+                let result = api.respond_choice(&req).await.map_err(|e| e.to_string());
+                let _ = tx.send(Msg::ChoiceSubmitted(result)).await;
+            });
+        }
         Cmd::FetchModels => {
             let api = api.clone();
             let tx = tx.clone();
@@ -357,20 +367,14 @@ fn list_files() -> io::Result<Vec<FileEntry>> {
 }
 
 fn play_notification_sound() {
-    use rodio::Source;
-    let Ok((_stream, stream_handle)) = rodio::OutputStream::try_default() else {
+    let path = std::env::temp_dir().join(NOTIFICATION_SOUND_FILE);
+    if std::fs::write(&path, NOTIFICATION_SOUND).is_err() {
         return;
-    };
-    let cursor = std::io::Cursor::new(NOTIFICATION_SOUND);
-    let Ok(source) = rodio::Decoder::new(cursor) else {
-        return;
-    };
-    let duration = source.total_duration().unwrap_or(Duration::from_secs(2));
-    let Ok(sink) = rodio::Sink::try_new(&stream_handle) else {
-        return;
-    };
-    sink.append(source);
-    std::thread::sleep(duration);
+    }
+    let _ = std::process::Command::new(NOTIFICATION_PLAYER)
+        .args(["-nodisp", "-autoexit", "-loglevel", "quiet"])
+        .arg(path)
+        .status();
 }
 
 /// Map a [`NetError`] from `create_session` into a [`CreateError`] at the
@@ -437,6 +441,7 @@ async fn run_chat_stream(api: ApiClient, req: ChatRequest, tx: mpsc::Sender<Msg>
                 id: tool_call_id,
                 display,
             },
+            Ok(StreamEvent::ChoiceRequest(request)) => StreamMsg::ChoiceRequest(request),
             Ok(StreamEvent::Finish { duration_ms, .. }) => {
                 let _ = tx
                     .send(Msg::Stream(StreamMsg::Finished { duration_ms }))

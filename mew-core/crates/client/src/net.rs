@@ -2,8 +2,8 @@
 
 use eventsource_stream::Eventsource;
 use futures::{Stream, StreamExt};
-use mewcode_protocol::event::ChatRequest;
-use mewcode_protocol::routes::{CHAT, HEALTH, PROVIDERS, SESSION_BY_ID, SESSIONS, SKILLS};
+use mewcode_protocol::event::{ChatRequest, ChoiceResponseRequest};
+use mewcode_protocol::routes::{CHAT, CHOICES, HEALTH, PROVIDERS, SESSION_BY_ID, SESSIONS, SKILLS};
 use mewcode_protocol::{Message, Mode, ModelId, ModelKind, ProviderId, StreamEvent};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -298,6 +298,18 @@ impl ApiClient {
             Err(e) => Err(NetError::Stream(e.to_string())),
         });
         Ok(stream)
+    }
+
+    /// `POST /choices` — answer a pending interactive choice.
+    pub async fn respond_choice(&self, req: &ChoiceResponseRequest) -> Result<(), NetError> {
+        let resp = self
+            .inner
+            .post(format!("{}{}", self.base_url, CHOICES))
+            .json(req)
+            .send()
+            .await?;
+        let _ = ensure_success(resp)?.bytes().await?;
+        Ok(())
     }
 
     /// Resolve a model id string into the registry.

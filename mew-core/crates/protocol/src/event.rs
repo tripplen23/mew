@@ -1,5 +1,12 @@
 use crate::{Message, MessagePart, Mode, ModelId, ProviderId};
 
+/// Choice option id for approving only the current tool call.
+pub const CHOICE_ALLOW_ONCE: &str = "allow_once";
+/// Choice option id for approving matching calls in the current session.
+pub const CHOICE_ALLOW_SESSION: &str = "allow_session";
+/// Choice option id for rejecting the pending request.
+pub const CHOICE_DENY: &str = "deny";
+
 /// Server → client streaming events. Sent over SSE as JSON lines; the
 /// shape mirrors the AI SDK's `UIMessageStreamResponse`.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
@@ -42,6 +49,8 @@ pub enum StreamEvent {
         /// The render payload.
         display: crate::ToolDisplay,
     },
+    /// Runtime asks the interactive client to choose one option.
+    ChoiceRequest(ChoiceRequest),
     /// Stream finished successfully.
     Finish {
         /// Wall-clock duration in milliseconds.
@@ -60,6 +69,76 @@ pub enum StreamEvent {
         /// Human-readable error message.
         message: String,
     },
+}
+
+/// A stable single-select choice request.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+pub struct ChoiceRequest {
+    /// Stable id for matching a response to this request.
+    pub request_id: String,
+    /// Short title shown in the modal header.
+    pub title: String,
+    /// Prompt/question text.
+    pub prompt: String,
+    /// Options. Their `id` is the semantic answer value.
+    pub options: Vec<ChoiceOption>,
+    /// Timeout in milliseconds. Timeout resolves as cancelled.
+    pub timeout_ms: u64,
+}
+
+/// One selectable option in a choice request.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+pub struct ChoiceOption {
+    /// Stable semantic id returned in the response.
+    pub id: String,
+    /// User-facing label.
+    pub label: String,
+    /// Optional user-facing explanation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// Response for a single-select choice request.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+#[serde(tag = "status", rename_all = "kebab-case")]
+pub enum ChoiceResponse {
+    /// User selected one option by stable id.
+    Selected {
+        /// Request being answered.
+        request_id: String,
+        /// Stable option id.
+        option_id: String,
+    },
+    /// User cancelled, timeout fired, or no interactive client was available.
+    Cancelled {
+        /// Request being cancelled.
+        request_id: String,
+        /// Machine-readable reason.
+        reason: ChoiceCancelReason,
+    },
+}
+
+/// Why a choice resolved without a selected option.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema,
+)]
+#[serde(rename_all = "kebab-case")]
+pub enum ChoiceCancelReason {
+    /// User pressed cancel.
+    User,
+    /// Timeout elapsed.
+    Timeout,
+    /// No interactive client was attached.
+    NonInteractive,
+}
+
+/// Client → server answer for a pending choice request.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+pub struct ChoiceResponseRequest {
+    /// Session that owns the pending request.
+    pub session_id: uuid::Uuid,
+    /// User answer or cancellation.
+    pub response: ChoiceResponse,
 }
 
 impl StreamEvent {

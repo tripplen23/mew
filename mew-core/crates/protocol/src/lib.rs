@@ -29,6 +29,6 @@ pub use skill::{
 };
 pub use tool::{
     DEFAULT_MAX_RESPONSE_CHARS, ResponseFormat, ToolAnnotations, ToolContracts, ToolDescriptor,
-    ToolError, ToolErrorPayload, ToolExample, ToolName, ToolOutput, tools_for_mode,
+    ToolError, ToolErrorPayload, ToolExample, ToolName, ToolOutput, allowed_tools_for_mode,
     truncate_with_marker,
 };

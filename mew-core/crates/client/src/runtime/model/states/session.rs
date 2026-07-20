@@ -4,7 +4,8 @@ use tui_textarea::TextArea;
 use uuid::Uuid;
 
 use crate::net::{ModelEntry, Session, SessionSummary, SkillEntry};
-use mewcode_protocol::ModelId;
+use mewcode_protocol::event::{ChoiceCancelReason, ChoiceRequest, ChoiceResponse};
+use mewcode_protocol::{Mode, ModelId};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileEntry {
@@ -52,6 +53,10 @@ pub const SLASH_COMMANDS: &[SlashCommand] = &[
         description: "Pick theme",
     },
     SlashCommand {
+        command: "/mode",
+        description: "Switch mode",
+    },
+    SlashCommand {
         command: "quit",
         description: "Exit the TUI",
     },
@@ -79,6 +84,8 @@ pub enum Overlay {
     FilePicker,
     /// Theme picker overlay.
     Theme,
+    /// Structured single-select choice prompt.
+    Choice,
 }
 
 /// State backing [`super::Screen::Session`].
@@ -101,6 +108,8 @@ pub struct SessionState {
     pub pending_chat: Option<String>,
     /// Model picked before the first session exists.
     pub pending_model: Option<ModelId>,
+    /// Mode picked before the first session exists.
+    pub pending_mode: Option<Mode>,
     /// `true` while a `POST /sessions` is in flight for `pending_chat`.
     pub creating: bool,
     /// When `creating` was set true
@@ -127,6 +136,8 @@ pub struct SessionState {
     pub slash_cursor: usize,
     /// File picker with @ command
     pub file_picker: FilePickerState,
+    /// Pending structured choice prompt, if any.
+    pub pending_choice: Option<ChoicePromptState>,
 }
 
 impl SessionState {
@@ -139,6 +150,7 @@ impl SessionState {
             pasted: Vec::new(),
             pending_chat: None,
             pending_model: None,
+            pending_mode: None,
             creating: false,
             creation_started_at: None,
             scroll: 0,
@@ -152,6 +164,7 @@ impl SessionState {
             skills: None,
             slash_cursor: 0,
             file_picker: FilePickerState::default(),
+            pending_choice: None,
         }
     }
 
@@ -161,6 +174,32 @@ impl SessionState {
             session: Some(session),
             ..Self::empty()
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct ChoicePromptState {
+    pub request: ChoiceRequest,
+    pub picker: PickerState,
+    pub started_at: Instant,
+    pub response: Option<ChoiceResponse>,
+}
+
+impl ChoicePromptState {
+    pub fn new(request: ChoiceRequest) -> Self {
+        Self {
+            request,
+            picker: PickerState::default(),
+            started_at: Instant::now(),
+            response: None,
+        }
+    }
+
+    pub fn cancel(&mut self, reason: ChoiceCancelReason) {
+        self.response = Some(ChoiceResponse::Cancelled {
+            request_id: self.request.request_id.clone(),
+            reason,
+        });
     }
 }
 

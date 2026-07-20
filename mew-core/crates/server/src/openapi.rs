@@ -44,6 +44,7 @@ pub struct ErrorResponse {
         routes::sessions::delete,
         routes::sessions::patch,
         routes::chat::chat_stream,
+        routes::choices::respond,
     ),
     components(
         schemas(
@@ -59,6 +60,7 @@ pub struct ErrorResponse {
             crate::routes::sessions::CreateSessionRequest,
             crate::routes::storage::StorageStatus,
             mewcode_protocol::event::ChatRequest,
+            mewcode_protocol::event::ChoiceResponseRequest,
             mewcode_protocol::event::StreamEvent,
             mewcode_protocol::Message,
             mewcode_protocol::MessagePart,

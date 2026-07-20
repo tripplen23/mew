@@ -20,6 +20,7 @@ use tracing::Instrument;
 use uuid::Uuid;
 
 use crate::agent::{Agent, build_system_prompt};
+use crate::approval::ApprovalBroker;
 use crate::config::EngineConfig;
 use crate::error::EngineError;
 use crate::history::HistoryStrategy;
@@ -40,6 +41,7 @@ pub struct Harness {
     memory: Option<MemoryStore>,
     display_sink: Option<crate::tools::DisplaySink>,
     project_root: Option<PathBuf>,
+    approval_broker: Option<ApprovalBroker>,
 }
 
 impl std::fmt::Debug for Harness {
@@ -72,6 +74,7 @@ impl Harness {
             memory: None,
             display_sink: None,
             project_root: None,
+            approval_broker: None,
         }
     }
 
@@ -85,6 +88,12 @@ impl Harness {
     /// correlated to tool calls and streamed as `ToolDisplayAvailable`.
     pub fn with_display_sink(mut self, sink: crate::tools::DisplaySink) -> Self {
         self.display_sink = Some(sink);
+        self
+    }
+
+    /// Attach the in-memory approval broker for interactive tool approvals.
+    pub fn with_approval_broker(mut self, broker: ApprovalBroker) -> Self {
+        self.approval_broker = Some(broker);
         self
     }
 
@@ -146,10 +155,6 @@ impl Harness {
         messages: &[Message],
         tx: &mpsc::Sender<StreamEvent>,
     ) -> Result<String, EngineError> {
-        // Resolve the credential first: a missing key must fail before any
-        // provider is constructed or any request is built.
-        let cfg = EngineConfig::from_env()?;
-
         // The turn always answers the most recent user message. With no
         // user message there is nothing to send, so fail without a provider.
         let user_text = if let Some(root) = self.project_root.as_deref() {
@@ -158,6 +163,9 @@ impl Harness {
             last_user_text(messages)
         }
         .ok_or_else(|| EngineError::Other("no user message in chat history".to_string()))?;
+
+        // Resolve the credential before any provider is constructed.
+        let cfg = EngineConfig::from_env()?;
 
         // Build history from messages before the current user prompt, so
         // the prompt text is not duplicated when invoke_agent sends it
@@ -190,7 +198,19 @@ impl Harness {
 
         // Stream the reply through the agent layer. Token/turn caps are
         // owned by Agent's defaults; the harness doesn't override them.
-        let tools = crate::tools::adapter::rig_tools(&self.tools);
+        let approved_tools;
+        let tools_registry = if self.mode.allows_writes() {
+            match (self.session_id, self.approval_broker.clone()) {
+                (Some(session_id), Some(broker)) => {
+                    approved_tools = self.tools.with_approval(session_id, broker, tx.clone());
+                    &approved_tools
+                }
+                _ => &self.tools,
+            }
+        } else {
+            &self.tools
+        };
+        let tools = crate::tools::adapter::rig_tools(tools_registry);
         let mut agent = Agent::new(provider, self.model, system_prompt).with_tools(tools);
         if let Some(sink) = self.display_sink.clone() {
             agent = agent.with_display_sink(sink);

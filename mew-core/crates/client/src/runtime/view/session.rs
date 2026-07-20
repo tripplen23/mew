@@ -4,8 +4,6 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Clear, Paragraph, Wrap};
 
-use mewcode_protocol::Mode;
-
 use super::super::model::{Overlay, SessionState};
 use super::overlay::{
     centered_rect, render_overlay, render_scrolled_overlay, render_slash_picker, skills_lines,
@@ -106,7 +104,7 @@ fn render_status(frame: &mut Frame, chunk: Rect, s: &SessionState, theme: Theme)
         Some(session) => (session.model.display_name(), session.mode),
         None => (
             s.pending_model.unwrap_or_default().display_name(),
-            Mode::default(),
+            s.pending_mode.unwrap_or_default(),
         ),
     };
     let mut spans = vec![
@@ -202,6 +200,7 @@ fn render_active_overlay(frame: &mut Frame, area: Rect, s: &mut SessionState) {
         }
         Overlay::Skills => render_overlay(frame, area, "Skills", skills_lines(s)),
         Overlay::Theme => render_overlay(frame, area, "Theme", theme_lines()),
+        Overlay::Choice => render_overlay(frame, area, "Choose", super::overlay::choice_lines(s)),
         Overlay::ModelPicker => {
             // Compute the overlay rect first so the row builder knows
             // the inner width and can truncate each model to a single

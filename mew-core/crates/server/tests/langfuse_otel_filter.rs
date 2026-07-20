@@ -20,6 +20,10 @@ fn langfuse_otel_exports_mew_turn_not_rig_internal_spans() {
     );
     assert!(main_src.contains("LANGFUSE_BASE_URL"));
     assert!(
+        main_src.contains("with_scheduled_delay(Duration::from_millis(500))"),
+        "Langfuse batch export should not wait for the SDK's 5s default delay"
+    );
+    assert!(
         !main_src.contains("LANGFUSE_HOST"),
         "LANGFUSE_BASE_URL is the only Langfuse URL env var"
     );

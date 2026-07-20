@@ -2,7 +2,7 @@
 
 use mewcode_protocol::tool::names;
 use mewcode_protocol::{
-    Mode, ToolError, ToolErrorPayload, ToolName, tools_for_mode, truncate_with_marker,
+    Mode, ToolError, ToolErrorPayload, ToolName, allowed_tools_for_mode, truncate_with_marker,
 };
 
 #[test]
@@ -29,9 +29,9 @@ fn tool_name_parsing_round_trips() {
 }
 
 #[test]
-fn mode_gates_write_tools() {
-    let plan = tools_for_mode(Mode::Plan);
-    let build = tools_for_mode(Mode::Build);
+fn mode_allowed_tools_gates_write_tools() {
+    let plan = allowed_tools_for_mode(Mode::Plan);
+    let build = allowed_tools_for_mode(Mode::Build);
     assert!(plan.contains(&names::READ_FILE));
     assert!(!plan.contains(&names::WRITE_FILE));
     assert!(build.contains(&names::WRITE_FILE));

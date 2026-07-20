@@ -22,6 +22,9 @@ pub const SESSION_BY_ID: &str = "/sessions/{id}";
 /// `POST /chat` — SSE chat stream.
 pub const CHAT: &str = "/chat";
 
+/// `POST /choices` — answer a pending interactive choice.
+pub const CHOICES: &str = "/choices";
+
 /// `GET /storage/status` — active storage backend and resolved data dir.
 pub const STORAGE_STATUS: &str = "/storage/status";
 

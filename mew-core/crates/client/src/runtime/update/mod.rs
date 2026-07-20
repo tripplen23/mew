@@ -12,6 +12,7 @@ use tui_textarea::{Input, Key, TextArea};
 use uuid::Uuid;
 
 use mewcode_protocol::event::ChatRequest;
+use mewcode_protocol::event::{ChoiceCancelReason, ChoiceResponse};
 use mewcode_protocol::{Message, MessagePart};
 
 use super::model::{App, Cmd, CreateError, Msg, Overlay, Screen, StreamMsg, StreamingState, Toast};
@@ -22,7 +23,7 @@ mod slash;
 mod stream;
 
 use picker::{clamp_file_picker_scroll, clamp_model_picker_scroll, clamp_session_list_scroll};
-use session::{on_session_key, on_session_paste};
+use session::{on_session_key, on_session_paste, submit_choice_response};
 use stream::apply_stream_event;
 
 /// Apply a [`Msg`] to the model, returning the side effect to run next.
@@ -37,9 +38,37 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
     match msg {
         Msg::Key(key) => on_session_key(s, toast, key),
 
+        Msg::ChoiceRequested(request) => {
+            s.pending_choice = Some(super::model::ChoicePromptState::new(request));
+            s.overlay = Overlay::Choice;
+            Cmd::None
+        }
+
         Msg::Paste(text) => on_session_paste(s, text),
 
-        Msg::Tick => Cmd::None,
+        Msg::ChoiceSubmitted(result) => {
+            if let Err(message) = result {
+                *toast = Some(Toast::error(message));
+            }
+            Cmd::None
+        }
+
+        Msg::Tick => {
+            if let Some(choice) = s.pending_choice.as_mut() {
+                if choice.response.is_none()
+                    && choice.started_at.elapsed().as_millis() >= choice.request.timeout_ms as u128
+                {
+                    let response = ChoiceResponse::Cancelled {
+                        request_id: choice.request.request_id.clone(),
+                        reason: ChoiceCancelReason::Timeout,
+                    };
+                    choice.response = Some(response.clone());
+                    s.overlay = Overlay::None;
+                    return submit_choice_response(s, response);
+                }
+            }
+            Cmd::None
+        }
 
         Msg::SessionCreated(result) => match result {
             Ok(session) => {
@@ -50,6 +79,7 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
                 s.creating = false;
                 s.creation_started_at = None;
                 s.pending_model = None;
+                s.pending_mode = None;
                 if let Some(text) = pending {
                     let user_msg = Message::user(vec![MessagePart::Text { text: text.clone() }]);
                     s.session.as_mut().unwrap().messages.push(user_msg);

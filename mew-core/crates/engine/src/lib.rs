@@ -7,6 +7,7 @@
 #![forbid(unsafe_code)]
 
 pub mod agent;
+pub mod approval;
 pub mod config;
 pub mod error;
 pub mod harness;

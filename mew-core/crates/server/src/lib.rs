@@ -17,9 +17,10 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::Router;
+use mewcode_engine::approval::ApprovalBroker;
 use mewcode_engine::memory::MemoryStore;
 use mewcode_protocol::routes::{
-    CHAT, HEALTH, MEMORY_GET, MEMORY_POST, PROVIDERS, SESSION_BY_ID, SESSIONS, SKILLS,
+    CHAT, CHOICES, HEALTH, MEMORY_GET, MEMORY_POST, PROVIDERS, SESSION_BY_ID, SESSIONS, SKILLS,
     STORAGE_STATUS,
 };
 use tower_http::trace::TraceLayer;
@@ -41,6 +42,8 @@ pub struct AppState {
     pub store: Arc<dyn SessionStore>,
     /// Memory fact store.
     pub memory: MemoryStore,
+    /// In-memory pending choice/approval broker.
+    pub approvals: ApprovalBroker,
 }
 
 impl AppState {
@@ -50,6 +53,7 @@ impl AppState {
             config,
             store,
             memory,
+            approvals: ApprovalBroker::default(),
         }
     }
 }
@@ -74,6 +78,7 @@ pub fn build_app(state: AppState) -> Router {
                 .delete(routes::sessions::delete),
         )
         .route(CHAT, axum::routing::post(routes::chat::chat_stream))
+        .route(CHOICES, axum::routing::post(routes::choices::respond))
         .route(STORAGE_STATUS, axum::routing::get(routes::storage::status))
         .route(MEMORY_GET, axum::routing::get(routes::memory::get_memory))
         .route(

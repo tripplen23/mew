@@ -263,6 +263,91 @@ fn slash_session_rename_empty_title_toasts() {
     );
 }
 
+#[test]
+fn slash_mode_plan_emits_mode_patch() {
+    let mut app = test_app();
+    seed_active_session(active_state(&mut app));
+
+    {
+        let s = active_state(&mut app);
+        type_text(s, "/mode plan");
+    }
+    let cmd = update(&mut app, press_enter());
+
+    match cmd {
+        Cmd::PatchSession { id, patch, .. } => {
+            assert_eq!(id, active_state(&mut app).session.as_ref().unwrap().id);
+            assert_eq!(patch.mode, Some(Mode::Plan));
+            assert!(patch.title.is_none());
+            assert!(patch.model.is_none());
+        }
+        other => panic!("expected Cmd::PatchSession, got {other:?}"),
+    }
+}
+
+#[test]
+fn tab_toggles_active_session_mode() {
+    let mut app = test_app();
+    seed_active_session(active_state(&mut app));
+
+    let cmd = update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE)),
+    );
+
+    match cmd {
+        Cmd::PatchSession { patch, .. } => assert_eq!(patch.mode, Some(Mode::Plan)),
+        other => panic!("expected Cmd::PatchSession, got {other:?}"),
+    }
+}
+
+#[test]
+fn mode_patch_changes_next_chat_mode() {
+    let mut app = test_app();
+    seed_active_session(active_state(&mut app));
+    let mut patched = active_state(&mut app).session.as_ref().unwrap().clone();
+    patched.mode = Mode::Plan;
+    let _ = update(&mut app, Msg::SessionPatched(Ok(patched), false));
+
+    {
+        let s = active_state(&mut app);
+        type_text(s, "analyze only");
+    }
+    let cmd = update(&mut app, press_enter());
+
+    match cmd {
+        Cmd::StartChat(req) => assert_eq!(req.mode, Mode::Plan),
+        other => panic!("expected Cmd::StartChat, got {other:?}"),
+    }
+}
+
+#[test]
+fn slash_mode_before_session_sets_pending_mode() {
+    let mut app = test_app();
+    {
+        let s = active_state(&mut app);
+        type_text(s, "/mode plan");
+    }
+    let cmd = update(&mut app, press_enter());
+
+    assert!(matches!(cmd, Cmd::None));
+    assert_eq!(active_state(&mut app).pending_mode, Some(Mode::Plan));
+    assert!(app.toast.is_none());
+}
+
+#[test]
+fn tab_before_session_toggles_pending_mode() {
+    let mut app = test_app();
+
+    let cmd = update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE)),
+    );
+
+    assert!(matches!(cmd, Cmd::None));
+    assert_eq!(active_state(&mut app).pending_mode, Some(Mode::Plan));
+}
+
 // --- /model picker key nav -----------------------------------------------
 
 #[test]
@@ -342,6 +427,24 @@ fn first_session_create_uses_pending_model() {
         Cmd::CreateSession(req) => {
             assert_eq!(req.title, "hello");
             assert_eq!(req.model, Some(ModelId::MiniMaxM25));
+        }
+        other => panic!("expected CreateSession, got {other:?}"),
+    }
+}
+
+#[test]
+fn first_session_create_uses_pending_mode() {
+    let mut app = test_app();
+    active_state(&mut app).pending_mode = Some(Mode::Plan);
+    {
+        let s = active_state(&mut app);
+        type_text(s, "hello");
+    }
+
+    match update(&mut app, press_enter()) {
+        Cmd::CreateSession(req) => {
+            assert_eq!(req.title, "hello");
+            assert_eq!(req.mode, Some(Mode::Plan));
         }
         other => panic!("expected CreateSession, got {other:?}"),
     }
