@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/tripplen23/mew/compare/v0.3.1...v0.3.2) (2026-07-20)
+
+
+### Features
+
+* **tui+engine:** add directory support to @ mentions ([#67](https://github.com/tripplen23/mew/issues/67)) ([abae5d4](https://github.com/tripplen23/mew/commit/abae5d4949dc6e3cacf3116d9d3beb815ec407b5))
+
 ## [0.3.1](https://github.com/tripplen23/mew/compare/v0.3.0...v0.3.1) (2026-07-20)
 
 
