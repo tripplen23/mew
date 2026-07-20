@@ -56,8 +56,7 @@ pub fn user_text_with_file_context(messages: &[Message], root: &Path) -> Option<
             let dir_path = path.trim_end_matches('/');
             let resolved = root.join(dir_path);
             if resolved.is_dir() {
-                let remaining = MAX_REFERENCED_FILES.saturating_sub(expanded.len());
-                collect_dir_files(&resolved, root, &mut expanded, remaining);
+                collect_dir_files(&resolved, root, &mut expanded, MAX_REFERENCED_FILES);
             }
         } else {
             expanded.push(path);
@@ -81,8 +80,8 @@ pub fn user_text_with_file_context(messages: &[Message], root: &Path) -> Option<
     Some(out)
 }
 
-fn collect_dir_files(dir: &Path, root: &Path, out: &mut Vec<String>, remaining: usize) {
-    if remaining == 0 {
+fn collect_dir_files(dir: &Path, root: &Path, out: &mut Vec<String>, limit: usize) {
+    if out.len() >= limit {
         return;
     }
     let mut entries: Vec<_> = match std::fs::read_dir(dir) {
@@ -91,7 +90,7 @@ fn collect_dir_files(dir: &Path, root: &Path, out: &mut Vec<String>, remaining: 
     };
     entries.sort_by_key(|e| e.file_name());
     for entry in entries {
-        if out.len() >= remaining {
+        if out.len() >= limit {
             break;
         }
         let path = entry.path();
@@ -105,7 +104,7 @@ fn collect_dir_files(dir: &Path, root: &Path, out: &mut Vec<String>, remaining: 
                 out.push(rel.to_string_lossy().replace('\\', "/"));
             }
         } else if path.is_dir() {
-            collect_dir_files(&path, root, out, remaining - out.len());
+            collect_dir_files(&path, root, out, limit);
         }
     }
 }
