@@ -64,6 +64,10 @@ pub fn tools_for_mode(mode: Mode) -> &'static [&'static str] {
 /// proxy for ~25k tokens, the ceiling Claude Code uses for its own tools).
 pub const DEFAULT_MAX_RESPONSE_CHARS: usize = 100_000;
 
+/// Directory names skipped during file tree walks (file picker, @ mention
+/// expansion). Large, noisy, or irrelevant for code context.
+pub const SKIPPED_DIRS: &[&str] = &[".git", "target", "node_modules"];
+
 /// Truncate `value` to `limit` characters, appending a clear marker so the
 /// model knows it got a partial result and can ask for more.
 pub fn truncate_with_marker(value: &str, limit: usize) -> String {

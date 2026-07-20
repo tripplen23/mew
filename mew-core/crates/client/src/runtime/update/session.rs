@@ -107,6 +107,11 @@ pub(super) fn on_session_key(
             Cmd::None
         }
 
+        KeyCode::Enter if key.modifiers.contains(KeyModifiers::ALT) => {
+            s.input.insert_newline();
+            Cmd::None
+        }
+
         KeyCode::Enter => on_session_submit(s, toast),
 
         KeyCode::Up => {

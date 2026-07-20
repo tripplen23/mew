@@ -431,14 +431,23 @@ pub(super) fn current_file_query(s: &SessionState) -> Option<String> {
 }
 
 fn pick_file(s: &mut SessionState) {
-    let Some(path) = filtered_files(s)
+    let Some((path, is_dir)) = filtered_files(s)
         .get(s.file_picker.picker.cursor)
-        .map(|file| file.path.clone())
+        .map(|file| (file.path.clone(), file.is_dir))
     else {
         return;
     };
-    replace_current_file_token(s, &format!("{FILE_MENTION_PREFIX}{path}"));
-    s.overlay = Overlay::None;
+    let token = if is_dir {
+        format!("{FILE_MENTION_PREFIX}{path}/")
+    } else {
+        format!("{FILE_MENTION_PREFIX}{path}")
+    };
+    replace_current_file_token(s, &token);
+    if is_dir {
+        refresh_file_picker(s);
+    } else {
+        s.overlay = Overlay::None;
+    }
 }
 
 fn replace_current_file_token(s: &mut SessionState, replacement: &str) {
