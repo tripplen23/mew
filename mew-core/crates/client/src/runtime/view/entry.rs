@@ -1,9 +1,9 @@
 //! Empty/start screen: the layout shown when no session is active yet.
 //!
-//! Picks the right size variant for the available `Rect` (mascot + small
-//! `MEW`, just the block `MEW`, or the word `mewcode`) and then always
-//! appends the model/status line so the user knows which model the next
-//! message will land on.
+//! Picks the right size variant for the available `Rect` (mascot + `MEW`,
+//! just `MEW`, or the word `mewcode`) and then always appends the
+//! model/status line so the user knows which model the next message will
+//! land on.
 
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
@@ -12,6 +12,15 @@ use ratatui::text::{Line, Span};
 use super::super::model::SessionState;
 use super::spinner::spinner_frame;
 use super::theme::Theme;
+
+const MEW_LOGO: [&str; 6] = [
+    "███╗   ███╗███████╗██╗    ██╗",
+    "████╗ ████║██╔════╝██║    ██║",
+    "██╔████╔██║█████╗  ██║ █╗ ██║",
+    "██║╚██╔╝██║██╔══╝  ██║███╗██║",
+    "██║ ╚═╝ ██║███████╗╚███╔███╔╝",
+    "╚═╝     ╚═╝╚══════╝ ╚══╝╚══╝ ",
+];
 
 pub(super) fn render_entry_lines(
     s: &SessionState,
@@ -22,7 +31,7 @@ pub(super) fn render_entry_lines(
     if inner.height > 24 {
         out.extend((0..inner.height.saturating_sub(22) / 3).map(|_| Line::from("")));
     }
-    if inner.width >= 60 && inner.height >= 20 {
+    if inner.width >= 60 && inner.height >= 23 {
         for line in [
             "⣿⣿⣿⣿⣿⣿⠟⢁⣴⣿⣿⠁⢸⣿⣿⣿⣯⣴⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿",
             "⣿⣿⣿⣿⡿⠋⣠⣾⣿⣿⣿⡆⠘⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿",
@@ -45,8 +54,7 @@ pub(super) fn render_entry_lines(
             )));
         }
         out.push(Line::from(""));
-        for line in ["█▄ ▄█ █▀▀ █   █", "█ ▀ █ █▀  █ █ █", "▀   ▀ ▀▀▀  ▀ ▀ "]
-        {
+        for line in MEW_LOGO {
             out.push(Line::from(Span::styled(
                 line,
                 Style::default()
@@ -56,14 +64,7 @@ pub(super) fn render_entry_lines(
         }
         out.push(Line::from(""));
     } else if inner.width >= 48 && inner.height >= 10 {
-        for line in [
-            "███╗   ███╗███████╗██╗    ██╗",
-            "████╗ ████║██╔════╝██║    ██║",
-            "██╔████╔██║█████╗  ██║ █╗ ██║",
-            "██║╚██╔╝██║██╔══╝  ██║███╗██║",
-            "██║ ╚═╝ ██║███████╗╚███╔███╔╝",
-            "╚═╝     ╚═╝╚══════╝ ╚══╝╚══╝ ",
-        ] {
+        for line in MEW_LOGO {
             out.push(Line::from(Span::styled(
                 line,
                 Style::default()
