@@ -25,6 +25,7 @@ use tui_textarea::TextArea;
 
 use super::model::{App, Screen};
 
+mod entry;
 mod markdown;
 mod overlay;
 mod session;

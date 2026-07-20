@@ -2,7 +2,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::{Block, Paragraph, Wrap};
+use ratatui::widgets::{Block, Clear, Paragraph, Wrap};
 
 use mewcode_protocol::Mode;
 
@@ -85,6 +85,11 @@ fn render_input(frame: &mut Frame, chunk: Rect, input_text: &str, theme: Theme) 
         chunk.y,
         chunk.width.saturating_sub(COMPOSER_HORIZONTAL_PAD),
         chunk.height,
+    );
+    frame.render_widget(Clear, inner);
+    frame.render_widget(
+        Block::default().style(Style::default().bg(theme.panel_bg)),
+        inner,
     );
     let lines = input_text
         .lines()
