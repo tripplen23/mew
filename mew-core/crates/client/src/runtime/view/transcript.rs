@@ -141,7 +141,9 @@ fn render_message(msg: &mewcode_protocol::Message, theme: Theme) -> Vec<Line<'st
             MessagePart::Text { text } => {
                 last_tool_call = None;
                 if msg.role == Role::User {
-                    out.push(Line::from(render_mentions(text, theme)));
+                    for line_text in text.split('\n') {
+                        out.push(Line::from(render_mentions(line_text, theme)));
+                    }
                 } else {
                     out.extend(render_markdown(text));
                 }
