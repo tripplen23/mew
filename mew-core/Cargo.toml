@@ -56,6 +56,7 @@ tui-textarea = "0.7"
 tui-markdown = "0.3"
 syntect = "5"
 similar = "2"
+rodio = { version = "0.20", default-features = false, features = ["symphonia-mp3"] }
 
 # CLI & config
 clap = { version = "4", features = ["derive", "env"] }

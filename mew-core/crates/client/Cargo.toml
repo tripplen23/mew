@@ -34,6 +34,7 @@ similar = { workspace = true }
 tui-textarea = { workspace = true }
 tui-markdown = { workspace = true }
 syntect = { workspace = true }
+rodio = { workspace = true }
 unicode-width = { workspace = true }
 unicode-segmentation = { workspace = true }
 chrono = { workspace = true }

@@ -683,7 +683,7 @@ fn stream_finished_commits_one_assistant_message() {
     );
     assert!(matches!(
         stream(&mut app, StreamMsg::Finished { duration_ms: 12 }),
-        Cmd::None
+        Cmd::PlayNotificationSound
     ));
 
     let s = sess(&app);

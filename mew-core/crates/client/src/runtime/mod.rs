@@ -60,6 +60,8 @@ const CHANNEL_CAPACITY: usize = 256;
 const TICK_INTERVAL: Duration = Duration::from_millis(50);
 const INPUT_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
+const NOTIFICATION_SOUND: &[u8] = include_bytes!("../../../../../assets/mew-voice.mp3");
+
 /// RAII guard over the terminal: raw mode, the alternate screen, and (on
 /// supporting terminals) the Kitty keyboard flags that make auto-repeat
 /// visible to the input reader. [`Drop`] reverses each step, so a panic
@@ -301,6 +303,11 @@ fn dispatch(cmd: Cmd, api: &ApiClient, tx: &mpsc::Sender<Msg>) {
                 let _ = tx.send(Msg::SessionDeleted(result)).await;
             });
         }
+        Cmd::PlayNotificationSound => {
+            tokio::task::spawn_blocking(|| {
+                play_notification_sound();
+            });
+        }
     }
 }
 
@@ -347,6 +354,23 @@ fn list_files() -> io::Result<Vec<FileEntry>> {
     }
     out.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(out)
+}
+
+fn play_notification_sound() {
+    use rodio::Source;
+    let Ok((_stream, stream_handle)) = rodio::OutputStream::try_default() else {
+        return;
+    };
+    let cursor = std::io::Cursor::new(NOTIFICATION_SOUND);
+    let Ok(source) = rodio::Decoder::new(cursor) else {
+        return;
+    };
+    let duration = source.total_duration().unwrap_or(Duration::from_secs(2));
+    let Ok(sink) = rodio::Sink::try_new(&stream_handle) else {
+        return;
+    };
+    sink.append(source);
+    std::thread::sleep(duration);
 }
 
 /// Map a [`NetError`] from `create_session` into a [`CreateError`] at the

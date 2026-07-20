@@ -42,4 +42,6 @@ pub enum Cmd {
     DeleteSession(uuid::Uuid),
     /// Exit the TUI. Triggered when the user types [`QUIT_COMMAND`].
     Quit,
+    /// Play the completion notification sound.
+    PlayNotificationSound,
 }

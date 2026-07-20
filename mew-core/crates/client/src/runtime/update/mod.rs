@@ -14,7 +14,7 @@ use uuid::Uuid;
 use mewcode_protocol::event::ChatRequest;
 use mewcode_protocol::{Message, MessagePart};
 
-use super::model::{App, Cmd, CreateError, Msg, Overlay, Screen, StreamingState, Toast};
+use super::model::{App, Cmd, CreateError, Msg, Overlay, Screen, StreamMsg, StreamingState, Toast};
 
 pub(crate) mod picker;
 mod session;
@@ -94,10 +94,15 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
         },
 
         Msg::Stream(ev) => {
+            let is_finished = matches!(ev, StreamMsg::Finished { .. });
             if let Some(t) = apply_stream_event(s, ev) {
                 *toast = Some(t);
             }
-            Cmd::None
+            if is_finished {
+                Cmd::PlayNotificationSound
+            } else {
+                Cmd::None
+            }
         }
 
         Msg::ModelsFetched(result) => {
