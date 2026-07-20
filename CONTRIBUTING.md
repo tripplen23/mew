@@ -4,23 +4,27 @@ Thanks for contributing to Mew.
 
 ## Build
 
-### Rust (mew-core)
+All build, test, and lint tasks go through the root `Makefile`. Run `make help` for the full list.
 
-```bash
-cd mew-core
-cargo build
-cargo test
-cargo clippy --workspace --all-targets
-```
+### Quick reference
 
-### Go (mew-mcp)
+| Task | Command |
+|------|---------|
+| Build everything | `make build` |
+| Run server + TUI | `make run` |
+| Run server only (foreground, logs) | `make run-server` |
+| Run TUI only (needs running server) | `make run-tui` |
+| Run all tests | `make test` |
+| Lint everything | `make lint` |
+| Auto-format | `make fmt` |
+| CI gate (fmt-check + lint + test) | `make check` |
+| Full CI gate (build + check + docs) | `make ci` |
+| Clean build artifacts | `make clean` |
 
-```bash
-cd mew-mcp
-go build ./cmd/mew-mcp
-go test -v ./...
-go vet ./...
-```
+Per-language targets are also available if you only want to touch one side:
+
+- Rust workspace (`mew-core/`): `make build-core`, `make test-core`, `make lint-core` (clippy).
+- Go MCP server (`mew-mcp/`): `make build-mcp`, `make test-mcp`, `make lint-mcp` (`go vet`).
 
 ## Architecture
 
@@ -194,7 +198,7 @@ for d in &descriptors {
 
 - Title: one-line summary following [Conventional Commits](https://www.conventionalcommits.org/) format (see below).
 - Body: 2–3 sentences on *why*. If you're fixing a bug, link the issue.
-- Run `cargo test` and `cargo clippy` before opening.
+- Run `make check` (or at minimum `make fmt-check lint test`) before opening.
 - If you change the public protocol (`protocol::` types, `StreamEvent`, etc.), call it out in the description — downstream consumers need to know.
 
 ### Commits and PR titles
