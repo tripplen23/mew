@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/tripplen23/mew/compare/v0.3.0...v0.3.1) (2026-07-20)
+
+
+### Features
+
+* **tui:** redesign entry screen and clear composer leftovers ([#61](https://github.com/tripplen23/mew/issues/61)) ([d57e9fc](https://github.com/tripplen23/mew/commit/d57e9fcf2cb651d264dd65969ddbc2a0ae691c74))
+
 ## [0.3.0](https://github.com/tripplen23/mew/compare/v0.2.0...v0.3.0) (2026-07-19)
 
 
