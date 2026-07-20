@@ -406,7 +406,7 @@ async fn grep_skips_binary_files() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn plan_mode_filters_write_tools() {
+fn plan_mode_exposes_but_denies_write_tools() {
     let skills = Arc::new(mewcode_engine::skills::SkillRegistry::new());
     let ctx = ProjectContext::new(std::env::temp_dir());
     let data_dir = std::env::temp_dir().join(format!(
@@ -431,12 +431,12 @@ fn plan_mode_filters_write_tools() {
     assert!(plan_names.contains(&"grep"));
     assert!(plan_names.contains(&"skill_view"));
 
-    // Write tools should be absent. `mewcode_memory` is `WRITE_LOCAL`
-    // (it persists to disk) so it is gated out of Plan mode too.
-    assert!(!plan_names.contains(&"write_file"));
-    assert!(!plan_names.contains(&"edit_file"));
-    assert!(!plan_names.contains(&"bash"));
-    assert!(!plan_names.contains(&"mewcode_memory"));
+    // Write tools are visible so the model receives an explicit denial
+    // instead of fabricating or failing provider-side, but execution is blocked.
+    assert!(plan_names.contains(&"write_file"));
+    assert!(plan_names.contains(&"edit_file"));
+    assert!(plan_names.contains(&"bash"));
+    assert!(plan_names.contains(&"mewcode_memory"));
 }
 
 #[test]
@@ -460,22 +460,48 @@ fn build_mode_includes_all_tools() {
 }
 
 #[tokio::test]
-async fn plan_mode_dispatch_rejects_filtered_tool() {
+async fn plan_mode_dispatch_rejects_write_tool() {
     let skills = Arc::new(mewcode_engine::skills::SkillRegistry::new());
     let ctx = ProjectContext::new(fresh_project());
 
     let plan_reg = default_registry(ctx, skills, None, Mode::Plan);
 
-    // Dispatching write_file should return a ToolNotFound error payload,
-    // just as if the tool were never registered.
     let output = plan_reg
         .dispatch("write_file", json!({"path": "x.txt", "content": "x"}))
         .await;
 
     let payload = &output.0;
     assert_eq!(payload["error"], true);
-    assert_eq!(payload["kind"], "tool_not_found");
-    assert!(payload["message"].as_str().unwrap().contains("write_file"));
+    assert_eq!(payload["kind"], "rejected");
+    assert!(payload["message"].as_str().unwrap().contains("Plan mode"));
+    assert!(payload["hint"].as_str().unwrap().contains("Build mode"));
+}
+
+#[tokio::test]
+async fn plan_mode_bash_allows_read_only_commands() {
+    let skills = Arc::new(mewcode_engine::skills::SkillRegistry::new());
+    let ctx = ProjectContext::new(fresh_project());
+
+    let plan_reg = default_registry(ctx, skills, None, Mode::Plan);
+    let output = plan_reg
+        .dispatch("bash", json!({"command": "pwd", "timeout_ms": 1000}))
+        .await;
+
+    assert_eq!(output.0["exit_code"], 0);
+}
+
+#[tokio::test]
+async fn plan_mode_bash_rejects_mutating_commands() {
+    let skills = Arc::new(mewcode_engine::skills::SkillRegistry::new());
+    let ctx = ProjectContext::new(fresh_project());
+
+    let plan_reg = default_registry(ctx, skills, None, Mode::Plan);
+    let output = plan_reg
+        .dispatch("bash", json!({"command": "echo hi > README.md"}))
+        .await;
+
+    assert_eq!(output.0["kind"], "rejected");
+    assert!(output.0["hint"].as_str().unwrap().contains("Build mode"));
 }
 
 // ---------------------------------------------------------------------------
@@ -579,8 +605,8 @@ async fn grep_truncates_long_match_lines() {
     let _ = std::fs::remove_dir_all(&project);
 }
 
-#[test]
-fn plan_mode_includes_memory_when_store_provided() {
+#[tokio::test]
+async fn plan_mode_denies_memory_when_store_provided() {
     let skills = Arc::new(mewcode_engine::skills::SkillRegistry::new());
     let ctx = ProjectContext::new(std::env::temp_dir());
     let data_dir = std::env::temp_dir().join(format!(
@@ -599,10 +625,14 @@ fn plan_mode_includes_memory_when_store_provided() {
     let plan_names: Vec<&str> = plan_reg.names().into_iter().collect();
 
     assert!(
-        !plan_names.contains(&"mewcode_memory"),
-        "memory tool should be filtered in Plan mode (it is WRITE_LOCAL) — tools: {:?}",
+        plan_names.contains(&"mewcode_memory"),
+        "memory tool should be visible but denied in Plan mode — tools: {:?}",
         plan_names
     );
+    let output = plan_reg
+        .dispatch("mewcode_memory", json!({"action": "write", "content": "x"}))
+        .await;
+    assert_eq!(output.0["kind"], "rejected");
 
     let _ = std::fs::remove_dir_all(&data_dir);
 }

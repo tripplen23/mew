@@ -40,20 +40,16 @@ fn build_mode_includes_tool_descriptors() {
 }
 
 #[test]
-fn plan_mode_excludes_write_tool_descriptors() {
+fn plan_mode_marks_write_tool_descriptors_blocked() {
     let skills = Arc::new(SkillRegistry::new());
     let ctx = ProjectContext::new(std::env::temp_dir());
-    let mut tools = ToolRegistry::new();
-    // Only register the read-only tools + skill_view (the PLAN set).
-    tools.register(Arc::new(ReadFileTool::new(ctx.clone())));
-    tools.register(Arc::new(ListDirectoryTool::new(ctx.clone())));
-    tools.register(Arc::new(GlobTool::new(ctx)));
-    tools.register(Arc::new(SkillViewTool::new(skills.clone())));
+    let tools = default_registry(ctx, skills.clone(), None, Mode::Plan);
 
     let prompt = build_system_prompt(Mode::Plan, &skills, &tools);
     assert!(prompt.contains("### `read_file`"));
-    assert!(!prompt.contains("### `write_file`"));
-    assert!(!prompt.contains("### `edit_file`"));
+    assert!(prompt.contains("### `write_file`"));
+    assert!(prompt.contains("### `edit_file`"));
+    assert!(prompt.contains("blocked"));
 }
 
 #[test]

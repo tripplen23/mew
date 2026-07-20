@@ -51,8 +51,8 @@ pub const ALL_TOOLS: &[&str] = &[
     names::BASH,
 ];
 
-/// Return the list of tool names available in the given mode.
-pub fn tools_for_mode(mode: Mode) -> &'static [&'static str] {
+/// Return the list of tool names allowed to execute in the given mode.
+pub fn allowed_tools_for_mode(mode: Mode) -> &'static [&'static str] {
     if mode.allows_writes() {
         ALL_TOOLS
     } else {

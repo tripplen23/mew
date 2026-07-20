@@ -15,6 +15,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+use async_trait::async_trait;
 use mewcode_protocol::{Mode, ToolContracts, ToolDescriptor, ToolDisplay, ToolError, ToolOutput};
 use serde_json::Value;
 
@@ -112,6 +113,112 @@ pub struct DisplayRecord {
 /// the model path so display payloads never enter the context window.
 pub type DisplaySink = Arc<Mutex<Vec<DisplayRecord>>>;
 
+struct PlanDeniedTool {
+    inner: Arc<dyn ToolContracts>,
+}
+
+struct PlanReadOnlyBashTool {
+    inner: Arc<dyn ToolContracts>,
+}
+
+impl PlanDeniedTool {
+    fn new(inner: Arc<dyn ToolContracts>) -> Self {
+        Self { inner }
+    }
+}
+
+impl PlanReadOnlyBashTool {
+    fn new(inner: Arc<dyn ToolContracts>) -> Self {
+        Self { inner }
+    }
+}
+
+#[async_trait]
+impl ToolContracts for PlanDeniedTool {
+    fn name(&self) -> &'static str {
+        self.inner.name()
+    }
+
+    fn descriptor(&self) -> ToolDescriptor {
+        let mut descriptor = self.inner.descriptor();
+        descriptor.description = format!(
+            "{}\n\n**Plan mode:** This tool is visible so denied requests are explicit, but executing it is blocked. Tell the user to switch to Build mode if they want this change applied.",
+            descriptor.description
+        );
+        descriptor
+    }
+
+    async fn execute(&self, _input: Value) -> Result<ToolOutput, ToolError> {
+        Err(ToolError::Rejected {
+            message: format!("{} is blocked in Plan mode", self.name()),
+            hint: Some(
+                "Explain that Plan mode is read-only. Ask the user to switch to Build mode to apply file edits or shell commands."
+                    .into(),
+            ),
+        })
+    }
+}
+
+#[async_trait]
+impl ToolContracts for PlanReadOnlyBashTool {
+    fn name(&self) -> &'static str {
+        self.inner.name()
+    }
+
+    fn descriptor(&self) -> ToolDescriptor {
+        let mut descriptor = self.inner.descriptor();
+        descriptor.description = format!(
+            "{}\n\n**Plan mode:** Only read-only inspection commands are allowed here: git status/log/diff/show/branch, ls, pwd, cat, grep, rg, find, wc, head, tail. Commands with shell composition or redirection are blocked. Switch to Build mode for mutating commands.",
+            descriptor.description
+        );
+        descriptor
+    }
+
+    async fn execute(&self, input: Value) -> Result<ToolOutput, ToolError> {
+        let command = input.get("command").and_then(|v| v.as_str()).unwrap_or("");
+        if !is_plan_read_only_command(command) {
+            return Err(ToolError::Rejected {
+                message: "bash command is blocked in Plan mode".into(),
+                hint: Some(
+                    "Use read-only inspection commands only, or ask the user to switch to Build mode for commands that modify files, git state, or external systems."
+                        .into(),
+                ),
+            });
+        }
+        self.inner.execute(input).await
+    }
+}
+
+fn is_plan_read_only_command(command: &str) -> bool {
+    let command = command.trim();
+    if command.is_empty()
+        || [";", "&&", "||", ">", "<", "|", "`", "$("]
+            .iter()
+            .any(|token| command.contains(token))
+    {
+        return false;
+    }
+    [
+        "git status",
+        "git log",
+        "git diff",
+        "git show",
+        "git branch",
+        "git stash list",
+        "ls",
+        "pwd",
+        "cat",
+        "grep",
+        "rg",
+        "find",
+        "wc",
+        "head",
+        "tail",
+    ]
+    .iter()
+    .any(|allowed| command == *allowed || command.starts_with(&format!("{allowed} ")))
+}
+
 /// Project context. Every tool needs to know what directory to operate on.
 #[derive(Debug, Clone)]
 pub struct ProjectContext {
@@ -149,12 +256,9 @@ impl ProjectContext {
 
 /// Build the default tool registry for the given mode.
 ///
-/// In `Mode::Build` all tools are registered. In `Mode::Plan` only
-/// read-only, non-destructive tools are registered — write tools
-/// (`write_file`, `edit_file`, `bash`, `mewcode_memory`) are excluded
-/// so the model physically cannot mutate state. A model that tries to
-/// call a filtered tool gets the same `ToolNotFound` error as if it
-/// were unregistered.
+/// In `Mode::Build` all tools execute normally. In `Mode::Plan`, mutating
+/// tools are still visible to the model but return explicit permission errors;
+/// bash is limited to a small read-only inspection allowlist.
 pub fn default_registry(
     ctx: ProjectContext,
     skills: Skills,
@@ -179,6 +283,21 @@ pub fn default_registry(
         reg.register(Arc::new(WriteFileTool::new(ctx.clone())));
         reg.register(Arc::new(EditFileTool::new(ctx.clone())));
         reg.register(Arc::new(BashTool::new(ctx)));
+    } else {
+        if let Some(store) = memory {
+            reg.register(Arc::new(PlanDeniedTool::new(Arc::new(
+                MewcodeMemoryTool::new(store),
+            ))));
+        }
+        reg.register(Arc::new(PlanDeniedTool::new(Arc::new(WriteFileTool::new(
+            ctx.clone(),
+        )))));
+        reg.register(Arc::new(PlanDeniedTool::new(Arc::new(EditFileTool::new(
+            ctx.clone(),
+        )))));
+        reg.register(Arc::new(PlanReadOnlyBashTool::new(Arc::new(
+            BashTool::new(ctx),
+        ))));
     }
 
     reg

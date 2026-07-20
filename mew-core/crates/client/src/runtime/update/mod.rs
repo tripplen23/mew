@@ -50,6 +50,7 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
                 s.creating = false;
                 s.creation_started_at = None;
                 s.pending_model = None;
+                s.pending_mode = None;
                 if let Some(text) = pending {
                     let user_msg = Message::user(vec![MessagePart::Text { text: text.clone() }]);
                     s.session.as_mut().unwrap().messages.push(user_msg);

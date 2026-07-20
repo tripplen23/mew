@@ -94,6 +94,8 @@ pub(super) fn on_session_key(
     }
 
     match key.code {
+        KeyCode::Tab => switch_mode(s, None),
+
         KeyCode::Char('@') => {
             s.input.input(key_to_input(key));
             open_file_picker(s)
@@ -209,6 +211,7 @@ pub(super) fn on_session_submit(s: &mut SessionState, toast: &mut Option<Toast>)
                 s.overlay = Overlay::Theme;
                 Cmd::None
             }
+            "mode" => on_mode_command(s, &args, toast),
             "model" => on_model_command(s),
             "session" => on_session_command(s, &args, toast),
             other => {
@@ -252,8 +255,46 @@ pub(super) fn on_session_submit(s: &mut SessionState, toast: &mut Option<Toast>)
         Cmd::CreateSession(CreateSessionRequest {
             title: derive_title(&user_text),
             model: s.pending_model,
-            mode: Some(Mode::default()),
+            mode: Some(s.pending_mode.unwrap_or_default()),
         })
+    }
+}
+
+fn switch_mode(s: &mut SessionState, mode: Option<Mode>) -> Cmd {
+    let current = s
+        .session
+        .as_ref()
+        .map(|session| session.mode)
+        .or(s.pending_mode)
+        .unwrap_or_default();
+    let next = mode.unwrap_or(match current {
+        Mode::Build => Mode::Plan,
+        Mode::Plan => Mode::Build,
+    });
+    let Some(session) = s.session.as_ref() else {
+        s.pending_mode = Some(next);
+        return Cmd::None;
+    };
+    Cmd::PatchSession {
+        id: session.id,
+        patch: SessionPatch {
+            mode: Some(next),
+            ..Default::default()
+        },
+        from_rename: false,
+    }
+}
+
+fn on_mode_command(s: &mut SessionState, args: &[&str], toast: &mut Option<Toast>) -> Cmd {
+    match args.first().copied() {
+        None => switch_mode(s, None),
+        Some(raw) => match raw.parse::<Mode>() {
+            Ok(mode) => switch_mode(s, Some(mode)),
+            Err(_) => {
+                *toast = Some(Toast::error("usage: /mode build|plan"));
+                Cmd::None
+            }
+        },
     }
 }
 
@@ -352,7 +393,7 @@ fn on_session_command(s: &mut SessionState, args: &[&str], toast: &mut Option<To
             Cmd::CreateSession(CreateSessionRequest {
                 title,
                 model: s.pending_model,
-                mode: Some(Mode::default()),
+                mode: Some(s.pending_mode.unwrap_or_default()),
             })
         }
         Some(other) => {

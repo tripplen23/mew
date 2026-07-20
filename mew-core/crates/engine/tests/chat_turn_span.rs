@@ -100,4 +100,5 @@ fn chat_turn_span_records_langfuse_io_fields() {
         "user message should come before system prompt in observation input — got: {observation_input}"
     );
     assert!(records.contains("langfuse.trace.output", "pong"));
+    assert!(records.contains("langfuse.observation.output", "pong"));
 }

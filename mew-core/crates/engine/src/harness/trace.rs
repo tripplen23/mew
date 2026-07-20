@@ -15,7 +15,6 @@ pub const LANGFUSE_OBSERVATION_GENERATION: &str = "generation";
 /// Role strings used in observation JSON payloads.
 pub const GEN_AI_ROLE_SYSTEM: &str = "system";
 pub const GEN_AI_ROLE_USER: &str = "user";
-pub const GEN_AI_ROLE_ASSISTANT: &str = "assistant";
 
 /// `langfuse.trace.input` — trace-level input text.
 pub const FIELD_LANGFUSE_TRACE_INPUT: &str = "langfuse.trace.input";
@@ -71,9 +70,5 @@ pub fn record_turn_input(span: &tracing::Span, system_prompt: &str, user_text: &
 pub fn record_turn_output(span: &tracing::Span, reply: &str) {
     span.record(FIELD_LANGFUSE_TRACE_OUTPUT, reply);
 
-    let output = serde_json::json!({
-        "role": GEN_AI_ROLE_ASSISTANT,
-        "content": reply,
-    });
-    span.record(FIELD_LANGFUSE_OBSERVATION_OUTPUT, output.to_string());
+    span.record(FIELD_LANGFUSE_OBSERVATION_OUTPUT, reply);
 }

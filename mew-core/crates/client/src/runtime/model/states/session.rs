@@ -4,7 +4,7 @@ use tui_textarea::TextArea;
 use uuid::Uuid;
 
 use crate::net::{ModelEntry, Session, SessionSummary, SkillEntry};
-use mewcode_protocol::ModelId;
+use mewcode_protocol::{Mode, ModelId};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileEntry {
@@ -49,6 +49,10 @@ pub const SLASH_COMMANDS: &[SlashCommand] = &[
     SlashCommand {
         command: "/theme",
         description: "Pick theme",
+    },
+    SlashCommand {
+        command: "/mode",
+        description: "Switch mode",
     },
     SlashCommand {
         command: "quit",
@@ -100,6 +104,8 @@ pub struct SessionState {
     pub pending_chat: Option<String>,
     /// Model picked before the first session exists.
     pub pending_model: Option<ModelId>,
+    /// Mode picked before the first session exists.
+    pub pending_mode: Option<Mode>,
     /// `true` while a `POST /sessions` is in flight for `pending_chat`.
     pub creating: bool,
     /// When `creating` was set true
@@ -138,6 +144,7 @@ impl SessionState {
             pasted: Vec::new(),
             pending_chat: None,
             pending_model: None,
+            pending_mode: None,
             creating: false,
             creation_started_at: None,
             scroll: 0,

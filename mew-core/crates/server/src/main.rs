@@ -9,8 +9,8 @@ use opentelemetry::trace::TracerProvider as _;
 use opentelemetry_langfuse::ExporterBuilder;
 use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::runtime::Tokio;
-use opentelemetry_sdk::trace::SdkTracerProvider;
 use opentelemetry_sdk::trace::span_processor_with_async_runtime::BatchSpanProcessor;
+use opentelemetry_sdk::trace::{BatchConfigBuilder, SdkTracerProvider};
 use tokio::net::TcpListener;
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
@@ -113,7 +113,15 @@ fn build_langfuse_provider() -> Option<SdkTracerProvider> {
                     .with_attributes([KeyValue::new("service.name", "mewcode-server")])
                     .build(),
             )
-            .with_span_processor(BatchSpanProcessor::builder(exporter, Tokio).build())
+            .with_span_processor(
+                BatchSpanProcessor::builder(exporter, Tokio)
+                    .with_batch_config(
+                        BatchConfigBuilder::default()
+                            .with_scheduled_delay(Duration::from_millis(500))
+                            .build(),
+                    )
+                    .build(),
+            )
             .build(),
     )
 }

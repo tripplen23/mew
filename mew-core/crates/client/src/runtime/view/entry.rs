@@ -87,8 +87,9 @@ pub(super) fn render_entry_lines(
         "Type a message to start a new session.".to_string()
     };
     let model = s.pending_model.unwrap_or_default().display_name();
+    let mode = s.pending_mode.unwrap_or_default();
     out.push(Line::from(vec![
-        Span::styled("Build", Style::default().fg(theme.hot_pink)),
+        Span::styled(mode.label(), Style::default().fg(theme.hot_pink)),
         Span::styled(" · ", Style::default().fg(theme.muted)),
         Span::styled(model, Style::default().fg(theme.text)),
         Span::styled(" · ", Style::default().fg(theme.muted)),

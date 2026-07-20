@@ -7,16 +7,16 @@ use ratatui::widgets::{Block, Clear, Paragraph, Wrap};
 use mewcode_protocol::Mode;
 use mewcode_protocol::ModelId;
 use mewcode_protocol::ProviderId;
-use mewcode_protocol::tool::tools_for_mode;
+use mewcode_protocol::tool::allowed_tools_for_mode;
 
 use super::super::model::{SLASH_COMMANDS, SessionState, ThemeId};
 use super::super::update::picker::filtered_files;
 
-/// The `/tools` overlay body: the tools available in the active mode plus
-/// the total count. Mirrors the mode gating in the engine's tool registry
-/// (`Plan` is read-only; `Build` adds the write tools).
+/// The `/tools` overlay body: the tools allowed in the active mode plus
+/// the total count. Engine may also expose denied tools to the model so it can
+/// receive explicit permission feedback, but those are not user-available here.
 pub(super) fn tools_lines(mode: Mode) -> Vec<Line<'static>> {
-    let tools = tools_for_mode(mode);
+    let tools = allowed_tools_for_mode(mode);
     let mut lines: Vec<Line> = tools.iter().map(|t| Line::from(format!("• {t}"))).collect();
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
