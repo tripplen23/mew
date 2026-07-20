@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3](https://github.com/tripplen23/mew/compare/v0.3.2...v0.3.3) (2026-07-20)
+
+
+### Features
+
+* **harness:** Harness engine polish ([#66](https://github.com/tripplen23/mew/issues/66)) ([296d3c2](https://github.com/tripplen23/mew/commit/296d3c2737b14198dc7848b3e4415d3e1b2fb524))
+
 ## [0.3.2](https://github.com/tripplen23/mew/compare/v0.3.1...v0.3.2) (2026-07-20)
 
 
