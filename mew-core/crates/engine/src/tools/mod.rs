@@ -115,6 +115,7 @@ impl ToolRegistry {
                 mewcode_protocol::tool::names::WRITE_FILE
                     | mewcode_protocol::tool::names::EDIT_FILE
                     | mewcode_protocol::tool::names::BASH
+                    | mewcode_protocol::tool::names::MEMORY
             ) {
                 reg.register(Arc::new(ApprovalTool {
                     inner: tool.clone(),
