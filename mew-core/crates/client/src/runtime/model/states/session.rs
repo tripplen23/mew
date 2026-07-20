@@ -9,6 +9,7 @@ use mewcode_protocol::ModelId;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileEntry {
     pub path: String,
+    pub is_dir: bool,
 }
 
 /// One row in the slash-command picker.

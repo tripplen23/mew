@@ -49,20 +49,65 @@ pub fn user_text_with_file_context(messages: &[Message], root: &Path) -> Option<
     }
     paths.sort();
     paths.dedup();
-    paths.truncate(MAX_REFERENCED_FILES);
 
-    if paths.is_empty() {
+    let mut expanded = Vec::new();
+    for path in paths {
+        if path.ends_with('/') {
+            let dir_path = path.trim_end_matches('/');
+            let resolved = root.join(dir_path);
+            if resolved.is_dir() {
+                let remaining = MAX_REFERENCED_FILES.saturating_sub(expanded.len());
+                collect_dir_files(&resolved, root, &mut expanded, remaining);
+            }
+        } else {
+            expanded.push(path);
+        }
+    }
+    expanded.sort();
+    expanded.dedup();
+    expanded.truncate(MAX_REFERENCED_FILES);
+
+    if expanded.is_empty() {
         return Some(text);
     }
 
     let mut out = String::new();
     let _ = writeln!(out, "{REFERENCED_FILES_HEADER}");
-    for path in paths {
+    for path in expanded {
         out.push_str(&format_file_context(root, &path));
     }
     let _ = writeln!(out, "\n{USER_MESSAGE_HEADER}");
     out.push_str(&text);
     Some(out)
+}
+
+fn collect_dir_files(dir: &Path, root: &Path, out: &mut Vec<String>, remaining: usize) {
+    if remaining == 0 {
+        return;
+    }
+    let mut entries: Vec<_> = match std::fs::read_dir(dir) {
+        Ok(rd) => rd.filter_map(|e| e.ok()).collect(),
+        Err(_) => return,
+    };
+    entries.sort_by_key(|e| e.file_name());
+    for entry in entries {
+        if out.len() >= remaining {
+            break;
+        }
+        let path = entry.path();
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if mewcode_protocol::tool::SKIPPED_DIRS.contains(&name.as_ref()) {
+            continue;
+        }
+        if path.is_file() {
+            if let Ok(rel) = path.strip_prefix(root) {
+                out.push(rel.to_string_lossy().replace('\\', "/"));
+            }
+        } else if path.is_dir() {
+            collect_dir_files(&path, root, out, remaining - out.len());
+        }
+    }
 }
 
 fn text_of(msg: &Message) -> String {

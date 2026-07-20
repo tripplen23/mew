@@ -306,7 +306,6 @@ fn dispatch(cmd: Cmd, api: &ApiClient, tx: &mpsc::Sender<Msg>) {
 
 fn list_files() -> io::Result<Vec<FileEntry>> {
     const MAX_FILES: usize = 2000;
-    const SKIPPED_DIRS: &[&str] = &[".git", "target", "node_modules"];
     let root = std::env::current_dir()?;
     let mut out = Vec::new();
     let mut stack = vec![root.clone()];
@@ -317,15 +316,26 @@ fn list_files() -> io::Result<Vec<FileEntry>> {
             let kind = entry.file_type()?;
             let name = entry.file_name();
             let name = name.to_string_lossy();
-            if should_skip(&name, SKIPPED_DIRS) {
+            if mewcode_protocol::tool::SKIPPED_DIRS.contains(&name.as_ref()) {
                 continue;
             }
             if kind.is_dir() {
+                if let Ok(rel) = path.strip_prefix(&root) {
+                    out.push(FileEntry {
+                        path: rel.to_string_lossy().replace('\\', "/"),
+                        is_dir: true,
+                    });
+                    if out.len() >= MAX_FILES {
+                        out.sort_by(|a, b| a.path.cmp(&b.path));
+                        return Ok(out);
+                    }
+                }
                 stack.push(path);
             } else if kind.is_file() {
                 if let Ok(rel) = path.strip_prefix(&root) {
                     out.push(FileEntry {
                         path: rel.to_string_lossy().replace('\\', "/"),
+                        is_dir: false,
                     });
                     if out.len() >= MAX_FILES {
                         out.sort_by(|a, b| a.path.cmp(&b.path));
@@ -337,10 +347,6 @@ fn list_files() -> io::Result<Vec<FileEntry>> {
     }
     out.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(out)
-}
-
-fn should_skip(name: &str, skipped_dirs: &[&str]) -> bool {
-    skipped_dirs.contains(&name)
 }
 
 /// Map a [`NetError`] from `create_session` into a [`CreateError`] at the

@@ -166,9 +166,14 @@ fn render_message(msg: &mewcode_protocol::Message, theme: Theme) -> Vec<Line<'st
             }
             MessagePart::FileMention { path } => {
                 last_tool_call = None;
+                let color = if path.ends_with('/') {
+                    theme.psy_cyan
+                } else {
+                    theme.mew_gold
+                };
                 out.push(Line::from(Span::styled(
                     format!("@{path}"),
-                    Style::default().fg(theme.mew_gold),
+                    Style::default().fg(color),
                 )));
             }
         }

@@ -279,9 +279,11 @@ fn at_file_picker_inserts_selected_path() {
         Msg::FilesFetched(Ok(vec![
             FileEntry {
                 path: "README.md".to_string(),
+                is_dir: false,
             },
             FileEntry {
                 path: "src/main.rs".to_string(),
+                is_dir: false,
             },
         ])),
     );
@@ -304,12 +306,15 @@ fn at_file_picker_prefers_basename_prefix_matches() {
         Msg::FilesFetched(Ok(vec![
             FileEntry {
                 path: "src/streaming.rs".to_string(),
+                is_dir: false,
             },
             FileEntry {
                 path: "crates/engine/src/tools/fs/read_file.rs".to_string(),
+                is_dir: false,
             },
             FileEntry {
                 path: "README.md".to_string(),
+                is_dir: false,
             },
         ])),
     );
@@ -328,6 +333,7 @@ fn at_file_picker_reopens_when_cursor_returns_to_mention() {
         &mut app,
         Msg::FilesFetched(Ok(vec![FileEntry {
             path: "README.md".to_string(),
+            is_dir: false,
         }])),
     );
     type_chars(&mut app, "rea ");
@@ -348,9 +354,11 @@ fn at_file_picker_hides_dotfiles_by_default() {
         Msg::FilesFetched(Ok(vec![
             FileEntry {
                 path: ".env".to_string(),
+                is_dir: false,
             },
             FileEntry {
                 path: "README.md".to_string(),
+                is_dir: false,
             },
         ])),
     );
@@ -369,9 +377,11 @@ fn at_file_picker_shows_dotfiles_for_dot_query() {
         Msg::FilesFetched(Ok(vec![
             FileEntry {
                 path: ".env".to_string(),
+                is_dir: false,
             },
             FileEntry {
                 path: "README.md".to_string(),
+                is_dir: false,
             },
         ])),
     );
