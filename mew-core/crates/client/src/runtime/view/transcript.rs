@@ -127,7 +127,7 @@ pub(super) fn render_transcript(
 fn render_message(msg: &mewcode_protocol::Message, theme: Theme) -> Vec<Line<'static>> {
     let (label, label_style) = match msg.role {
         Role::User => ("you", Style::default().fg(theme.hot_pink)),
-        Role::Assistant => ("assistant", Style::default().fg(theme.psy_cyan)),
+        Role::Assistant => ("assistant", Style::default().fg(theme.mew_gold)),
         Role::Tool => ("tool", Style::default().fg(theme.lavender)),
     };
     let mut out = vec![Line::from(Span::styled(

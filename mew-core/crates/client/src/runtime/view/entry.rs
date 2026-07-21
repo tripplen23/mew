@@ -68,7 +68,7 @@ pub(super) fn render_entry_lines(
             out.push(Line::from(Span::styled(
                 line,
                 Style::default()
-                    .fg(theme.hot_pink)
+                    .fg(theme.mew_gold)
                     .add_modifier(Modifier::BOLD),
             )));
         }
@@ -77,7 +77,7 @@ pub(super) fn render_entry_lines(
         out.push(Line::from(Span::styled(
             "mewcode",
             Style::default()
-                .fg(theme.hot_pink)
+                .fg(theme.mew_gold)
                 .add_modifier(Modifier::BOLD),
         )));
     }
