@@ -57,6 +57,10 @@ pub const SLASH_COMMANDS: &[SlashCommand] = &[
         description: "Switch mode",
     },
     SlashCommand {
+        command: "/sound",
+        description: "Toggle notification sound",
+    },
+    SlashCommand {
         command: "quit",
         description: "Exit the TUI",
     },
@@ -138,6 +142,8 @@ pub struct SessionState {
     pub file_picker: FilePickerState,
     /// Pending structured choice prompt, if any.
     pub pending_choice: Option<ChoicePromptState>,
+    /// Whether the notification sound plays after each assistant turn.
+    pub sound_enabled: bool,
 }
 
 impl SessionState {
@@ -165,6 +171,7 @@ impl SessionState {
             slash_cursor: 0,
             file_picker: FilePickerState::default(),
             pending_choice: None,
+            sound_enabled: true,
         }
     }
 

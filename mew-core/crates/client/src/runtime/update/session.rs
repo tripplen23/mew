@@ -273,6 +273,7 @@ pub(super) fn on_session_submit(s: &mut SessionState, toast: &mut Option<Toast>)
                 Cmd::None
             }
             "mode" => on_mode_command(s, &args, toast),
+            "sound" => on_sound_command(s, &args, toast),
             "model" => on_model_command(s),
             "session" => on_session_command(s, &args, toast),
             other => {
@@ -357,6 +358,17 @@ fn on_mode_command(s: &mut SessionState, args: &[&str], toast: &mut Option<Toast
             }
         },
     }
+}
+
+fn on_sound_command(s: &mut SessionState, args: &[&str], toast: &mut Option<Toast>) -> Cmd {
+    match args.first().copied() {
+        Some("on") => s.sound_enabled = true,
+        Some("off") => s.sound_enabled = false,
+        _ => s.sound_enabled = !s.sound_enabled,
+    }
+    let label = if s.sound_enabled { "on" } else { "off" };
+    *toast = Some(Toast::info(format!("Sound: {label}")));
+    Cmd::None
 }
 
 fn expand_pastes(s: &SessionState, text: &str) -> String {
