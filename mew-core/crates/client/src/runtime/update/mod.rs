@@ -128,7 +128,7 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
             if let Some(t) = apply_stream_event(s, ev) {
                 *toast = Some(t);
             }
-            if is_finished {
+            if is_finished && s.sound_enabled {
                 Cmd::PlayNotificationSound
             } else {
                 Cmd::None
