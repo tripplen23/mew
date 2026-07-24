@@ -53,6 +53,12 @@ struct MetaJson {
     created_at: DateTime<Utc>,
     /// When the session was last updated.
     updated_at: DateTime<Utc>,
+    /// Optional compaction summary from the last manual or automatic compaction.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    compaction_summary: Option<String>,
+    /// Message index already covered by `compaction_summary`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    compacted_up_to: Option<usize>,
 }
 
 impl MetaJson {
@@ -77,6 +83,8 @@ impl MetaJson {
             created_at: self.created_at,
             updated_at: self.updated_at,
             messages,
+            compaction_summary: self.compaction_summary.clone(),
+            compacted_up_to: self.compacted_up_to,
         }
     }
 }
@@ -244,6 +252,16 @@ impl SessionStore for FsStore {
                 Ok(meta) => summaries.push(meta.to_summary()),
                 // A directory without a readable meta.json is not a session.
                 Err(StoreError::NotFound) => continue,
+                // One corrupt session (stale model ref, etc.) must not break
+                // the entire session listing. Skip it, log it.
+                Err(e @ StoreError::Invalid(_)) => {
+                    tracing::warn!(
+                        session_dir = %entry.path().display(),
+                        error = %e,
+                        "skipping unreadable session in list"
+                    );
+                    continue;
+                }
                 Err(e) => return Err(e),
             }
         }
@@ -275,6 +293,8 @@ impl SessionStore for FsStore {
             mode: new.mode,
             created_at: now,
             updated_at: now,
+            compaction_summary: None,
+            compacted_up_to: None,
         };
 
         let dir = self.session_dir(meta.id);
@@ -308,6 +328,16 @@ impl SessionStore for FsStore {
         }
         if let Some(mode) = patch.mode {
             meta.mode = mode;
+        }
+        if let Some(summary) = patch.compaction_summary {
+            meta.compaction_summary = if summary.is_empty() {
+                None
+            } else {
+                Some(summary)
+            };
+        }
+        if let Some(boundary) = patch.compacted_up_to {
+            meta.compacted_up_to = if boundary == 0 { None } else { Some(boundary) };
         }
         meta.updated_at = Utc::now();
         Self::write_meta_atomic(&dir, &meta)?;

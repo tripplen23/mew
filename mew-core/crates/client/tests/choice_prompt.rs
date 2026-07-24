@@ -47,6 +47,8 @@ fn app_with_session(session_id: Uuid) -> App {
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
         messages: vec![],
+        compaction_summary: None,
+        compacted_up_to: None,
     }));
     app
 }

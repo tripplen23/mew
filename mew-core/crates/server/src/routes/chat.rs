@@ -45,10 +45,8 @@ pub async fn chat_stream(
     let (htx, mut hrx) = tokio::sync::mpsc::channel::<StreamEvent>(64);
     let (stx, srx) = tokio::sync::mpsc::channel::<StreamEvent>(64);
 
-    // Load skills from the default locations plus the server's
-    // configured `external_dirs` (Hermes-compatible shared skill
-    // dirs — see crates/server/src/config.rs). Missing external
-    // dirs are silently skipped.
+    // Load skills from default + configured external dirs. Missing dirs
+    // silently skipped.
     let skill_cfg = mewcode_engine::skills::SkillLoadConfig {
         bundled_dir: None,
         external_dirs: state.config.skills.resolved_dirs(),
@@ -56,10 +54,8 @@ pub async fn chat_stream(
         include_dev_dir: true,
     };
     let skills = Arc::new(SkillRegistry::load(&skill_cfg));
-    // Build a real tool registry: read-only tools + memory + skill_view.
-    // Write tools (write_file, edit_file, bash) only in Build mode.
-    // The project root defaults to the server's CWD — future phases can make
-    // this configurable per session.
+    // Tool registry: read-only + memory + skill_view always; write tools
+    // in Build mode. Root defaults to server CWD.
     let root = std::env::current_dir()
         .or_else(|_| std::fs::canonicalize("."))
         .unwrap_or_else(|_| ".".into());
@@ -69,23 +65,50 @@ pub async fn chat_stream(
     let display_sink: mewcode_engine::tools::DisplaySink =
         Arc::new(std::sync::Mutex::new(Vec::new()));
     let ctx = ProjectContext::new(root.clone()).with_display(display_sink.clone());
+    // Per-project memory scope — prevents facts leaking across projects.
+    // Falls back to global profile if data dir can't be resolved.
+    let memory = match state.memory.data_dir() {
+        Some(data_dir) => {
+            mewcode_engine::memory::MemoryStore::for_project(data_dir.to_path_buf(), &root)
+        }
+        None => state.memory.clone(),
+    };
     let tools = Arc::new(default_registry(
         ctx,
         skills.clone(),
-        Some(state.memory.clone()),
+        Some(memory.clone()),
         req.mode,
     ));
 
-    let harness = Harness::new(req.model, req.mode, skills, tools)
+    // Load accumulated session tokens from the shared map.
+    let prior_tokens = {
+        let map = state.session_tokens.read().await;
+        map.get(&req.session_id).copied().unwrap_or(0)
+    };
+
+    // Load the compaction summary and boundary from the session, if a prior
+    // manual or automatic compaction ran. Both are needed together: the
+    // boundary tells the harness which leading messages the summary already
+    // covers, so those are not re-sent to the model this turn.
+    let (compaction_summary, compacted_up_to) = state
+        .store
+        .get_session(req.session_id)
+        .await
+        .ok()
+        .map(|s| (s.compaction_summary, s.compacted_up_to.unwrap_or(0)))
+        .unwrap_or((None, 0));
+
+    let mut harness = Harness::new(req.model, req.mode, skills, tools)
         .with_session(req.session_id)
         .with_project_root(root)
-        .with_memory(state.memory.clone())
+        .with_memory(memory)
         .with_display_sink(display_sink)
-        .with_approval_broker(state.approvals.clone());
+        .with_approval_broker(state.approvals.clone())
+        .with_session_tokens(prior_tokens)
+        .with_compaction_summary(compaction_summary, compacted_up_to);
 
-    // The client sends the full history each turn; the new user message should
-    // be the last entry. Filter by role so a malformed trailing assistant/tool
-    // message cannot be persisted as a new user turn.
+    // Last User-role message from history. Role filter prevents malformed
+    // trailing messages from being persisted as a user turn.
     let new_user_message = req
         .messages
         .last()
@@ -96,10 +119,11 @@ pub async fn chat_stream(
     let store = state.store.clone();
     let messages = req.messages;
 
+    let session_tokens = state.session_tokens.clone();
+    let compact_store = state.store.clone();
     tokio::spawn(async move {
-        // The harness selects the last user message itself and owns nothing
-        // about the store. The handler is the single owner of `Error` emission,
-        // so a failed turn produces exactly one `Error` and nothing after it.
+        // Handler owns error emission — a failed turn produces exactly one
+        // Error and nothing after.
         if let Err(e) = harness.run_turn(&messages, htx.clone()).await {
             tracing::error!(error = ?e, "harness error");
             let _ = htx
@@ -107,6 +131,24 @@ pub async fn chat_stream(
                     message: e.to_string(),
                 })
                 .await;
+        }
+        // Persist updated token total for compaction decisions on the next turn.
+        let updated = harness.session_tokens();
+        {
+            let mut map = session_tokens.write().await;
+            map.insert(session_id, updated);
+        }
+        // Persist compaction result so the next turn builds on the summary
+        // rather than re-summarizing from scratch.
+        if let Some((summary, compacted_up_to)) = harness.updated_compaction() {
+            let patch = crate::store::SessionPatch {
+                compaction_summary: Some(summary.to_string()),
+                compacted_up_to: Some(compacted_up_to),
+                ..Default::default()
+            };
+            if let Err(e) = compact_store.patch_session(session_id, patch).await {
+                tracing::warn!(error = %e, "failed to persist automatic compaction state");
+            }
         }
     });
 

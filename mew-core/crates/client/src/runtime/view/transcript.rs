@@ -4,15 +4,15 @@
 //! view writes the measured scroll bounds back into [`SessionState`] so key
 //! handling can clamp PageUp/PageDown without doing layout work.
 
-use ratatui::Frame;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::{Block, BorderType, Paragraph, Wrap};
+use ratatui::widgets::{Paragraph, Wrap};
+use ratatui::Frame;
 
 use mewcode_protocol::{MessagePart, Role};
 
-use super::super::model::{SessionState, TurnItem};
+use super::super::model::{CompactionView, SessionState, TurnItem};
 use super::entry::render_entry_lines;
 use super::markdown::render_markdown;
 use super::session::render_mentions;
@@ -31,33 +31,38 @@ pub(super) fn render_transcript(
     theme: Theme,
 ) {
     let mut lines: Vec<Line> = Vec::new();
-    let title = s
-        .session
-        .as_ref()
-        .map(|sess| sess.title.as_str())
-        .unwrap_or(" mewcode ");
-    let block = Block::bordered()
-        .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(theme.lavender).bg(theme.ink_bg))
-        .style(Style::default().bg(theme.ink_bg))
-        .title(Span::styled(
-            format!(" {title} "),
-            Style::default()
-                .fg(theme.hot_pink)
-                .bg(theme.ink_bg)
-                .add_modifier(Modifier::BOLD),
-        ));
-    let inner = block.inner(chunk);
     let is_entry = s.session.is_none();
     match &s.session {
         Some(session) => {
-            for msg in &session.messages {
-                lines.extend(render_message(msg, theme));
-                lines.push(Line::from(""));
+            let mut msg_idx = 0;
+            let mut comp_idx = 0;
+            while msg_idx < session.messages.len() || comp_idx < s.compaction.committed.len() {
+                let next_comp = s.compaction.committed.get(comp_idx);
+                let next_msg = session.messages.get(msg_idx);
+
+                let comp_first = next_comp
+                    .map(|c| c.after_message_count == msg_idx)
+                    .unwrap_or(false);
+
+                if comp_first {
+                    if let Some(entry) = next_comp {
+                        lines.extend(render_compaction_section(&entry.view, theme, chunk.width));
+                    }
+                    comp_idx += 1;
+                } else if let Some(msg) = next_msg {
+                    lines.extend(render_message(msg, theme));
+                    lines.push(Line::from(""));
+                    msg_idx += 1;
+                } else {
+                    break;
+                }
+            }
+            for entry in &s.compaction.committed[comp_idx..] {
+                lines.extend(render_compaction_section(&entry.view, theme, chunk.width));
             }
         }
         None => {
-            lines.extend(render_entry_lines(s, theme, inner));
+            lines.extend(render_entry_lines(s, theme, chunk));
         }
     }
     if let Some(st) = &s.streaming {
@@ -67,8 +72,6 @@ pub(super) fn render_transcript(
                 .fg(theme.mew_gold)
                 .add_modifier(Modifier::BOLD),
         )));
-        // Render the in-flight turn in arrival order
-        // so the live view matches the runtime stream
         for item in &st.items {
             match item {
                 TurnItem::Text(text) => {
@@ -99,6 +102,9 @@ pub(super) fn render_transcript(
                         }
                     }
                 }
+                TurnItem::Compaction(view) => {
+                    lines.extend(render_compaction_section(view, theme, chunk.width));
+                }
             }
         }
     }
@@ -109,10 +115,10 @@ pub(super) fn render_transcript(
     if is_entry {
         para = para.alignment(Alignment::Center);
     }
-    let total = para.line_count(inner.width).min(u16::MAX as usize) as u16;
+    let total = para.line_count(chunk.width).min(u16::MAX as usize) as u16;
 
-    s.viewport = inner.height;
-    s.max_scroll = total.saturating_sub(inner.height);
+    s.viewport = chunk.height;
+    s.max_scroll = total.saturating_sub(chunk.height);
     if is_entry {
         s.scroll = 0;
     } else if s.follow {
@@ -121,7 +127,7 @@ pub(super) fn render_transcript(
         s.scroll = s.scroll.min(s.max_scroll);
     }
 
-    frame.render_widget(para.block(block).scroll((s.scroll, 0)), chunk);
+    frame.render_widget(para.scroll((s.scroll, 0)), chunk);
 }
 
 fn render_message(msg: &mewcode_protocol::Message, theme: Theme) -> Vec<Line<'static>> {
@@ -180,5 +186,36 @@ fn render_message(msg: &mewcode_protocol::Message, theme: Theme) -> Vec<Line<'st
             }
         }
     }
+    out
+}
+
+fn render_compaction_section(
+    view: &CompactionView,
+    theme: Theme,
+    width: u16,
+) -> Vec<Line<'static>> {
+    let mut out = Vec::new();
+    let label = " Compaction ";
+    let total_dashes = (width as usize).saturating_sub(label.len());
+    let left_len = total_dashes / 2;
+    let right_len = total_dashes - left_len;
+    let header = format!("{}{}{}", "─".repeat(left_len), label, "─".repeat(right_len));
+    out.push(Line::from(Span::styled(
+        header,
+        Style::default()
+            .fg(theme.psy_cyan)
+            .add_modifier(Modifier::BOLD),
+    )));
+    out.push(Line::from(""));
+
+    let secs = view.thought_duration_ms as f64 / 1000.0;
+    out.push(Line::from(Span::styled(
+        format!("+ Thought: {secs:.1}s"),
+        Style::default().fg(theme.mew_gold),
+    )));
+    out.push(Line::from(""));
+
+    out.extend(render_markdown(&view.summary));
+    out.push(Line::from(""));
     out
 }

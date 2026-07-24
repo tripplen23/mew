@@ -37,6 +37,10 @@ pub enum EngineError {
     #[error("aborted")]
     Aborted,
 
+    /// The provider rejected the request due to context length overflow.
+    #[error("context overflow: {0}")]
+    ContextOverflow(String),
+
     /// JSON (de)serialisation failed.
     #[error("serialization error: {0}")]
     Serde(#[from] serde_json::Error),
@@ -44,4 +48,31 @@ pub enum EngineError {
     /// Catch-all.
     #[error("{0}")]
     Other(String),
+}
+
+impl EngineError {
+    /// Check if this error represents a context overflow from the provider.
+    ///
+    /// Detects common patterns from OpenAI, Anthropic, and other providers
+    /// when the request exceeds the model's context limit.
+    pub fn is_context_overflow(&self) -> bool {
+        match self {
+            EngineError::ContextOverflow(_) => true,
+            EngineError::UpstreamStatus { status, body } => {
+                // HTTP 400 or 413 with context-related keywords
+                (*status == 400 || *status == 413)
+                    && (body.contains("context_length")
+                        || body.contains("maximum context length")
+                        || body.contains("too many tokens")
+                        || body.contains("max_tokens")
+                        || body.contains("prompt is too long"))
+            }
+            EngineError::Other(msg) => {
+                msg.contains("context_length")
+                    || msg.contains("maximum context length")
+                    || msg.contains("too many tokens")
+            }
+            _ => false,
+        }
+    }
 }

@@ -53,7 +53,7 @@ proptest! {
         // No user message => nothing to answer.
         prop_assert_eq!(last_user_text(&history), None);
 
-        let harness = Harness::new(
+        let mut harness = Harness::new(
             ModelId::MiniMaxM3,
             Mode::Build,
             Arc::new(SkillRegistry::new()),

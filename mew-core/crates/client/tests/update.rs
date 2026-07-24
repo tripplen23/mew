@@ -39,6 +39,8 @@ fn session_with_messages(messages: Vec<mewcode_protocol::Message>) -> Session {
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
         messages,
+        compaction_summary: None,
+        compacted_up_to: None,
     }
 }
 
@@ -72,8 +74,8 @@ fn empty_session_enter_is_noop() {
     assert!(matches!(update(&mut app, key(KeyCode::Enter)), Cmd::None));
     let s = sess(&app);
     assert!(s.session.is_none());
-    assert!(s.pending_chat.is_none());
-    assert!(!s.creating);
+    assert!(s.creation.pending_chat.is_none());
+    assert!(!s.creation.creating);
 }
 
 #[test]
@@ -91,8 +93,8 @@ fn empty_session_first_message_kicks_off_create() {
         s.session.is_none(),
         "session still None while create in flight"
     );
-    assert!(s.creating);
-    assert_eq!(s.pending_chat.as_deref(), Some("hello world"));
+    assert!(s.creation.creating);
+    assert_eq!(s.creation.pending_chat.as_deref(), Some("hello world"));
     // The composer keeps the text so the user can retry if the create
     // fails. It is cleared in the `SessionCreated(Ok)` success path.
     assert_eq!(s.input.lines().join("\n"), "hello world");
@@ -139,18 +141,18 @@ fn session_created_lifts_session_and_sends_pending_chat() {
         press(&mut app, KeyCode::Char(c));
     }
     update(&mut app, key(KeyCode::Enter));
-    assert!(sess(&app).creating);
+    assert!(sess(&app).creation.creating);
 
     let s = session();
     let id = s.id;
     let cmd = update(&mut app, Msg::SessionCreated(Ok(s)));
 
     let s = sess(&app);
-    assert!(!s.creating);
+    assert!(!s.creation.creating);
     assert!(s.session.is_some());
     assert_eq!(s.session.as_ref().unwrap().id, id);
     assert_eq!(s.session.as_ref().unwrap().messages.len(), 1);
-    assert!(s.pending_chat.is_none());
+    assert!(s.creation.pending_chat.is_none());
     assert!(s.streaming.is_some());
     assert!(matches!(cmd, Cmd::StartChat(_)));
 }
@@ -195,8 +197,8 @@ fn session_created_failure_drops_creating_and_toasts() {
     assert!(matches!(cmd, Cmd::None));
     let s = sess(&app);
     assert!(s.session.is_none());
-    assert!(!s.creating);
-    assert!(s.pending_chat.is_none());
+    assert!(!s.creation.creating);
+    assert!(s.creation.pending_chat.is_none());
     assert!(app.toast.is_some());
 }
 
@@ -221,9 +223,12 @@ fn session_created_failure_preserves_input_for_retry() {
 
     let s = sess(&app);
     assert!(s.session.is_none());
-    assert!(!s.creating);
+    assert!(!s.creation.creating);
     assert_eq!(s.input.lines().join("\n"), "retry me");
-    assert!(s.creation_started_at.is_none(), "spinner should stop");
+    assert!(
+        s.creation.creation_started_at.is_none(),
+        "spinner should stop"
+    );
 }
 
 #[test]
@@ -233,7 +238,7 @@ fn creating_state_ignores_keypresses() {
         press(&mut app, KeyCode::Char(c));
     }
     update(&mut app, key(KeyCode::Enter));
-    let before_pending = sess(&app).pending_chat.clone();
+    let before_pending = sess(&app).creation.pending_chat.clone();
     let before_input = sess(&app).input.lines().join("\n");
 
     // All keypresses while creating should be ignored — pending_chat,
@@ -242,9 +247,9 @@ fn creating_state_ignores_keypresses() {
         press(&mut app, KeyCode::Char(c));
     }
     let s = sess(&app);
-    assert_eq!(s.pending_chat, before_pending);
+    assert_eq!(s.creation.pending_chat, before_pending);
     assert_eq!(s.input.lines().join("\n"), before_input);
-    assert!(s.creating);
+    assert!(s.creation.creating);
 }
 
 // --- existing-session flow ------------------------------------------------
@@ -540,10 +545,12 @@ fn plain_message_starts_a_chat_turn() {
 }
 
 #[test]
-fn submit_while_streaming_is_rejected() {
+fn submit_while_streaming_is_queued_not_dropped() {
     // A second submit while a turn is in flight must not orphan the
     // in-flight `StreamingState` — that would lose deltas and let a late
-    // `Finished` commit garbage to history.
+    // `Finished` commit garbage to history. Instead of being rejected, it
+    // is queued and sent automatically once the in-flight turn finishes
+    // (see `Msg::Stream`'s queue-draining branch).
     let mut app = type_into_session("first");
     update(&mut app, key(KeyCode::Enter));
     assert!(sess(&app).streaming.is_some());
@@ -558,10 +565,12 @@ fn submit_while_streaming_is_rejected() {
     assert!(matches!(update(&mut app, key(KeyCode::Enter)), Cmd::None));
 
     let s = sess(&app);
-    // No second user message committed, no second turn started.
+    // No second user message committed yet, no second turn started yet.
     assert_eq!(s.session.as_ref().unwrap().messages.len(), before);
-    // Input is left intact so the user can retry once the in-flight turn ends.
-    assert_eq!(s.input.lines().join("\n"), "second");
+    // The composer is cleared — the message moved into the queue, not
+    // left stuck in the input for the user to notice nothing happened.
+    assert_eq!(s.input.lines().join("\n"), "");
+    assert_eq!(s.message_queue.as_slice(), ["second"]);
 }
 
 // --- apply_stream_event cases --------------------------------------------
@@ -584,7 +593,7 @@ fn streaming_session() -> App {
 fn stream_started_sets_assistant_id() {
     let mut app = streaming_session();
     let id = Uuid::new_v4();
-    stream(&mut app, StreamMsg::Started(id));
+    stream(&mut app, StreamMsg::Started { id, pwd: None });
     assert_eq!(sess(&app).streaming.as_ref().unwrap().assistant_id, id);
 }
 
@@ -620,7 +629,7 @@ fn stream_tool_input_then_output_is_recorded() {
         .iter()
         .filter_map(|it| match it {
             TurnItem::Tool(v) => Some(v),
-            TurnItem::Text(_) => None,
+            TurnItem::Text(_) | TurnItem::Compaction(_) => None,
         })
         .collect();
     assert_eq!(tools.len(), 1);
@@ -664,7 +673,13 @@ fn stream_preserves_interleaved_text_and_tool_order() {
 fn stream_finished_commits_one_assistant_message() {
     let mut app = streaming_session();
     let before = sess(&app).session.as_ref().unwrap().messages.len();
-    stream(&mut app, StreamMsg::Started(Uuid::new_v4()));
+    stream(
+        &mut app,
+        StreamMsg::Started {
+            id: Uuid::new_v4(),
+            pwd: None,
+        },
+    );
     stream(&mut app, StreamMsg::Delta("answer".to_string()));
     stream(
         &mut app,
@@ -682,7 +697,14 @@ fn stream_finished_commits_one_assistant_message() {
         },
     );
     assert!(matches!(
-        stream(&mut app, StreamMsg::Finished { duration_ms: 12 }),
+        stream(
+            &mut app,
+            StreamMsg::Finished {
+                duration_ms: 12,
+                session_tokens: None,
+                context_limit: None
+            }
+        ),
         Cmd::PlayNotificationSound
     ));
 
@@ -716,7 +738,14 @@ fn stream_event_without_streaming_is_ignored() {
     assert!(sess(&app).streaming.is_none());
     let before = sess(&app).session.as_ref().unwrap().messages.len();
     stream(&mut app, StreamMsg::Delta("ignored".to_string()));
-    stream(&mut app, StreamMsg::Finished { duration_ms: 1 });
+    stream(
+        &mut app,
+        StreamMsg::Finished {
+            duration_ms: 1,
+            session_tokens: None,
+            context_limit: None,
+        },
+    );
     let s = sess(&app);
     assert!(s.streaming.is_none());
     assert_eq!(s.session.as_ref().unwrap().messages.len(), before);

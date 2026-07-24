@@ -70,7 +70,7 @@ fn skills_are_injected_when_present() {
     let prompt = build_system_prompt(Mode::Build, &skills, &tools);
     assert!(prompt.contains("**review-pr**"));
     assert!(prompt.contains("Review a PR."));
-    assert!(prompt.contains("Available skills"));
+    assert!(prompt.contains("<skills>"));
 }
 
 #[test]
@@ -90,7 +90,7 @@ fn tool_descriptors_are_injected_when_present() {
     ))));
 
     let prompt = build_system_prompt(Mode::Build, &skills, &tools);
-    assert!(prompt.contains("## Tool reference"));
+    assert!(prompt.contains("<tools>"));
     assert!(prompt.contains("### `read_file`"));
     assert!(prompt.contains("**Safety:** read-only, idempotent"));
     assert!(prompt.contains("**Input schema:**"));

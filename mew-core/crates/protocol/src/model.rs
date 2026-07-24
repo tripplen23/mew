@@ -38,7 +38,7 @@ pub enum ModelKind {
 }
 
 macro_rules! define_models {
-    ($($variant:ident, $id:literal, $display:literal, $provider:ident, $kind:ident;)+) => {
+    ($($variant:ident, $id:literal, $display:literal, $provider:ident, $kind:ident, $ctx_limit:expr;)+) => {
         /// All models reachable through an OpenCode Go subscription or
         /// a configured native provider.
         #[derive(
@@ -75,6 +75,12 @@ macro_rules! define_models {
                 match self { $(ModelId::$variant => $display,)+ }
             }
 
+            /// Known input token capacity. Returns 0 when the limit is
+            /// unknown or unlimited, which disables compaction for that model.
+            pub fn context_limit(self) -> u64 {
+                match self { $(ModelId::$variant => $ctx_limit,)+ }
+            }
+
             /// Default model used when none is specified.
             pub const DEFAULT: ModelId = ModelId::MiniMaxM3;
         }
@@ -82,26 +88,26 @@ macro_rules! define_models {
 }
 
 define_models! {
-    MiniMaxM3, "minimax-m3", "MiniMax M3", OpenCodeGo, AnthropicMessages;
-    MiniMaxM27, "minimax-m2.7", "MiniMax M2.7", OpenCodeGo, AnthropicMessages;
-    MiniMaxM25, "minimax-m2.5", "MiniMax M2.5", OpenCodeGo, AnthropicMessages;
-    Qwen37Max, "qwen3.7-max", "Qwen 3.7 Max", OpenCodeGo, AnthropicMessages;
-    Qwen37Plus, "qwen3.7-plus", "Qwen 3.7 Plus", OpenCodeGo, AnthropicMessages;
-    Qwen36Plus, "qwen3.6-plus", "Qwen 3.6 Plus", OpenCodeGo, AnthropicMessages;
-    Glm52, "glm-5.2", "GLM 5.2", OpenCodeGo, OpenCodeGo;
-    Glm51, "glm-5.1", "GLM 5.1", OpenCodeGo, OpenCodeGo;
-    Glm5, "glm-5", "GLM 5", OpenCodeGo, OpenCodeGo;
-    KimiK27Code, "kimi-k2.7-code", "Kimi K2.7 Code", OpenCodeGo, OpenCodeGo;
-    KimiK26, "kimi-k2.6", "Kimi K2.6", OpenCodeGo, OpenCodeGo;
-    MiMoV25, "mimo-v2.5", "MiMo V2.5", OpenCodeGo, OpenCodeGo;
-    MiMoV25Pro, "mimo-v2.5-pro", "MiMo V2.5 Pro", OpenCodeGo, OpenCodeGo;
-    DeepSeekV4Pro, "deepseek-v4-pro", "DeepSeek V4 Pro", OpenCodeGo, OpenCodeGo;
-    DeepSeekV4Flash, "deepseek-v4-flash", "DeepSeek V4 Flash", OpenCodeGo, OpenCodeGo;
-    Gpt41, "gpt-4.1", "GPT-4.1", OpenAi, OpenAi;
-    Gpt41Mini, "gpt-4.1-mini", "GPT-4.1 Mini", OpenAi, OpenAi;
-    Gpt41Nano, "gpt-4.1-nano", "GPT-4.1 Nano", OpenAi, OpenAi;
-    Gpt4o, "gpt-4o", "GPT-4o", OpenAi, OpenAi;
-    Gpt4oMini, "gpt-4o-mini", "GPT-4o Mini", OpenAi, OpenAi;
+    MiniMaxM3, "minimax-m3", "MiniMax M3", OpenCodeGo, AnthropicMessages, 200_000;
+    MiniMaxM27, "minimax-m2.7", "MiniMax M2.7", OpenCodeGo, AnthropicMessages, 200_000;
+    MiniMaxM25, "minimax-m2.5", "MiniMax M2.5", OpenCodeGo, AnthropicMessages, 200_000;
+    Qwen37Max, "qwen3.7-max", "Qwen 3.7 Max", OpenCodeGo, AnthropicMessages, 131_072;
+    Qwen37Plus, "qwen3.7-plus", "Qwen 3.7 Plus", OpenCodeGo, AnthropicMessages, 131_072;
+    Qwen36Plus, "qwen3.6-plus", "Qwen 3.6 Plus", OpenCodeGo, AnthropicMessages, 131_072;
+    Glm52, "glm-5.2", "GLM 5.2", OpenCodeGo, OpenCodeGo, 131_072;
+    Glm51, "glm-5.1", "GLM 5.1", OpenCodeGo, OpenCodeGo, 131_072;
+    Glm5, "glm-5", "GLM 5", OpenCodeGo, OpenCodeGo, 131_072;
+    KimiK27Code, "kimi-k2.7-code", "Kimi K2.7 Code", OpenCodeGo, OpenCodeGo, 131_072;
+    KimiK26, "kimi-k2.6", "Kimi K2.6", OpenCodeGo, OpenCodeGo, 131_072;
+    MiMoV25, "mimo-v2.5", "MiMo V2.5", OpenCodeGo, OpenCodeGo, 131_072;
+    MiMoV25Pro, "mimo-v2.5-pro", "MiMo V2.5 Pro", OpenCodeGo, OpenCodeGo, 131_072;
+    DeepSeekV4Pro, "deepseek-v4-pro", "DeepSeek V4 Pro", OpenCodeGo, OpenCodeGo, 1_000_000;
+    DeepSeekV4Flash, "deepseek-v4-flash", "DeepSeek V4 Flash", OpenCodeGo, OpenCodeGo, 1_000_000;
+    Gpt41, "gpt-4.1", "GPT-4.1", OpenAi, OpenAi, 1_047_576;
+    Gpt41Mini, "gpt-4.1-mini", "GPT-4.1 Mini", OpenAi, OpenAi, 1_047_576;
+    Gpt41Nano, "gpt-4.1-nano", "GPT-4.1 Nano", OpenAi, OpenAi, 1_047_576;
+    Gpt4o, "gpt-4o", "GPT-4o", OpenAi, OpenAi, 128_000;
+    Gpt4oMini, "gpt-4o-mini", "GPT-4o Mini", OpenAi, OpenAi, 128_000;
 }
 
 impl Default for ModelId {

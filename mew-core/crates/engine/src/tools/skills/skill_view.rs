@@ -44,7 +44,7 @@ impl ToolContracts for SkillViewTool {
 
 **When to use (Level 2, with `path`):** The skill's body tells you to read a specific sub-file, or `skills_list` shows a sub-file you need.
 
-**When NOT to use:** If the request does not match any installed skill, do not invent a name. Skill names must come from the `Available skills` section of the system prompt or the `skills_list` tool."
+**When NOT to use:** If the request does not match any installed skill, do not invent a name. Skill names must come from the `<skills>` section of the system prompt or the `skills_list` tool."
                 .to_string(),
             input_schema: json!({
                 "type": "object",
@@ -92,7 +92,7 @@ impl ToolContracts for SkillViewTool {
                     SkillError::NotFound { .. } => ToolError::Rejected {
                         message: format!("no skill named '{name}' is installed"),
                         hint: Some(
-                            "check the `Available skills` section of the system prompt or call skills_list() to see valid names"
+                            "check the `<skills>` section of the system prompt or call skills_list() to see valid names"
                                 .into(),
                         ),
                     },
@@ -121,7 +121,7 @@ impl ToolContracts for SkillViewTool {
                         SkillError::NotFound { .. } => ToolError::Rejected {
                             message: format!("no skill named '{name}' is installed"),
                             hint: Some(
-                                "check the `Available skills` section of the system prompt or call skills_list() to see valid names"
+                                "check the `<skills>` section of the system prompt or call skills_list() to see valid names"
                                     .into(),
                             ),
                         },

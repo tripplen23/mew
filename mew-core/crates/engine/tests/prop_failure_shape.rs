@@ -64,7 +64,7 @@ proptest! {
         // built, so this never touches the network and holds regardless of
         // `OPENCODE_GO_API_KEY` (missing => MissingApiKey, present => Other), which
         // keeps the test from racing env-mutating tests in other binaries.
-        let harness = Harness::new(
+        let mut harness = Harness::new(
             model,
             mode,
             Arc::new(SkillRegistry::new()),

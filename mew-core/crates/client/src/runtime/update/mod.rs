@@ -67,6 +67,18 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
                     return submit_choice_response(s, response);
                 }
             }
+            // Clear compaction/streaming after 2 min timeout — prevents
+            // silent session lock if SSE drops without terminal event.
+            if s.compaction.active {
+                if let Some(started) = s.compaction.started_at {
+                    if started.elapsed().as_secs() >= 120 {
+                        s.compaction.active = false;
+                        s.compaction.started_at = None;
+                        s.streaming = None;
+                        *toast = Some(Toast::error("compaction timed out"));
+                    }
+                }
+            }
             Cmd::None
         }
 
@@ -74,12 +86,12 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
             Ok(session) => {
                 // Adopt the new session. If the user already typed a
                 // message -> commit it as the first turn.
-                let pending = s.pending_chat.take();
+                let pending = s.creation.pending_chat.take();
                 s.session = Some(session.clone());
-                s.creating = false;
-                s.creation_started_at = None;
-                s.pending_model = None;
-                s.pending_mode = None;
+                s.creation.creating = false;
+                s.creation.creation_started_at = None;
+                s.creation.pending_model = None;
+                s.creation.pending_mode = None;
                 if let Some(text) = pending {
                     let user_msg = Message::user(vec![MessagePart::Text { text: text.clone() }]);
                     s.session.as_mut().unwrap().messages.push(user_msg);
@@ -106,18 +118,18 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
             // typed text so the user can retry; `pending_chat` is dropped
             // so a retry rebuilds it from the still-present input.
             Err(CreateError::Other(message)) => {
-                s.creating = false;
-                s.creation_started_at = None;
-                s.pending_chat = None;
+                s.creation.creating = false;
+                s.creation.creation_started_at = None;
+                s.creation.pending_chat = None;
                 *toast = Some(Toast::error(message));
                 Cmd::None
             }
             Err(CreateError::EmptyTitle(_)) => {
                 // The title comes from the first message, so this arm
                 // is unreachable. Treat as a generic failure if it ever fires.
-                s.creating = false;
-                s.creation_started_at = None;
-                s.pending_chat = None;
+                s.creation.creating = false;
+                s.creation.creation_started_at = None;
+                s.creation.pending_chat = None;
                 *toast = Some(Toast::error("could not create session: empty title"));
                 Cmd::None
             }
@@ -125,10 +137,42 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
 
         Msg::Stream(ev) => {
             let is_finished = matches!(ev, StreamMsg::Finished { .. });
+            let is_terminal = is_finished || matches!(ev, StreamMsg::Failed(_));
             if let Some(t) = apply_stream_event(s, ev) {
                 *toast = Some(t);
             }
-            if is_finished && s.sound_enabled {
+            // Drain message queue when in-flight turn ends and nothing else
+            // runs. Failed turns still drain — stranding is worse.
+            let turn_still_running = s.streaming.is_some() || s.compaction.active;
+            if is_terminal && !turn_still_running && !s.message_queue.is_empty() {
+                let pending = s.message_queue.remove(0);
+                if let Some(session) = s.session.as_ref() {
+                    let session_id = session.id;
+                    let model = session.model;
+                    let mode = session.mode;
+                    let user_msg = Message::user(vec![MessagePart::Text { text: pending }]);
+                    s.session.as_mut().unwrap().messages.push(user_msg);
+                    s.follow = true;
+                    s.streaming = Some(super::model::StreamingState::new(uuid::Uuid::nil()));
+                    let start_chat = Cmd::StartChat(ChatRequest {
+                        session_id,
+                        model,
+                        provider: None,
+                        mode,
+                        messages: s.session.as_ref().unwrap().messages.clone(),
+                    });
+                    // Both the sound (if enabled) and the deferred chat
+                    // must run — dropping either loses the sound or,
+                    // worse, silently loses the queued message.
+                    if is_finished && s.sound_enabled {
+                        Cmd::Batch(vec![Cmd::PlayNotificationSound, start_chat])
+                    } else {
+                        start_chat
+                    }
+                } else {
+                    Cmd::None
+                }
+            } else if is_finished && s.sound_enabled {
                 Cmd::PlayNotificationSound
             } else {
                 Cmd::None

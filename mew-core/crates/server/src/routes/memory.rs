@@ -1,8 +1,15 @@
-//! `GET/POST /memory` — read and write the active memory profile.
+//! `GET/POST /memory` — read and write the global (`"default"`) memory profile.
 //!
 //! Memory is stored as a single markdown file per profile in the
-//! server's data directory under `memories/<profile>.md`.  The active
-//! profile is wired through the shared app state.
+//! server's data directory under `memories/<profile>.md`.
+//!
+//! NOTE: this route always operates on the global `"default"` profile via
+//! `state.memory`, not the project-scoped profile that `/chat` and
+//! `/sessions/{id}/compact` actually read/write via
+//! `MemoryStore::for_project`. There is currently no client UI for this
+//! route; if one is added, prefer exposing the project-scoped profile (see
+//! `routes::chat::chat_stream`) so what the user edits here matches what
+//! the model actually sees during a chat turn.
 
 use axum::Json;
 use axum::extract::State;

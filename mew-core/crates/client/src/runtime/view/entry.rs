@@ -81,13 +81,13 @@ pub(super) fn render_entry_lines(
                 .add_modifier(Modifier::BOLD),
         )));
     }
-    let status = if let Some(started) = s.creation_started_at {
+    let status = if let Some(started) = s.creation.creation_started_at {
         format!("{} starting session...", spinner_frame(started.elapsed()))
     } else {
         "Type a message to start a new session.".to_string()
     };
-    let model = s.pending_model.unwrap_or_default().display_name();
-    let mode = s.pending_mode.unwrap_or_default();
+    let model = s.creation.pending_model.unwrap_or_default().display_name();
+    let mode = s.creation.pending_mode.unwrap_or_default();
     out.push(Line::from(vec![
         Span::styled(mode.label(), Style::default().fg(theme.hot_pink)),
         Span::styled(" · ", Style::default().fg(theme.muted)),

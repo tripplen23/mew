@@ -45,6 +45,7 @@ pub struct ErrorResponse {
         routes::sessions::patch,
         routes::chat::chat_stream,
         routes::choices::respond,
+        routes::compact::compact_session,
     ),
     components(
         schemas(

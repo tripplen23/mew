@@ -1,8 +1,9 @@
-use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Clear, Paragraph, Wrap};
+use ratatui::Frame;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::super::model::{Overlay, SessionState};
 use super::overlay::{
@@ -10,14 +11,10 @@ use super::overlay::{
     theme_lines, tools_lines,
 };
 use super::park_cursor_in_field;
-use super::theme::{COMPOSER_HORIZONTAL_PAD, COMPOSER_LEFT_PAD, Theme};
+use super::theme::{Theme, COMPOSER_HORIZONTAL_PAD, COMPOSER_LEFT_PAD};
 use super::transcript::render_transcript;
 
-/// Maximum height (rows) the input field may grow to. Wrapped text beyond
-/// this still wraps, but the input box stops expanding so the transcript
-/// can't be swallowed. Note: text that wraps past this height is clipped
-/// at the bottom of the input box (the input `Paragraph` has no internal
-/// scroll); the user must backspace or clear the input to see it.
+/// Maximum height (rows) the input field may grow to.
 const MAX_INPUT_HEIGHT: u16 = 10;
 
 /// Session: scrollable transcript, input bar, status bar, plus overlays.
@@ -33,22 +30,128 @@ const MAX_INPUT_HEIGHT: u16 = 10;
 pub(super) fn render_session(frame: &mut Frame, area: Rect, s: &mut SessionState, theme: Theme) {
     let input_text = s.input.lines().join("\n");
     let input_height = input_height(area, &input_text);
+    let queue_height = queue_display_height(s);
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Min(1),               // transcript
+            Constraint::Length(queue_height), // queued-message list (0 when empty)
             Constraint::Length(input_height), // input bar (grows with text)
             Constraint::Length(1),            // status bar
         ])
         .split(area);
 
     render_transcript(frame, chunks[0], s, theme);
-    render_input(frame, chunks[1], &input_text, theme);
-    render_status(frame, chunks[2], s, theme);
+    render_message_queue(frame, chunks[1], s, theme);
+    render_input(frame, chunks[2], &input_text, theme);
+    render_status(frame, chunks[3], s, theme);
 
-    park_cursor_in_field(frame, chunks[1], &s.input);
+    park_cursor_in_field(frame, chunks[2], &s.input);
     render_active_overlay(frame, area, s);
+}
+
+/// Maximum number of queued-message rows shown
+const MAX_QUEUE_ROWS: usize = 3;
+
+static DOT_FRAME: AtomicU64 = AtomicU64::new(0);
+const DOT_BLINK_FRAMES: u64 = 10; // ~500 ms per phase at 50 ms tick
+
+/// Rows needed by the composer header: 1 separator line + queued messages.
+fn queue_display_height(s: &SessionState) -> u16 {
+    let len = s.message_queue.len();
+    let shown = len.min(MAX_QUEUE_ROWS);
+    let overflow_row = if len > MAX_QUEUE_ROWS { 1 } else { 0 };
+    1 + shown as u16 + overflow_row
+}
+
+/// Render the composer header directly above the input bar.
+///
+/// Two states, same visual language as the transcript's dashed "Compaction"
+/// section header (`render_compaction_section`) so the boundary between
+/// transcript and input never looks like an empty gap:
+/// - **Empty queue:** a single dashed row labelled "Composer", with a
+///   context-sensitive hint (what Enter does right now).
+/// - **Non-empty queue:** the FIFO backlog, one row per queued message —
+///   `message_queue[0]: <text> (status: pending)` — the only feedback that
+///   a message typed while a turn was in flight was queued, not dropped.
+///   See `on_session_submit`'s shared queueing branch.
+fn render_message_queue(frame: &mut Frame, chunk: Rect, s: &SessionState, theme: Theme) {
+    if chunk.height == 0 {
+        return;
+    }
+    frame.render_widget(
+        Block::default().style(Style::default().bg(theme.ink_bg)),
+        chunk,
+    );
+
+    let [dash_row, queue_area] = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(1), Constraint::Min(0)])
+        .split(chunk)[0..2]
+    else {
+        return;
+    };
+
+    let hint = if s.streaming.is_some() || s.compaction.active {
+        "queued on send"
+    } else {
+        "Enter to send"
+    };
+    let label = format!(" Composer · {hint} ");
+    // `.chars().count()` not `.len()` — `·` is 3 bytes but 1 column.
+    // Leftover from odd split goes to right, filling the row exactly.
+    let total_dashes = (dash_row.width as usize).saturating_sub(label.chars().count());
+    let left_len = total_dashes / 2;
+    let right_len = total_dashes - left_len;
+    let header = format!("{}{}{}", "─".repeat(left_len), label, "─".repeat(right_len));
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            header,
+            Style::default().fg(theme.muted),
+        ))),
+        dash_row,
+    );
+
+    if s.message_queue.is_empty() {
+        return;
+    }
+
+    let shown = (s.message_queue.len()).min(MAX_QUEUE_ROWS);
+    let tick = DOT_FRAME.fetch_add(1, Ordering::Relaxed);
+    let dot = if (tick / DOT_BLINK_FRAMES) % 2 == 0 { "●" } else { "○" };
+    let mut lines: Vec<Line> = s.message_queue[..shown]
+        .iter()
+        .enumerate()
+        .map(|(i, text)| {
+            let preview: String = text.chars().take(80).collect();
+            let preview = if text.chars().count() > 80 {
+                format!("{preview}…")
+            } else {
+                preview
+            };
+            Line::from(vec![
+                Span::styled(
+                    format!(" {dot} message_queue[{i}]: "),
+                    Style::default()
+                        .fg(Color::Rgb(255, 165, 0))
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(preview, Style::default().fg(theme.text)),
+                Span::styled(" (status: pending)", Style::default().fg(theme.muted)),
+            ])
+        })
+        .collect();
+
+    if s.message_queue.len() > MAX_QUEUE_ROWS {
+        let remaining = s.message_queue.len() - MAX_QUEUE_ROWS;
+        lines.push(Line::from(Span::styled(
+            format!(" … +{remaining} more queued"),
+            Style::default().fg(theme.muted),
+        )));
+    }
+
+    frame.render_widget(Paragraph::new(Text::from(lines)), queue_area);
 }
 
 fn input_height(area: Rect, input_text: &str) -> u16 {
@@ -103,27 +206,66 @@ fn render_status(frame: &mut Frame, chunk: Rect, s: &SessionState, theme: Theme)
     let (model, mode) = match &s.session {
         Some(session) => (session.model.display_name(), session.mode),
         None => (
-            s.pending_model.unwrap_or_default().display_name(),
-            s.pending_mode.unwrap_or_default(),
+            s.creation.pending_model.unwrap_or_default().display_name(),
+            s.creation.pending_mode.unwrap_or_default(),
         ),
     };
-    let mut spans = vec![
-        Span::styled(
-            format!("  {}", mode.label()),
-            Style::default()
-                .fg(theme.hot_pink)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(" · ", Style::default().fg(theme.muted)),
-        Span::styled(model.to_string(), Style::default().fg(Color::Gray)),
-    ];
-    if s.streaming.is_some() {
+
+    let pwd = s.pwd.as_deref().unwrap_or(".");
+    let token_pct = if s.context_limit > 0 {
+        (s.session_tokens as f64 / s.context_limit as f64) * 100.0
+    } else {
+        0.0
+    };
+    let token_display = format_tokens(s.session_tokens);
+
+    let left = format!("  {pwd}");
+    let right = format!(
+        "{token_display} ({token_pct:.0}%)  ·  {}  ·  {}",
+        mode.label(),
+        model
+    );
+
+    let mut spans = vec![Span::styled(&left, Style::default().fg(theme.muted))];
+
+    let padding = chunk
+        .width
+        .saturating_sub(left.len() as u16 + right.len() as u16);
+    if padding > 0 {
+        spans.push(Span::raw(" ".repeat(padding as usize)));
+    }
+
+    spans.push(Span::styled(&right, Style::default().fg(theme.muted)));
+
+    if s.compaction.active {
+        let elapsed = s
+            .compaction
+            .started_at
+            .map(|t| t.elapsed().as_secs_f64())
+            .unwrap_or(0.0);
+        let dot = ".".repeat((elapsed as usize % 3) + 1);
         spans.push(Span::styled(
-            " · streaming...",
+            format!("  ·  compacting{dot}"),
+            Style::default().fg(theme.muted),
+        ));
+    } else if s.streaming.is_some() {
+        spans.push(Span::styled(
+            "  ·  streaming...",
             Style::default().fg(theme.muted),
         ));
     }
+
     frame.render_widget(Paragraph::new(Line::from(spans)), chunk);
+}
+
+fn format_tokens(tokens: u64) -> String {
+    if tokens >= 1_000_000 {
+        format!("{:.1}M", tokens as f64 / 1_000_000.0)
+    } else if tokens >= 1_000 {
+        format!("{:.1}K", tokens as f64 / 1_000.0)
+    } else {
+        tokens.to_string()
+    }
 }
 
 fn input_line(line: &str, theme: Theme) -> Line<'static> {

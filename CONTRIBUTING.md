@@ -167,20 +167,41 @@ let api_key = env::var("OPENCODE_GO_API_KEY")?;
 
 ### Prompt format
 
-System prompts are built from named `&'static str` helpers for static sections and `writeln!` for dynamic lines; each section includes its own leading blank line. Don't chain `push_str("...")` on inline literals — the source becomes unreadable and the layout drifts. Canonical examples: `mew-core/crates/engine/src/agent/prompt.rs` and `mew-core/crates/engine/src/skills/catalog.rs`.
+**Every section of the system prompt MUST be wrapped in XML-style tags** (`<tag>...</tag>`). Tags serve as named boundaries that help the model navigate between distinct rule domains — cleaner and more reliable than pure markdown headers.
 
-```rust
-// good
-fn mode_section(mode: Mode) -> &'static str {
-    Mode::Build => "\n\n## Mode: BUILD\n..."
-}
-let mut out = String::new();
-out.push_str(intro());
-out.push_str(mode_section(mode));
-for d in &descriptors {
-    let _ = writeln!(out, "{}", format_tool_descriptor(d));
-}
+```xml
+<identity>
+You are Mew, an expert software engineer...
+</identity>
+
+<mode>
+You are in BUILD mode...
+</mode>
+
+<rules>
+1. **Be decisive.** ...
+2. **Never re-read files** ...
+</rules>
+
+<tools>
+### `read_file`
+...
+
+### `write_file`
+...
+</tools>
+
+<skills>
+- **review-pr** — Review a pull request.
+- **write-migration** — Write a SQL migration.
+</skills>
 ```
+
+**Tag names must be lowercase, descriptive, and use underscores as word separators.** Each tag wraps a single conceptual section — don't nest tags within tags.
+
+Dynamic sections (tool descriptors, skill catalog) are built at runtime; the tag opening goes in the section's header string, the closing tag is appended after building the dynamic content so every section is always properly closed.
+
+Static sections live in `&'static str` helpers — each function returns a self-contained tagged block. Canonical examples: `mew-core/crates/engine/src/agent/prompt.rs` and `mew-core/crates/engine/src/skills/catalog.rs`.
 
 ## Project conventions
 

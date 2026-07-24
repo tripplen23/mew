@@ -29,6 +29,8 @@ fn session() -> mewcode_client::net::Session {
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
         messages: vec![],
+        compaction_summary: None,
+        compacted_up_to: None,
     }
 }
 
@@ -331,7 +333,10 @@ fn slash_mode_before_session_sets_pending_mode() {
     let cmd = update(&mut app, press_enter());
 
     assert!(matches!(cmd, Cmd::None));
-    assert_eq!(active_state(&mut app).pending_mode, Some(Mode::Plan));
+    assert_eq!(
+        active_state(&mut app).creation.pending_mode,
+        Some(Mode::Plan)
+    );
     assert!(app.toast.is_none());
 }
 
@@ -345,7 +350,10 @@ fn tab_before_session_toggles_pending_mode() {
     );
 
     assert!(matches!(cmd, Cmd::None));
-    assert_eq!(active_state(&mut app).pending_mode, Some(Mode::Plan));
+    assert_eq!(
+        active_state(&mut app).creation.pending_mode,
+        Some(Mode::Plan)
+    );
 }
 
 // --- /model picker key nav -----------------------------------------------
@@ -407,7 +415,7 @@ fn model_picker_before_session_sets_pending_model() {
     let s = active_state(&mut app);
     assert!(matches!(cmd, Cmd::None));
     assert_eq!(s.overlay, Overlay::None);
-    assert_eq!(s.pending_model, Some(ModelId::MiniMaxM25));
+    assert_eq!(s.creation.pending_model, Some(ModelId::MiniMaxM25));
     assert!(
         app.toast.is_none(),
         "choosing a default model should not toast"
@@ -417,7 +425,7 @@ fn model_picker_before_session_sets_pending_model() {
 #[test]
 fn first_session_create_uses_pending_model() {
     let mut app = test_app();
-    active_state(&mut app).pending_model = Some(ModelId::MiniMaxM25);
+    active_state(&mut app).creation.pending_model = Some(ModelId::MiniMaxM25);
     {
         let s = active_state(&mut app);
         type_text(s, "hello");
@@ -435,7 +443,7 @@ fn first_session_create_uses_pending_model() {
 #[test]
 fn first_session_create_uses_pending_mode() {
     let mut app = test_app();
-    active_state(&mut app).pending_mode = Some(Mode::Plan);
+    active_state(&mut app).creation.pending_mode = Some(Mode::Plan);
     {
         let s = active_state(&mut app);
         type_text(s, "hello");
@@ -652,15 +660,21 @@ fn slash_session_new_with_title_emits_create_session_cmd() {
     let s = active_state(&mut app);
     // The chat-first flow flags `creating` so a duplicate submit is
     // ignored until `Msg::SessionCreated` lands.
-    assert!(s.creating);
+    assert!(s.creation.creating);
     assert_eq!(s.overlay, Overlay::None);
 }
 
+/// `/session new` with no title does not create a session up front — it
+/// drops back to the entry view (no active session, no pending create), the
+/// same view the app launches into. A session is only actually created once
+/// the user's first message in that empty view derives a title from it.
 #[test]
-fn slash_session_new_without_title_toasts() {
+fn slash_session_new_without_title_returns_to_entry_view() {
     let mut app = test_app();
     {
         let s = active_state(&mut app);
+        seed_active_session(s);
+        assert!(s.session.is_some());
         type_text(s, "/session new");
     }
     let cmd = update(&mut app, press_enter());
@@ -668,8 +682,34 @@ fn slash_session_new_without_title_toasts() {
     assert!(matches!(cmd, Cmd::None));
     let s = active_state(&mut app);
     assert_eq!(s.overlay, Overlay::None);
-    assert!(!s.creating, "no session should be created without a title");
-    assert!(app.toast.is_some());
+    assert!(
+        !s.creation.creating,
+        "no session should be created without a title"
+    );
+    assert!(
+        s.session.is_none(),
+        "bare /session new must clear the active session, landing back on the entry view"
+    );
+}
+
+/// The model/mode picked while on the entry view (before any session exists)
+/// carry over across a bare `/session new`, so switching model right after
+/// isn't lost.
+#[test]
+fn slash_session_new_without_title_carries_over_active_session_model_and_mode() {
+    let mut app = test_app();
+    {
+        let s = active_state(&mut app);
+        seed_active_session(s);
+        s.session.as_mut().unwrap().model = ModelId::MiMoV25Pro;
+        s.session.as_mut().unwrap().mode = Mode::Plan;
+        type_text(s, "/session new");
+    }
+    update(&mut app, press_enter());
+
+    let s = active_state(&mut app);
+    assert_eq!(s.creation.pending_model, Some(ModelId::MiMoV25Pro));
+    assert_eq!(s.creation.pending_mode, Some(Mode::Plan));
 }
 
 #[test]
@@ -718,6 +758,8 @@ fn session_patched_after_overlay_closed_does_not_clear_composer() {
         messages: vec![],
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
+        compaction_summary: None,
+        compacted_up_to: None,
     };
     let _ = update(
         &mut app,
@@ -774,6 +816,8 @@ fn session_patched_from_rename_clears_draft_even_if_overlay_already_closed() {
         messages: vec![],
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
+        compaction_summary: None,
+        compacted_up_to: None,
     };
     let _ = update(&mut app, Msg::SessionPatched(Ok(new_session), true));
 
@@ -810,6 +854,8 @@ fn session_opened_after_overlay_closed_does_not_adopt_session() {
         messages: vec![],
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
+        compaction_summary: None,
+        compacted_up_to: None,
     };
     let _ = update(&mut app, Msg::SessionOpened(Ok(other)));
 
@@ -1014,4 +1060,41 @@ fn model_picker_last_row_is_visible_in_small_terminal() {
         "last cursor row should be visible, not replaced by the footer:\n{buf}"
     );
     assert!(buf.contains("15/15"), "footer should still render:\n{buf}");
+}
+
+// --- message submitted while /compact is in flight -----------------------
+
+/// Regression test: a manual `/compact` sets `s.streaming = Some(...)` so
+/// its progress renders through the same live-turn UI as a normal chat
+/// reply (see `StreamMsg::CompactionStarted`). `on_session_submit` must
+/// queue a message typed during compaction into `s.message_queue` and
+/// clear the composer, exactly like a message typed during a busy chat
+/// turn — both share the same queueing path.
+#[test]
+fn message_sent_during_manual_compact_is_queued_not_stuck_in_composer() {
+    let mut app = test_app();
+    let s = active_state(&mut app);
+    seed_active_session(s);
+    // Simulate the state after `/compact` has started: both flags a real
+    // manual compaction sets are true at once.
+    s.compaction.active = true;
+    s.streaming = Some(mewcode_client::runtime::model::StreamingState::new(
+        uuid::Uuid::nil(),
+    ));
+
+    type_text(s, "hello");
+    let cmd = update(&mut app, press_enter());
+
+    assert!(matches!(cmd, Cmd::None));
+    let s = active_state(&mut app);
+    assert_eq!(
+        s.input.lines().join("\n"),
+        "",
+        "the composer must be cleared, not left holding the typed text"
+    );
+    assert_eq!(
+        s.message_queue.as_slice(),
+        ["hello"],
+        "the message must be queued for automatic send once compaction finishes"
+    );
 }
