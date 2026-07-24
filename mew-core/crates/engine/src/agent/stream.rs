@@ -58,13 +58,13 @@ fn take_display(sink: &DisplaySink, args: &Value) -> Option<mewcode_protocol::To
 ///
 /// Returns the full reply text and accumulated token usage.
 pub async fn run_agent_stream<M: rig_core::completion::CompletionModel + 'static>(
-    agent: rig_core::agent::Agent<M, ()>,
+    agent: rig_core::agent::Agent<M>,
     user_text: String,
     history: Vec<rig_core::completion::Message>,
     tx: &mpsc::Sender<StreamEvent>,
     display_sink: Option<DisplaySink>,
 ) -> Result<(String, TurnUsage), EngineError> {
-    let mut stream = agent.stream_prompt(user_text).with_history(history).await;
+    let mut stream = agent.stream_prompt(user_text).history(history).await;
 
     let mut full_reply = String::new();
     let mut usage = TurnUsage::default();
@@ -137,24 +137,22 @@ pub async fn run_agent_stream<M: rig_core::completion::CompletionModel + 'static
                 }
             }
             Ok(MultiTurnStreamItem::CompletionCall(call)) => {
-                if let Some(u) = &call.usage {
-                    usage.input_tokens += u.input_tokens;
-                    usage.output_tokens += u.output_tokens;
-                    usage.cached_input_tokens += u.cached_input_tokens;
-                    usage.cache_creation_input_tokens += u.cache_creation_input_tokens;
+                usage.input_tokens += call.usage.input_tokens;
+                usage.output_tokens += call.usage.output_tokens;
+                usage.cached_input_tokens += call.usage.cached_input_tokens;
+                usage.cache_creation_input_tokens += call.usage.cache_creation_input_tokens;
 
-                    tracing::debug!(
-                        input_tokens = u.input_tokens,
-                        output_tokens = u.output_tokens,
-                        cached_input_tokens = u.cached_input_tokens,
-                        cache_creation_input_tokens = u.cache_creation_input_tokens,
-                        "completion call usage"
-                    );
-                }
+                tracing::debug!(
+                    input_tokens = call.usage.input_tokens,
+                    output_tokens = call.usage.output_tokens,
+                    cached_input_tokens = call.usage.cached_input_tokens,
+                    cache_creation_input_tokens = call.usage.cache_creation_input_tokens,
+                    "completion call usage"
+                );
             }
             Ok(MultiTurnStreamItem::FinalResponse(response)) => {
                 if full_reply.is_empty() {
-                    let text = response.response().to_string();
+                    let text = response.output().to_string();
                     if !text.is_empty() {
                         let _ = tx
                             .send(StreamEvent::TextDelta {

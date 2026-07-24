@@ -20,7 +20,7 @@
 //! Two boundaries, one rule:
 //! - Errors from the user-facing world (terminal setup, runtime crashes) come
 //!   back as `anyhow::Error`.
-//! - Errors from talking to the server come back as the typed [`NetError`]
+//! - Errors from talking to the server come back as the typed `NetError`
 //!   defined in `crate::net`, never as a string.
 //!
 //! `unwrap` lives on neither boundary — both types force a deliberate choice.

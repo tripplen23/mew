@@ -13,7 +13,6 @@
 
 use std::sync::Arc;
 
-use rig_core::completion::ToolDefinition;
 use rig_core::tool::ToolDyn;
 use rig_core::wasm_compat::WasmBoxedFuture;
 
@@ -40,13 +39,12 @@ impl ToolDyn for RigToolAdapter {
         self.inner.name().to_string()
     }
 
-    fn definition<'a>(&'a self, _prompt: String) -> WasmBoxedFuture<'a, ToolDefinition> {
-        let def = ToolDefinition {
-            name: self.descriptor.name.clone(),
-            description: self.descriptor.description.clone(),
-            parameters: self.descriptor.input_schema.clone(),
-        };
-        Box::pin(async move { def })
+    fn description(&self) -> String {
+        self.descriptor.description.clone()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        self.descriptor.input_schema.clone()
     }
 
     fn call<'a>(

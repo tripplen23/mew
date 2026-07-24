@@ -101,11 +101,12 @@ async fn adapter_definition_matches_descriptor() {
     let descriptor = tool.descriptor();
     let adapter = RigToolAdapter::new(tool);
 
-    let def = adapter.definition(String::new()).await;
-    assert_eq!(def.name, descriptor.name);
-    assert_eq!(def.parameters, descriptor.input_schema);
-    assert_eq!(def.description, descriptor.description);
-    assert!(!def.description.is_empty());
+    let def_description = adapter.description();
+    let def_params = adapter.parameters();
+    assert_eq!(adapter.name(), descriptor.name);
+    assert_eq!(def_params, descriptor.input_schema);
+    assert_eq!(def_description, descriptor.description);
+    assert!(!def_description.is_empty());
 }
 
 #[tokio::test]

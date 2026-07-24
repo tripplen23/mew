@@ -147,10 +147,7 @@ fn build_compacted_history_preserves_tail_messages() {
 #[test]
 fn compaction_threshold_is_valid_fraction() {
     // P005: Compaction threshold must be between 0 and 1.
-    assert!(
-        COMPACTION_THRESHOLD > 0.0 && COMPACTION_THRESHOLD <= 1.0,
-        "threshold must be in (0, 1], got {COMPACTION_THRESHOLD}"
-    );
+    const { assert!(COMPACTION_THRESHOLD > 0.0 && COMPACTION_THRESHOLD <= 1.0) };
 }
 
 #[test]

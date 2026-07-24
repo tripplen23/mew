@@ -173,7 +173,7 @@ call `mewcode_memory` with action="write" before responding."#;
 /// memory tool (never anything display-worthy), so there's no need for the
 /// tool-call/display-correlation machinery the main chat turn requires.
 async fn stream_summary<M>(
-    agent: rig_core::agent::Agent<M, ()>,
+    agent: rig_core::agent::Agent<M>,
     prompt: &str,
     tx: &mpsc::Sender<StreamEvent>,
 ) -> Result<String, EngineError>
@@ -201,7 +201,7 @@ where
             // rendered — only the summary text matters.
             Ok(MultiTurnStreamItem::FinalResponse(response)) => {
                 if full_summary.is_empty() {
-                    let text = response.response().to_string();
+                    let text = response.output().to_string();
                     if !text.is_empty() {
                         let _ = tx
                             .send(StreamEvent::CompactionSummaryDelta {
