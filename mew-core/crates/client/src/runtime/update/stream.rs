@@ -70,19 +70,14 @@ pub(super) fn apply_stream_event(s: &mut SessionState, ev: StreamMsg) -> Option<
             None
         }
         StreamMsg::CompactionProgress { phase, message } => {
-            // Only render Pruning and Summarizing progress as text.
-            // Skip "Done" message — the Compaction section indicates completion.
             match phase {
                 mewcode_protocol::event::CompactionPhase::Pruning
                 | mewcode_protocol::event::CompactionPhase::Summarizing => {
                     if let Some(st) = &mut s.streaming {
-                        st.push_text(&format!(" {message}\n"));
+                        st.push_progress(&format!(" {message}\n"));
                     }
                 }
-                mewcode_protocol::event::CompactionPhase::Done => {
-                    // Don't clear compacting flag here — Finish handler needs it
-                    // to know this was a compaction stream. Safety timeout in Tick.
-                }
+                mewcode_protocol::event::CompactionPhase::Done => {}
             }
             None
         }
@@ -239,7 +234,7 @@ fn commit_assistant_message(st: StreamingState, model: ModelId) -> Message {
                     }));
                 }
             }
-            TurnItem::Compaction(_) => {}
+            TurnItem::Compaction(_) | TurnItem::Progress(_) => {}
         }
     }
     Message::assistant(parts, model.as_str())

@@ -629,7 +629,7 @@ fn stream_tool_input_then_output_is_recorded() {
         .iter()
         .filter_map(|it| match it {
             TurnItem::Tool(v) => Some(v),
-            TurnItem::Text(_) | TurnItem::Compaction(_) => None,
+            TurnItem::Text(_) | TurnItem::Compaction(_) | TurnItem::Progress(_) => None,
         })
         .collect();
     assert_eq!(tools.len(), 1);

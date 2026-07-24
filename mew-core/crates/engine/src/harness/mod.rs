@@ -301,10 +301,11 @@ impl Harness {
                 threshold,
                 "pruned history, skipping LLM compaction"
             );
+            let tokens_before = self.session_tokens;
             self.session_tokens = estimated_tokens_after_prune;
             let _ = tx
                 .send(StreamEvent::Compacted {
-                    tokens_before: self.session_tokens,
+                    tokens_before,
                     context_limit: limit,
                     summary: "[Pruned tool results — no LLM summary needed]".to_string(),
                     thought_duration_ms: 0,

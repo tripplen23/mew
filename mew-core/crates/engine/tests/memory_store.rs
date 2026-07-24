@@ -99,16 +99,20 @@ fn for_project_is_stable_across_calls() {
 }
 
 #[test]
-fn for_project_falls_back_to_default_when_path_does_not_exist() {
+fn for_project_hashes_raw_path_when_canonicalize_fails() {
     let data_dir = tempdir();
-    // A project root that does not exist on disk cannot be canonicalized,
-    // so this must fall back to the global "default" profile rather than
-    // erroring.
+    // A project root that does not exist on disk cannot be canonicalized.
+    // The path is hashed to a unique profile instead of falling back to
+    // "default", preventing cross-project memory leakage.
     let nonexistent = data_dir.join("this-does-not-exist");
 
     let store = MemoryStore::for_project(data_dir.clone(), &nonexistent);
-    let expected = data_dir.join("memories").join("default.md");
-    assert_eq!(store.path(), &expected);
+    let file_name = store.path().file_name().unwrap().to_str().unwrap();
+    assert!(
+        file_name.starts_with("unresolved-"),
+        "must use hashed name for unresolved paths, got {file_name}"
+    );
+    assert!(file_name.ends_with(".md"));
 }
 
 #[test]

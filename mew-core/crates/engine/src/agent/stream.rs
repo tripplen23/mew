@@ -37,7 +37,10 @@ impl TurnUsage {
 
     /// Whether any usage was reported.
     pub fn is_empty(&self) -> bool {
-        self.input_tokens == 0 && self.output_tokens == 0
+        self.input_tokens == 0
+            && self.output_tokens == 0
+            && self.cached_input_tokens == 0
+            && self.cache_creation_input_tokens == 0
     }
 }
 

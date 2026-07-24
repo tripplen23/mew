@@ -74,7 +74,7 @@ pub(super) fn render_transcript(
         )));
         for item in &st.items {
             match item {
-                TurnItem::Text(text) => {
+                TurnItem::Text(text) | TurnItem::Progress(text) => {
                     if !text.is_empty() {
                         lines.extend(render_markdown(text));
                     }

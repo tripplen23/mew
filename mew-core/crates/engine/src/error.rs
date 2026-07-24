@@ -59,20 +59,20 @@ impl EngineError {
         match self {
             EngineError::ContextOverflow(_) => true,
             EngineError::UpstreamStatus { status, body } => {
-                // HTTP 400 or 413 with context-related keywords
-                (*status == 400 || *status == 413)
-                    && (body.contains("context_length")
-                        || body.contains("maximum context length")
-                        || body.contains("too many tokens")
-                        || body.contains("max_tokens")
-                        || body.contains("prompt is too long"))
+                (*status == 400 || *status == 413) && contains_context_overflow(body)
             }
-            EngineError::Other(msg) => {
-                msg.contains("context_length")
-                    || msg.contains("maximum context length")
-                    || msg.contains("too many tokens")
-            }
+            EngineError::Other(msg) => contains_context_overflow(msg),
             _ => false,
         }
     }
+}
+
+fn contains_context_overflow(msg: &str) -> bool {
+    let lower = msg.to_lowercase();
+    lower.contains("context_length")
+        || lower.contains("maximum context length")
+        || lower.contains("too many tokens")
+        || lower.contains("max_tokens")
+        || lower.contains("prompt is too long")
+        || lower.contains("context length exceeded")
 }

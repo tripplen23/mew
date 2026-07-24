@@ -84,7 +84,12 @@ impl MemoryStore {
                 };
                 format!("{sanitized}-{hash:016x}")
             }
-            Err(_) => DEFAULT_PROFILE.to_string(),
+            Err(_) => {
+                let mut hasher = DefaultHasher::new();
+                project_root.hash(&mut hasher);
+                let hash = hasher.finish();
+                format!("unresolved-{hash:016x}")
+            }
         };
         Self::with_profile(data_dir, &profile)
     }

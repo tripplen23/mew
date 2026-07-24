@@ -337,6 +337,8 @@ pub enum TurnItem {
     Tool(ToolCallView),
     /// An inline compaction section.
     Compaction(CompactionView),
+    /// Transient progress text rendered inline but never committed to history
+    Progress(String),
 }
 
 /// State of an in-flight assistant turn.
@@ -372,6 +374,11 @@ impl StreamingState {
     /// Record a new tool call in arrival order.
     pub fn push_tool_call(&mut self, view: ToolCallView) {
         self.items.push(TurnItem::Tool(view));
+    }
+
+    /// Record transient progress text rendered inline but never committed.
+    pub fn push_progress(&mut self, text: &str) {
+        self.items.push(TurnItem::Progress(text.to_string()));
     }
 
     /// Record a compaction event in arrival order.
@@ -435,7 +442,7 @@ impl StreamingState {
     pub fn text(&self) -> String {
         let mut out = String::new();
         for it in &self.items {
-            if let TurnItem::Text(t) = it {
+            if let TurnItem::Text(t) | TurnItem::Progress(t) = it {
                 out.push_str(t);
             }
         }

@@ -234,7 +234,7 @@ fn render_status(frame: &mut Frame, chunk: Rect, s: &SessionState, theme: Theme)
 
     let padding = chunk
         .width
-        .saturating_sub(left.len() as u16 + right.len() as u16);
+        .saturating_sub(left.chars().count() as u16 + right.chars().count() as u16);
     if padding > 0 {
         spans.push(Span::raw(" ".repeat(padding as usize)));
     }
