@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.4](https://github.com/tripplen23/mew/compare/v0.3.3...v0.3.4) (2026-07-24)
+
+
+### Features
+
+* **compact:** context compaction engine, client runtime, and server … ([#72](https://github.com/tripplen23/mew/issues/72)) ([dd489a4](https://github.com/tripplen23/mew/commit/dd489a4eac80aa5e82804a89c0be05da73341f63))
+
 ## [0.3.3](https://github.com/tripplen23/mew/compare/v0.3.2...v0.3.3) (2026-07-20)
 
 
