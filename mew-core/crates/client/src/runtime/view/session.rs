@@ -1,8 +1,8 @@
+use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Clear, Paragraph, Wrap};
-use ratatui::Frame;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::super::model::{Overlay, SessionState};
@@ -11,7 +11,7 @@ use super::overlay::{
     theme_lines, tools_lines,
 };
 use super::park_cursor_in_field;
-use super::theme::{Theme, COMPOSER_HORIZONTAL_PAD, COMPOSER_LEFT_PAD};
+use super::theme::{COMPOSER_HORIZONTAL_PAD, COMPOSER_LEFT_PAD, Theme};
 use super::transcript::render_transcript;
 
 /// Maximum height (rows) the input field may grow to.
@@ -119,7 +119,11 @@ fn render_message_queue(frame: &mut Frame, chunk: Rect, s: &SessionState, theme:
 
     let shown = (s.message_queue.len()).min(MAX_QUEUE_ROWS);
     let tick = DOT_FRAME.fetch_add(1, Ordering::Relaxed);
-    let dot = if (tick / DOT_BLINK_FRAMES) % 2 == 0 { "●" } else { "○" };
+    let dot = if (tick / DOT_BLINK_FRAMES) % 2 == 0 {
+        "●"
+    } else {
+        "○"
+    };
     let mut lines: Vec<Line> = s.message_queue[..shown]
         .iter()
         .enumerate()

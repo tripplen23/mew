@@ -7,6 +7,7 @@ pub mod config;
 pub mod error;
 pub mod openapi;
 pub mod routes;
+pub mod services;
 pub mod sse;
 pub mod store;
 

@@ -3,8 +3,8 @@ use tokio::sync::mpsc;
 
 use uuid::Uuid;
 
-use mewcode_protocol::event::ChatRequest;
 use mewcode_protocol::StreamEvent;
+use mewcode_protocol::event::ChatRequest;
 
 use crate::net::ApiClient;
 

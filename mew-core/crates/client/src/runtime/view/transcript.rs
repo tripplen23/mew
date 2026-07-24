@@ -4,11 +4,11 @@
 //! view writes the measured scroll bounds back into [`SessionState`] so key
 //! handling can clamp PageUp/PageDown without doing layout work.
 
+use ratatui::Frame;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Paragraph, Wrap};
-use ratatui::Frame;
 
 use mewcode_protocol::{MessagePart, Role};
 
