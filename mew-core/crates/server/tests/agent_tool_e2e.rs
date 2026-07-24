@@ -161,7 +161,7 @@ async fn collect_events(
     messages: Vec<Message>,
 ) -> (Vec<StreamEvent>, Option<String>) {
     let (tx, mut rx) = tokio::sync::mpsc::channel::<StreamEvent>(128);
-    let h = harness.clone();
+    let mut h = harness.clone();
     let handle = tokio::spawn(async move { h.run_turn(&messages, tx).await });
 
     let mut events = Vec::new();

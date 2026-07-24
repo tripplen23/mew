@@ -257,6 +257,8 @@ fn draw_session(messages: Vec<Message>) -> String {
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
         messages,
+        compaction_summary: None,
+        compacted_up_to: None,
     };
     let mut app = App::new();
     app.screen = Screen::Session(SessionState::new(session));

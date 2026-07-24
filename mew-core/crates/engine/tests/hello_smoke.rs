@@ -41,7 +41,7 @@ async fn hello_round_trip() {
         "smoke test must drive the default Anthropic-compatible model"
     );
 
-    let harness = Harness::new(
+    let mut harness = Harness::new(
         model,
         Mode::Build,
         Arc::new(SkillRegistry::load_defaults()),

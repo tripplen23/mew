@@ -61,6 +61,10 @@ pub const SLASH_COMMANDS: &[SlashCommand] = &[
         description: "Toggle notification sound",
     },
     SlashCommand {
+        command: "/compact",
+        description: "Compact conversation context",
+    },
+    SlashCommand {
         command: "quit",
         description: "Exit the TUI",
     },
@@ -92,22 +96,16 @@ pub enum Overlay {
     Choice,
 }
 
-/// State backing [`super::Screen::Session`].
+/// State while a session is being created from the first typed message.
 ///
-/// The TUI always opens here. `session` is `None` until the user sends
-/// their first message, at which point the runtime `POST /sessions` to
-/// create one and lifts the result into this field. The `pending_chat`
-/// text is what triggered the create; it becomes the first user message
-/// once the session lands. `creating` is true while that POST is in
-/// flight so the input can be disabled and a spinner can be shown.
-#[derive(Debug)]
-pub struct SessionState {
-    /// The hydrated session, including history.
-    pub session: Option<Session>,
-    /// The message composer.
-    pub input: TextArea<'static>,
-    /// Full pasted bodies hidden behind short composer markers.
-    pub pasted: Vec<PastedText>,
+/// `session` is `None` until the user sends their first message, at which
+/// point the runtime `POST /sessions` to create one and lifts the result
+/// into `SessionState::session`. `pending_chat` is what triggered the
+/// create; it becomes the first user message once the session lands.
+/// `creating` is true while that POST is in flight so the input can be
+/// disabled and a spinner can be shown.
+#[derive(Debug, Default)]
+pub struct CreationState {
     /// First message of a not-yet-created session.
     pub pending_chat: Option<String>,
     /// Model picked before the first session exists.
@@ -116,8 +114,33 @@ pub struct SessionState {
     pub pending_mode: Option<Mode>,
     /// `true` while a `POST /sessions` is in flight for `pending_chat`.
     pub creating: bool,
-    /// When `creating` was set true
+    /// When `creating` was set true.
     pub creation_started_at: Option<Instant>,
+}
+
+/// State for one manual `/compact` round-trip, plus the entries it (and
+/// automatic compaction) have committed to the transcript so far.
+#[derive(Debug, Default)]
+pub struct CompactionUiState {
+    /// `true` while a `POST /sessions/{id}/compact` is in flight.
+    pub active: bool,
+    /// When `active` was set true (for spinner animation).
+    pub started_at: Option<Instant>,
+    /// Committed compaction entries (manual or automatic).
+    pub committed: Vec<CompactionEntry>,
+}
+
+/// State backing [`super::Screen::Session`].
+#[derive(Debug)]
+pub struct SessionState {
+    /// The hydrated session, including history.
+    pub session: Option<Session>,
+    /// The message composer.
+    pub input: TextArea<'static>,
+    /// Full pasted bodies hidden behind short composer markers.
+    pub pasted: Vec<PastedText>,
+    /// Session-creation-in-progress state (`pending_chat`, `creating`, ...).
+    pub creation: CreationState,
     /// Vertical scroll offset of the transcript, in wrapped lines from the top.
     pub scroll: u16,
     /// When `true`, the transcript stays pinned to its latest line.
@@ -144,6 +167,16 @@ pub struct SessionState {
     pub pending_choice: Option<ChoicePromptState>,
     /// Whether the notification sound plays after each assistant turn.
     pub sound_enabled: bool,
+    /// Manual-`/compact`-in-progress state plus committed compaction entries.
+    pub compaction: CompactionUiState,
+    /// Server working directory, received from the Start event.
+    pub pwd: Option<String>,
+    /// Current session token total, received from the Finish event.
+    pub session_tokens: u64,
+    /// Model context limit, received from the Finish event.
+    pub context_limit: u64,
+    /// FIFO queue of messages the user submitted while a turn was in flight
+    pub message_queue: Vec<String>,
 }
 
 impl SessionState {
@@ -154,11 +187,7 @@ impl SessionState {
             session: None,
             input: TextArea::default(),
             pasted: Vec::new(),
-            pending_chat: None,
-            pending_model: None,
-            pending_mode: None,
-            creating: false,
-            creation_started_at: None,
+            creation: CreationState::default(),
             scroll: 0,
             follow: true,
             max_scroll: 0,
@@ -172,6 +201,11 @@ impl SessionState {
             file_picker: FilePickerState::default(),
             pending_choice: None,
             sound_enabled: true,
+            compaction: CompactionUiState::default(),
+            pwd: None,
+            session_tokens: 0,
+            context_limit: 0,
+            message_queue: Vec::new(),
         }
     }
 
@@ -270,6 +304,28 @@ pub struct ToolCallView {
     pub display: Option<mewcode_protocol::ToolDisplay>,
 }
 
+/// Compaction metadata displayed inline in the transcript.
+#[derive(Debug, Clone)]
+pub struct CompactionView {
+    /// Tokens used before compaction fired.
+    pub tokens_before: u64,
+    /// Model context limit.
+    pub context_limit: u64,
+    /// LLM-generated summary text.
+    pub summary: String,
+    /// Wall-clock duration of the compaction call in ms.
+    pub thought_duration_ms: u64,
+}
+
+/// A committed compaction entry stored in session history.
+#[derive(Debug, Clone)]
+pub struct CompactionEntry {
+    /// Number of committed messages at the time of compaction.
+    pub after_message_count: usize,
+    /// Compaction metadata.
+    pub view: CompactionView,
+}
+
 /// One ordered element of an in-flight assistant turn: a run of assistant text
 /// or a tool call (with its eventual result/display). Kept in arrival order so
 /// both the live view and the committed message match the runtime stream.
@@ -279,6 +335,10 @@ pub enum TurnItem {
     Text(String),
     /// A tool call and its result/display as they arrive.
     Tool(ToolCallView),
+    /// An inline compaction section.
+    Compaction(CompactionView),
+    /// Transient progress text rendered inline but never committed to history
+    Progress(String),
 }
 
 /// State of an in-flight assistant turn.
@@ -316,6 +376,60 @@ impl StreamingState {
         self.items.push(TurnItem::Tool(view));
     }
 
+    /// Record transient progress text rendered inline but never committed.
+    pub fn push_progress(&mut self, text: &str) {
+        self.items.push(TurnItem::Progress(text.to_string()));
+    }
+
+    /// Record a compaction event in arrival order.
+    pub fn push_compaction(&mut self, view: CompactionView) {
+        self.items.push(TurnItem::Compaction(view));
+    }
+
+    /// Append a chunk of a streaming compaction summary, merging consecutive
+    /// deltas like [`Self::push_text`] does for chat replies. First delta
+    /// creates a placeholder item; [`Self::finish_compaction`] fills metadata later.
+    pub fn push_compaction_delta(&mut self, delta: &str) {
+        match self.items.last_mut() {
+            Some(TurnItem::Compaction(view)) => view.summary.push_str(delta),
+            _ => self.items.push(TurnItem::Compaction(CompactionView {
+                tokens_before: 0,
+                context_limit: 0,
+                summary: delta.to_string(),
+                thought_duration_ms: 0,
+            })),
+        }
+    }
+
+    /// Set metadata on the trailing `Compaction` item after `Compacted` arrives.
+    /// Keeps any summary text already streamed via [`Self::push_compaction_delta`].
+    /// Falls back to creating a new item if no in-progress compaction exists.
+    pub fn finish_compaction(
+        &mut self,
+        tokens_before: u64,
+        context_limit: u64,
+        summary: &str,
+        thought_duration_ms: u64,
+    ) {
+        if let Some(TurnItem::Compaction(view)) = self.items.last_mut() {
+            view.tokens_before = tokens_before;
+            view.context_limit = context_limit;
+            view.thought_duration_ms = thought_duration_ms;
+            // The streamed summary should already match; prefer it only if
+            // nothing was streamed (defensive, shouldn't normally happen).
+            if view.summary.is_empty() {
+                view.summary = summary.to_string();
+            }
+            return;
+        }
+        self.push_compaction(CompactionView {
+            tokens_before,
+            context_limit,
+            summary: summary.to_string(),
+            thought_duration_ms,
+        });
+    }
+
     /// Find the most recent tool call with `id` to attach its output/display.
     pub fn tool_mut(&mut self, id: &str) -> Option<&mut ToolCallView> {
         self.items.iter_mut().rev().find_map(|it| match it {
@@ -328,7 +442,7 @@ impl StreamingState {
     pub fn text(&self) -> String {
         let mut out = String::new();
         for it in &self.items {
-            if let TurnItem::Text(t) = it {
+            if let TurnItem::Text(t) | TurnItem::Progress(t) = it {
                 out.push_str(t);
             }
         }

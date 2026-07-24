@@ -64,7 +64,7 @@ proptest! {
         set(OPENCODE_GO_API_KEY, &sentinel);
         set(ENV_BASE_URL, "http://127.0.0.1:1");
 
-        let harness = Harness::new(
+        let mut harness = Harness::new(
             ModelId::MiniMaxM3,
             Mode::Build,
             Arc::new(SkillRegistry::new()),

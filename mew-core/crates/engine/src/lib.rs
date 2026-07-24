@@ -8,6 +8,7 @@
 
 pub mod agent;
 pub mod approval;
+pub mod compact;
 pub mod config;
 pub mod error;
 pub mod harness;
@@ -19,6 +20,7 @@ pub mod streaming;
 pub mod tools;
 
 pub use agent::{Agent, build_system_prompt};
+pub use compact::{CompactionResult, compact_history};
 pub use config::EngineConfig;
 pub use error::EngineError;
 pub use harness::Harness;

@@ -81,6 +81,13 @@ pub struct Session {
     pub updated_at: DateTime<Utc>,
     /// Ordered message history.
     pub messages: Vec<Message>,
+    /// Optional compaction summary from the last manual or automatic compaction.
+    /// Injected into the history as a system message on the next turn.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compaction_summary: Option<String>,
+    /// Message index already covered by `compaction_summary`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compacted_up_to: Option<usize>,
 }
 
 /// A lightweight view of a session, without message history.
@@ -125,6 +132,15 @@ pub struct SessionPatch {
     /// New mode. `None` keeps the current mode.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mode: Option<Mode>,
+    /// New compaction summary. `None` keeps the current summary.
+    /// Set to `Some(String)` to store a summary, or `Some(String::new())` to clear.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compaction_summary: Option<String>,
+    /// New compaction boundary paired with `compaction_summary`. `None`
+    /// keeps the current boundary. Set to `Some(0)` to clear it (equivalent
+    /// to clearing the summary — 0 means "no messages are covered").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compacted_up_to: Option<usize>,
 }
 
 /// Trim a session title and reject empty/whitespace-only input. Shared by

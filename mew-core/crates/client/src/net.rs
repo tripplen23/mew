@@ -3,7 +3,9 @@
 use eventsource_stream::Eventsource;
 use futures::{Stream, StreamExt};
 use mewcode_protocol::event::{ChatRequest, ChoiceResponseRequest};
-use mewcode_protocol::routes::{CHAT, CHOICES, HEALTH, PROVIDERS, SESSION_BY_ID, SESSIONS, SKILLS};
+use mewcode_protocol::routes::{
+    CHAT, CHOICES, HEALTH, PROVIDERS, SESSION_BY_ID, SESSION_COMPACT, SESSIONS, SKILLS,
+};
 use mewcode_protocol::{Message, Mode, ModelId, ModelKind, ProviderId, StreamEvent};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -121,6 +123,12 @@ pub struct Session {
     pub updated_at: chrono::DateTime<chrono::Utc>,
     /// Ordered message history.
     pub messages: Vec<Message>,
+    /// Optional compaction summary from the last manual or automatic compaction.
+    #[serde(default)]
+    pub compaction_summary: Option<String>,
+    /// Message index already covered by `compaction_summary`.
+    #[serde(default)]
+    pub compacted_up_to: Option<usize>,
 }
 
 /// Request body for `POST /sessions`. Mirrors the server's
@@ -273,6 +281,25 @@ impl ApiClient {
             .await?;
         let _ = ensure_success(resp)?.bytes().await?;
         Ok(())
+    }
+
+    /// `POST /sessions/{id}/compact` — open the SSE compaction stream.
+    pub async fn compact_session_stream(
+        &self,
+        id: uuid::Uuid,
+    ) -> Result<impl Stream<Item = Result<StreamEvent, NetError>>, NetError> {
+        let path = SESSION_COMPACT.replace("{id}", &id.to_string());
+        let resp = self
+            .inner
+            .post(format!("{}{}", self.base_url, path))
+            .send()
+            .await?;
+        let resp = ensure_success(resp)?;
+        let stream = resp.bytes_stream().eventsource().map(|frame| match frame {
+            Ok(event) => serde_json::from_str::<StreamEvent>(&event.data).map_err(NetError::from),
+            Err(e) => Err(NetError::Stream(e.to_string())),
+        });
+        Ok(stream)
     }
 
     /// `POST /chat` — open the SSE chat stream.

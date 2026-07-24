@@ -17,6 +17,33 @@ use tokio::sync::mpsc;
 use crate::error::EngineError;
 use crate::tools::DisplaySink;
 
+/// Per-turn token usage accumulated from all completion calls in the turn.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TurnUsage {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cached_input_tokens: u64,
+    pub cache_creation_input_tokens: u64,
+}
+
+impl TurnUsage {
+    /// Total tokens consumed this turn (input + output + cache).
+    pub fn total(&self) -> u64 {
+        self.input_tokens
+            + self.output_tokens
+            + self.cached_input_tokens
+            + self.cache_creation_input_tokens
+    }
+
+    /// Whether any usage was reported.
+    pub fn is_empty(&self) -> bool {
+        self.input_tokens == 0
+            && self.output_tokens == 0
+            && self.cached_input_tokens == 0
+            && self.cache_creation_input_tokens == 0
+    }
+}
+
 /// Pop the display record matching `args`. Tools don't see Rig's call id, so
 /// we correlate by the only stable signal: the argument JSON the model sent.
 // O(n) scan, first-match. Identical-arg calls are interchangeable for display.
@@ -31,18 +58,19 @@ fn take_display(sink: &DisplaySink, args: &Value) -> Option<mewcode_protocol::To
 ///
 /// The multi-turn loop is handled by Rig internally; this function only
 /// translates Rig stream items into mewcode events.
+///
+/// Returns the full reply text and accumulated token usage.
 pub async fn run_agent_stream<M: rig_core::completion::CompletionModel + 'static>(
-    agent: rig_core::agent::Agent<M, ()>,
+    agent: rig_core::agent::Agent<M>,
     user_text: String,
     history: Vec<rig_core::completion::Message>,
     tx: &mpsc::Sender<StreamEvent>,
     display_sink: Option<DisplaySink>,
-) -> Result<String, EngineError> {
-    let mut stream = agent.stream_prompt(user_text).with_history(history).await;
+) -> Result<(String, TurnUsage), EngineError> {
+    let mut stream = agent.stream_prompt(user_text).history(history).await;
 
     let mut full_reply = String::new();
-    let mut total_cache_read = 0u64;
-    let mut total_cache_creation = 0u64;
+    let mut usage = TurnUsage::default();
     // Remember each tool call's arguments by id so a tool result can be
     // correlated with the display record its execution left in the sink.
     let mut call_args: HashMap<String, Value> = HashMap::new();
@@ -112,23 +140,22 @@ pub async fn run_agent_stream<M: rig_core::completion::CompletionModel + 'static
                 }
             }
             Ok(MultiTurnStreamItem::CompletionCall(call)) => {
-                if let Some(usage) = &call.usage {
-                    // Accumulate cache tokens across all sub-turns
-                    total_cache_read += usage.cached_input_tokens;
-                    total_cache_creation += usage.cache_creation_input_tokens;
+                usage.input_tokens += call.usage.input_tokens;
+                usage.output_tokens += call.usage.output_tokens;
+                usage.cached_input_tokens += call.usage.cached_input_tokens;
+                usage.cache_creation_input_tokens += call.usage.cache_creation_input_tokens;
 
-                    tracing::debug!(
-                        input_tokens = usage.input_tokens,
-                        output_tokens = usage.output_tokens,
-                        cached_input_tokens = usage.cached_input_tokens,
-                        cache_creation_input_tokens = usage.cache_creation_input_tokens,
-                        "completion call usage"
-                    );
-                }
+                tracing::debug!(
+                    input_tokens = call.usage.input_tokens,
+                    output_tokens = call.usage.output_tokens,
+                    cached_input_tokens = call.usage.cached_input_tokens,
+                    cache_creation_input_tokens = call.usage.cache_creation_input_tokens,
+                    "completion call usage"
+                );
             }
             Ok(MultiTurnStreamItem::FinalResponse(response)) => {
                 if full_reply.is_empty() {
-                    let text = response.response().to_string();
+                    let text = response.output().to_string();
                     if !text.is_empty() {
                         let _ = tx
                             .send(StreamEvent::TextDelta {
@@ -148,11 +175,14 @@ pub async fn run_agent_stream<M: rig_core::completion::CompletionModel + 'static
 
     // Record accumulated cache totals on the parent span
     let span = tracing::Span::current();
-    span.record("gen_ai.usage.cache_read.input_tokens", total_cache_read);
+    span.record(
+        "gen_ai.usage.cache_read.input_tokens",
+        usage.cached_input_tokens,
+    );
     span.record(
         "gen_ai.usage.cache_creation.input_tokens",
-        total_cache_creation,
+        usage.cache_creation_input_tokens,
     );
 
-    Ok(full_reply)
+    Ok((full_reply, usage))
 }

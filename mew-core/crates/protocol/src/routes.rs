@@ -33,3 +33,6 @@ pub const MEMORY_GET: &str = "/memory";
 
 /// `POST /memory` — write to the active memory profile.
 pub const MEMORY_POST: &str = "/memory";
+
+/// `POST /sessions/{id}/compact` — manually trigger context compaction.
+pub const SESSION_COMPACT: &str = "/sessions/{id}/compact";

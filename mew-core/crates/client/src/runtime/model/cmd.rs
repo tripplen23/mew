@@ -23,17 +23,13 @@ pub enum Cmd {
     FetchSessions,
     FetchFiles,
     /// Apply a partial update to a session via `PATCH /sessions/{id}`.
-    /// Carries the whole `SessionPatch` so a single cmd covers rename,
-    /// model change, and mode change.
     PatchSession {
         /// Id of the session to update.
         id: uuid::Uuid,
         /// The fields to change.
         patch: SessionPatch,
-        /// `true` when the request originated from `/session rename`.
-        /// The handler uses this to know it is allowed to clear the
-        /// rename draft and dismiss the overlay, even if the user
-        /// has since Esc'd out of the rename screen.
+        /// `true` if this PATCH came from `/session rename`.
+        /// Allows clearing the rename draft + overlay even if the user Esc'd out.
         from_rename: bool,
     },
     /// Switch the active session to `id`; hydrates it via `GET /sessions/{id}`.
@@ -44,4 +40,8 @@ pub enum Cmd {
     Quit,
     /// Play the completion notification sound.
     PlayNotificationSound,
+    /// Trigger manual context compaction for the current session.
+    Compact(uuid::Uuid),
+    /// Run multiple commands.
+    Batch(Vec<Cmd>),
 }

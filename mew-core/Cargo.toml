@@ -38,7 +38,7 @@ eventsource-stream = "0.2"
 http = "1"
 
 # AI framework
-rig-core = { version = "0.38" }
+rig-core = { version = "0.40" }
 
 # Tracing
 opentelemetry = "0.31"

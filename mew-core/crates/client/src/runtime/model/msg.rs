@@ -59,7 +59,7 @@ pub enum CreateError {
 #[derive(Debug)]
 pub enum StreamMsg {
     /// Stream started; carries the assistant message id.
-    Started(Uuid),
+    Started { id: Uuid, pwd: Option<String> },
     /// A chunk of assistant text.
     Delta(String),
     /// The model is calling a tool.
@@ -89,9 +89,31 @@ pub enum StreamMsg {
     Finished {
         /// Wall-clock duration in milliseconds.
         duration_ms: u64,
+        /// Current session token total.
+        session_tokens: Option<u64>,
+        /// Model context limit.
+        context_limit: Option<u64>,
     },
     /// Stream failed.
     Failed(String),
     /// Runtime asks the client to render a structured choice prompt.
     ChoiceRequest(ChoiceRequest),
+    /// Manual compaction has started.
+    CompactionStarted,
+    /// Compaction progress update.
+    CompactionProgress {
+        /// Current phase.
+        phase: mewcode_protocol::event::CompactionPhase,
+        /// Human-readable status message.
+        message: String,
+    },
+    /// A chunk of the compaction summary, streamed as the LLM generates it.
+    CompactionSummaryDelta(String),
+    /// History was compacted during this turn.
+    Compacted {
+        tokens_before: u64,
+        context_limit: u64,
+        summary: String,
+        thought_duration_ms: u64,
+    },
 }

@@ -34,7 +34,7 @@ impl ToolContracts for SkillsListTool {
     fn descriptor(&self) -> ToolDescriptor {
         ToolDescriptor {
             name: "skills_list".to_string(),
-            description: "List every installed skill with its name, description, source, and bundled sub-files. The same data also appears in the system prompt's `## Available skills` section, but you can call this tool to get the full JSON form (including each skill's `assets` list of sub-files) when you need to plan a multi-skill workflow.
+            description: "List every installed skill with its name, description, source, and bundled sub-files. The same data also appears in the system prompt's `<skills>` section, but you can call this tool to get the full JSON form (including each skill's `assets` list of sub-files) when you need to plan a multi-skill workflow.
 
 **When to use:** Before calling `skill_view` with a `path`, to confirm the file exists. To audit which skills are bundled vs project vs external. To refresh your view of the catalog mid-task.
 

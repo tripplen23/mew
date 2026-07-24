@@ -205,3 +205,53 @@ async fn append_message_bumps_updated_at() {
     // created_at is immutable across an append.
     assert_eq!(fetched.created_at, created.created_at);
 }
+
+/// Regression test: a session directory whose `meta.json` no longer parses
+/// must be skipped, not fail the wholel listing.
+/// Every other, still-valid session must still be returned.
+#[tokio::test]
+async fn list_sessions_skips_unreadable_session_instead_of_failing() {
+    let (_tmp, store) = temp_store();
+
+    let good = store
+        .create_session(new_session("still readable"))
+        .await
+        .expect("create should succeed");
+
+    // Hand-craft a session directory with a `model` value that cannot
+    // deserialize into `ModelId`, simulating a stale/removed model id.
+    let sessions_dir = store.data_dir().join("sessions");
+    let corrupt_id = uuid::Uuid::new_v4();
+    let corrupt_dir = sessions_dir.join(corrupt_id.to_string());
+    std::fs::create_dir_all(&corrupt_dir).unwrap();
+    std::fs::write(
+        corrupt_dir.join("meta.json"),
+        format!(
+            r#"{{
+                "id": "{corrupt_id}",
+                "title": "stale model",
+                "model": "claude-3.7-sonnet-copilot",
+                "mode": "BUILD",
+                "created_at": "2024-01-01T00:00:00Z",
+                "updated_at": "2024-01-01T00:00:00Z"
+            }}"#
+        ),
+    )
+    .unwrap();
+    std::fs::write(corrupt_dir.join("messages.jsonl"), "").unwrap();
+
+    let summaries = store
+        .list_sessions()
+        .await
+        .expect("a corrupt session must not fail the whole list");
+
+    let ids: Vec<uuid::Uuid> = summaries.iter().map(|s| s.id).collect();
+    assert!(
+        ids.contains(&good.id),
+        "the valid session must still be listed: {ids:?}"
+    );
+    assert!(
+        !ids.contains(&corrupt_id),
+        "the corrupt session must be skipped, not listed: {ids:?}"
+    );
+}

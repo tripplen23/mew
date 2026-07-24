@@ -153,7 +153,7 @@ fn pick_model(s: &mut SessionState) -> Cmd {
             from_rename: false,
         };
     }
-    s.pending_model = Some(model);
+    s.creation.pending_model = Some(model);
     s.overlay = Overlay::None;
     Cmd::None
 }

@@ -7,12 +7,14 @@ pub mod config;
 pub mod error;
 pub mod openapi;
 pub mod routes;
+pub mod services;
 pub mod sse;
 pub mod store;
 
 pub use config::ServerConfig;
 pub use error::AppError;
 
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -20,9 +22,10 @@ use axum::Router;
 use mewcode_engine::approval::ApprovalBroker;
 use mewcode_engine::memory::MemoryStore;
 use mewcode_protocol::routes::{
-    CHAT, CHOICES, HEALTH, MEMORY_GET, MEMORY_POST, PROVIDERS, SESSION_BY_ID, SESSIONS, SKILLS,
-    STORAGE_STATUS,
+    CHAT, CHOICES, HEALTH, MEMORY_GET, MEMORY_POST, PROVIDERS, SESSION_BY_ID, SESSION_COMPACT,
+    SESSIONS, SKILLS, STORAGE_STATUS,
 };
+use tokio::sync::RwLock;
 use tower_http::trace::TraceLayer;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
@@ -44,6 +47,8 @@ pub struct AppState {
     pub memory: MemoryStore,
     /// In-memory pending choice/approval broker.
     pub approvals: ApprovalBroker,
+    /// Per-session accumulated token usage for compaction decisions.
+    pub session_tokens: Arc<RwLock<HashMap<uuid::Uuid, u64>>>,
 }
 
 impl AppState {
@@ -54,6 +59,7 @@ impl AppState {
             store,
             memory,
             approvals: ApprovalBroker::default(),
+            session_tokens: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 }
@@ -76,6 +82,10 @@ pub fn build_app(state: AppState) -> Router {
             axum::routing::get(routes::sessions::get_one)
                 .patch(routes::sessions::patch)
                 .delete(routes::sessions::delete),
+        )
+        .route(
+            SESSION_COMPACT,
+            axum::routing::post(routes::compact::compact_session),
         )
         .route(CHAT, axum::routing::post(routes::chat::chat_stream))
         .route(CHOICES, axum::routing::post(routes::choices::respond))

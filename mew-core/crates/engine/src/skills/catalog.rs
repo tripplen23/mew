@@ -35,6 +35,7 @@ impl SkillRegistry {
         for loaded in self.skills() {
             let _ = writeln!(out, "{}", loaded.skill.catalog_entry());
         }
+        out.push_str("</skills>\n");
         out
     }
 
@@ -62,9 +63,7 @@ impl SkillRegistry {
 /// that tells the model how to read a skill body or sub-file.
 fn catalog_header() -> &'static str {
     "
-
-## Available skills
-
+<skills>
 The following skills are installed. Each is a bundle of specialised instructions for a particular kind of task. To read a skill's full instructions before proceeding, call `skill_view(name=\"<name>\")`. To read a sub-file (e.g. `references/foo.md`), call `skill_view(name=\"<name>\", path=\"references/foo.md\")`. Do not invent skill names — only use the ones listed below.
 
 "

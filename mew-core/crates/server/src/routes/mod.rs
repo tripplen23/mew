@@ -2,6 +2,7 @@
 
 pub mod chat;
 pub mod choices;
+pub mod compact;
 pub mod health;
 pub mod memory;
 pub mod providers;

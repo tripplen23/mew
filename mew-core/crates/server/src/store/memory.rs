@@ -49,6 +49,10 @@ struct SessionRow {
     created_at: chrono::DateTime<Utc>,
     /// When the session was last updated.
     updated_at: chrono::DateTime<Utc>,
+    /// Optional compaction summary from the last manual or automatic compaction.
+    compaction_summary: Option<String>,
+    /// Message index already covered by `compaction_summary`.
+    compacted_up_to: Option<usize>,
 }
 
 impl MemoryStore {
@@ -80,6 +84,8 @@ impl SessionRow {
             created_at: self.created_at,
             updated_at: self.updated_at,
             messages,
+            compaction_summary: self.compaction_summary.clone(),
+            compacted_up_to: self.compacted_up_to,
         }
     }
 }
@@ -119,6 +125,8 @@ impl SessionStore for MemoryStore {
             mode: new.mode,
             created_at: now,
             updated_at: now,
+            compaction_summary: None,
+            compacted_up_to: None,
         };
         let session = row.to_session(Vec::new());
 
@@ -155,6 +163,16 @@ impl SessionStore for MemoryStore {
         }
         if let Some(mode) = patch.mode {
             row.mode = mode;
+        }
+        if let Some(summary) = patch.compaction_summary {
+            row.compaction_summary = if summary.is_empty() {
+                None
+            } else {
+                Some(summary)
+            };
+        }
+        if let Some(boundary) = patch.compacted_up_to {
+            row.compacted_up_to = if boundary == 0 { None } else { Some(boundary) };
         }
         row.updated_at = Utc::now();
         let snapshot = row.clone();

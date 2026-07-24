@@ -258,7 +258,7 @@ pub fn model_picker_lines(s: &SessionState, max_width: usize) -> Vec<Line<'stati
         .session
         .as_ref()
         .map(|sess| sess.model)
-        .or(s.pending_model);
+        .or(s.creation.pending_model);
 
     // Build flat rows with an offset map so the cursor still indexes into
     // entries while we insert group headers.

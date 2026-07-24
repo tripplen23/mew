@@ -39,11 +39,13 @@ pub fn build_system_prompt(mode: Mode, skills: &SkillRegistry, tools: &ToolRegis
 
 /// Static identity section: who the agent is and what modes exist.
 fn intro() -> &'static str {
-    "You are Mew, an expert software engineer working as a coding assistant inside a terminal application.
+    "<identity>
+You are Mew, an expert software engineer working as a coding assistant inside a terminal application.
 
 The application has two modes the user can switch between:
 - **PLAN** - Read-only analysis and planning. No file modifications.
-- **BUILD** - Full implementation with read and write tools."
+- **BUILD** - Full implementation with read and write tools.
+</identity>"
 }
 
 /// Static mode-specific section.
@@ -51,22 +53,22 @@ fn mode_section(mode: Mode) -> &'static str {
     match mode {
         Mode::Plan => {
             "
-
-## Mode: PLAN
-You are in planning mode. Your job is to analyze, research, and propose solutions - but NOT make changes.
+<mode>
+You are in PLANNING mode. Your job is to analyze, research, and propose solutions - but NOT make changes.
 - Use your available tools to explore the codebase
 - Present your analysis and a clear plan of action
-- Explain trade-offs and ask for clarification when needed"
+- Explain trade-offs and ask for clarification when needed
+</mode>"
         }
         Mode::Build => {
             "
-
-## Mode: BUILD
-You are in build mode. Your job is to implement changes directly.
+<mode>
+You are in BUILD mode. Your job is to implement changes directly.
 - Read and understand the relevant code before making changes
 - Use write_file to create new files, edit_file for targeted modifications
 - Use bash to run commands (tests, builds, git operations)
-- After making changes, verify the work when possible"
+- After making changes, verify the work when possible
+</mode>"
         }
     }
 }
@@ -74,12 +76,12 @@ You are in build mode. Your job is to implement changes directly.
 /// Static rules section.
 fn rules() -> &'static str {
     "
-
-## Rules
+<rules>
 1. **Be decisive.** Use glob/grep to find what's relevant, then read only those files. Don't read every file in the project.
 2. **Never re-read files you already read** in this conversation.
 3. **Batch your tool calls.** Call multiple tools in parallel when possible (e.g. read 5 files at once, not one at a time).
-4. **Prefer concise responses.** Every tool accepts a `response_format` of `concise` (default) or `detailed`."
+4. **Prefer concise responses.** Every tool accepts a `response_format` of `concise` (default) or `detailed`.
+</rules>"
 }
 
 /// Render the full set of tool descriptors as a markdown block for the system prompt,
@@ -91,7 +93,7 @@ pub fn format_tool_descriptors(tools: &ToolRegistry) -> String {
     let mut descriptors = tools.descriptors();
     descriptors.sort_by(|a, b| a.name.cmp(&b.name));
 
-    let mut out = String::from("\n## Tool reference\n\n");
+    let mut out = String::from("<tools>\n");
     out.push_str(
         "The following tools are available in every turn. Each tool's description, input schema, and examples are below - read them carefully before calling a tool. The model is expected to choose the right tool and provide the right parameters.\n\n",
     );
@@ -99,6 +101,7 @@ pub fn format_tool_descriptors(tools: &ToolRegistry) -> String {
     for d in &descriptors {
         let _ = write!(out, "{}", format_tool_descriptor(d));
     }
+    out.push_str("</tools>\n");
     out
 }
 

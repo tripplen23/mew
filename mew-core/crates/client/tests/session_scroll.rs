@@ -37,6 +37,8 @@ fn app_with_long_transcript() -> App {
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
         messages,
+        compaction_summary: None,
+        compacted_up_to: None,
     };
     let mut app = App::new();
     app.screen = Screen::Session(SessionState::new(session));

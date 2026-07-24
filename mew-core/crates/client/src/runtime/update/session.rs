@@ -64,7 +64,7 @@ pub(super) fn on_session_key(
         return Cmd::None;
     }
 
-    if s.creating {
+    if s.creation.creating {
         // A `POST /sessions` is in flight for `pending_chat`
         return Cmd::None;
     }
@@ -202,7 +202,7 @@ pub(super) fn submit_choice_response(s: &SessionState, response: ChoiceResponse)
 }
 
 pub(super) fn on_session_paste(s: &mut SessionState, text: String) -> Cmd {
-    if s.creating {
+    if s.creation.creating {
         return Cmd::None;
     }
 
@@ -250,9 +250,11 @@ pub(super) fn on_session_submit(s: &mut SessionState, toast: &mut Option<Toast>)
         return Cmd::Quit;
     }
 
-    // one turn at a time — refuse to start another while a turn is
-    // in flight, leaving the input intact for the user to retry.
-    if s.streaming.is_some() {
+    // Queue message when turn in-flight. Auto-sent in order when finished.
+    if s.streaming.is_some() || s.compaction.active {
+        s.message_queue.push(visible_trimmed.to_string());
+        s.input = TextArea::default();
+        s.pasted.clear();
         return Cmd::None;
     }
 
@@ -276,6 +278,7 @@ pub(super) fn on_session_submit(s: &mut SessionState, toast: &mut Option<Toast>)
             "sound" => on_sound_command(s, &args, toast),
             "model" => on_model_command(s),
             "session" => on_session_command(s, &args, toast),
+            "compact" => on_compact_command(s, toast),
             other => {
                 *toast = Some(Toast::error(format!("unknown command: /{other}")));
                 Cmd::None
@@ -311,13 +314,13 @@ pub(super) fn on_session_submit(s: &mut SessionState, toast: &mut Option<Toast>)
         // No session yet — buffer the text in the composer too so the user
         // can retry on a create failure. The `Msg::SessionCreated` handler
         // will clear it once the message is committed as the first turn.
-        s.pending_chat = Some(user_text.clone());
-        s.creating = true;
-        s.creation_started_at = Some(std::time::Instant::now());
+        s.creation.pending_chat = Some(user_text.clone());
+        s.creation.creating = true;
+        s.creation.creation_started_at = Some(std::time::Instant::now());
         Cmd::CreateSession(CreateSessionRequest {
             title: derive_title(&user_text),
-            model: s.pending_model,
-            mode: Some(s.pending_mode.unwrap_or_default()),
+            model: s.creation.pending_model,
+            mode: Some(s.creation.pending_mode.unwrap_or_default()),
         })
     }
 }
@@ -327,14 +330,14 @@ fn switch_mode(s: &mut SessionState, mode: Option<Mode>) -> Cmd {
         .session
         .as_ref()
         .map(|session| session.mode)
-        .or(s.pending_mode)
+        .or(s.creation.pending_mode)
         .unwrap_or_default();
     let next = mode.unwrap_or(match current {
         Mode::Build => Mode::Plan,
         Mode::Plan => Mode::Build,
     });
     let Some(session) = s.session.as_ref() else {
-        s.pending_mode = Some(next);
+        s.creation.pending_mode = Some(next);
         return Cmd::None;
     };
     Cmd::PatchSession {
@@ -421,6 +424,25 @@ fn on_skills_command(s: &mut SessionState) -> Cmd {
     }
 }
 
+/// Handle `/compact`: trigger manual context compaction for the current session.
+fn on_compact_command(s: &mut SessionState, toast: &mut Option<Toast>) -> Cmd {
+    let Some(session) = s.session.as_ref() else {
+        *toast = Some(Toast::error("no active session to compact"));
+        return Cmd::None;
+    };
+    if s.streaming.is_some() {
+        *toast = Some(Toast::error("cannot compact while a turn is in flight"));
+        return Cmd::None;
+    }
+    if s.compaction.active {
+        *toast = Some(Toast::error("compaction already in progress"));
+        return Cmd::None;
+    }
+    s.compaction.active = true;
+    s.compaction.started_at = Some(std::time::Instant::now());
+    Cmd::Compact(session.id)
+}
+
 /// Handle `/session`: open the list overlay (default), start a rename
 /// (`/session rename`), or create a new session (`/session new <title>`).
 /// Switching and deleting rows are handled in `on_session_key`. Always
@@ -442,32 +464,42 @@ fn on_session_command(s: &mut SessionState, args: &[&str], toast: &mut Option<To
             Cmd::None
         }
         Some("new") => {
-            // `/session new <title...>` — `<title>` is everything after the
-            // subcommand, multi-word allowed.
+            // `/session new <title...>` — an explicit title still creates
+            // the session immediately (unchanged from before).
             let title = args
                 .get(1..)
                 .map(|rest| rest.join(" "))
                 .unwrap_or_default()
                 .trim()
                 .to_string();
-            if title.is_empty() {
-                *toast = Some(Toast::error("/session new needs a title"));
-                return Cmd::None;
+            if !title.is_empty() {
+                if s.creation.creating {
+                    *toast = Some(Toast::error("a session is already being created"));
+                    return Cmd::None;
+                }
+                // Mirror the chat-first creation flow so a `Msg::SessionCreated`
+                // result routes the new session into the session view.
+                s.creation.creating = true;
+                s.creation.creation_started_at = Some(std::time::Instant::now());
+                s.input = TextArea::default();
+                return Cmd::CreateSession(CreateSessionRequest {
+                    title,
+                    model: s.creation.pending_model,
+                    mode: Some(s.creation.pending_mode.unwrap_or_default()),
+                });
             }
-            if s.creating {
-                *toast = Some(Toast::error("a session is already being created"));
-                return Cmd::None;
-            }
-            // Mirror the chat-first creation flow so a `Msg::SessionCreated`
-            // result routes the new session into the session view.
-            s.creating = true;
-            s.creation_started_at = Some(std::time::Instant::now());
-            s.input = TextArea::default();
-            Cmd::CreateSession(CreateSessionRequest {
-                title,
-                model: s.pending_model,
-                mode: Some(s.pending_mode.unwrap_or_default()),
-            })
+
+            // Bare `/session new` — no title yet. Drop back to the entry
+            // view (the Mew mascot screen) with no session and no pending
+            // request; a session is only actually created once the user
+            // sends their first message, which derives a title from it —
+            // mirroring the very first session's creation flow.
+            let carried_model = s.session.as_ref().map(|sess| sess.model);
+            let carried_mode = s.session.as_ref().map(|sess| sess.mode);
+            *s = SessionState::empty();
+            s.creation.pending_model = carried_model;
+            s.creation.pending_mode = carried_mode;
+            Cmd::None
         }
         Some(other) => {
             *toast = Some(Toast::error(format!(

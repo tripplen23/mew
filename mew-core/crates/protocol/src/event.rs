@@ -1,5 +1,17 @@
 use crate::{Message, MessagePart, Mode, ModelId, ProviderId};
 
+/// Phase of a manual compaction operation.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum CompactionPhase {
+    /// Pruning tool results and low-value content.
+    Pruning,
+    /// Running LLM to summarize history.
+    Summarizing,
+    /// Compaction complete.
+    Done,
+}
+
 /// Choice option id for approving only the current tool call.
 pub const CHOICE_ALLOW_ONCE: &str = "allow_once";
 /// Choice option id for approving matching calls in the current session.
@@ -20,6 +32,9 @@ pub enum StreamEvent {
         mode: Mode,
         /// Model the user picked.
         model: ModelId,
+        /// Server working directory.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pwd: Option<String>,
     },
     /// A chunk of assistant text.
     TextDelta {
@@ -51,6 +66,36 @@ pub enum StreamEvent {
     },
     /// Runtime asks the interactive client to choose one option.
     ChoiceRequest(ChoiceRequest),
+    /// Manual compaction has started.
+    CompactionStarted {
+        /// Session being compacted.
+        session_id: uuid::Uuid,
+    },
+    /// Compaction progress update.
+    CompactionProgress {
+        /// Current phase of compaction.
+        phase: CompactionPhase,
+        /// Human-readable status message.
+        message: String,
+    },
+    /// A chunk of the compaction summary, streamed as the LLM generates it.
+    /// Mirrors `TextDelta` but is kept as a distinct variant so the client
+    /// can accumulate it separately from any in-flight chat reply.
+    CompactionSummaryDelta {
+        /// Text to append to the in-progress summary.
+        delta: String,
+    },
+    /// History was compacted during this turn.
+    Compacted {
+        /// Accumulated tokens before compaction.
+        tokens_before: u64,
+        /// Model context limit that triggered compaction.
+        context_limit: u64,
+        /// LLM-generated summary of the compacted history.
+        summary: String,
+        /// Wall-clock duration of the compaction LLM call in milliseconds.
+        thought_duration_ms: u64,
+    },
     /// Stream finished successfully.
     Finish {
         /// Wall-clock duration in milliseconds.
@@ -61,6 +106,12 @@ pub enum StreamEvent {
         /// Output token usage, if reported.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         output_tokens: Option<u64>,
+        /// Current session token total.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        session_tokens: Option<u64>,
+        /// Model context limit.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        context_limit: Option<u64>,
     },
     /// Stream was aborted by the user.
     Aborted,

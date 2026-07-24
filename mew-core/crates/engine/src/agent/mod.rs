@@ -1,7 +1,7 @@
 //! The mewcode agent: a configured model with a system prompt and tools.
 //!
 //! This module owns everything that talks to the LLM through Rig's
-//! [`Agent`](rig_core::agent::struct.Agent.html) abstraction:
+//! [`Agent`](rig_core::agent::struct.Agent) abstraction:
 //! - system-prompt construction ([`build_system_prompt`])
 //! - Rig agent execution ([`Agent::run_turn`])
 //! - streaming translation from Rig items to [`StreamEvent`]s (the stream module)
@@ -17,6 +17,7 @@ use rig_core::client::CompletionClient;
 use tokio::sync::mpsc;
 
 pub use self::prompt::build_system_prompt;
+pub use self::stream::TurnUsage;
 use crate::error::EngineError;
 use crate::provider::Provider;
 
@@ -77,13 +78,13 @@ impl Agent {
     }
 
     /// Run one user prompt through the configured Rig agent, streaming events
-    /// through `tx` and returning the full assistant reply.
+    /// through `tx` and returning the full assistant reply plus token usage.
     pub async fn run_turn(
         self,
         user_text: String,
         history: Vec<rig_core::completion::Message>,
         tx: &mpsc::Sender<StreamEvent>,
-    ) -> Result<String, EngineError> {
+    ) -> Result<(String, TurnUsage), EngineError> {
         let model_id = self.model.as_str();
         match &self.provider {
             Provider::Anthropic(p) => {
