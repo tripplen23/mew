@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.5](https://github.com/tripplen23/mew/compare/v0.3.4...v0.3.5) (2026-07-24)
+
+
+### Bug fixes
+
+* move harness tests from src/ to tests/ per CONTRIBUTING.md ([#74](https://github.com/tripplen23/mew/issues/74)) ([669dbb5](https://github.com/tripplen23/mew/commit/669dbb50a5d7bf457124268fa0050d0d7f9b5fd2))
+
 ## [0.3.4](https://github.com/tripplen23/mew/compare/v0.3.3...v0.3.4) (2026-07-24)
 
 
