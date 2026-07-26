@@ -11,10 +11,10 @@
 
 mod prompt;
 mod provider;
+mod rig;
 mod stream;
 
 use mewcode_protocol::{ModelId, StreamEvent};
-use rig_core::client::CompletionClient;
 use tokio::sync::mpsc;
 
 pub use self::prompt::build_system_prompt;
@@ -88,36 +88,6 @@ impl Agent {
         tx: &mpsc::Sender<StreamEvent>,
         activity: AgentActivity,
     ) -> Result<(String, TurnUsage), EngineError> {
-        let model_id = self.model.as_str();
-        match &self.provider {
-            Provider::Anthropic(p) => {
-                let model = p
-                    .client()
-                    .completion_model(model_id)
-                    .with_automatic_caching_1h();
-                let agent = rig_core::agent::AgentBuilder::new(model)
-                    .name("mewcode")
-                    .preamble(&self.system_prompt)
-                    .max_tokens(self.max_tokens)
-                    .default_max_turns(self.max_turns)
-                    .tools(self.tools)
-                    .build();
-                stream::run_agent_stream(agent, user_text, history, tx, self.display_sink, activity)
-                    .await
-            }
-            Provider::OpenCodeGo(p) | Provider::OpenAi(p) => {
-                let agent = p
-                    .client()
-                    .agent(model_id)
-                    .name("mewcode")
-                    .preamble(&self.system_prompt)
-                    .max_tokens(self.max_tokens)
-                    .default_max_turns(self.max_turns)
-                    .tools(self.tools)
-                    .build();
-                stream::run_agent_stream(agent, user_text, history, tx, self.display_sink, activity)
-                    .await
-            }
-        }
+        rig::run_turn(self, user_text, history, tx, activity).await
     }
 }

@@ -8,7 +8,7 @@
 
 #[test]
 fn agent_invocation_uses_rig_agent_pattern() {
-    let agent_src = include_str!("../src/agent/mod.rs");
+    let agent_src = include_str!("../src/agent/rig.rs");
     let provider_src = include_str!("../src/agent/provider.rs");
 
     assert!(
