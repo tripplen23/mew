@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.5](https://github.com/tripplen23/mew/compare/v0.3.4...v0.3.5) (2026-07-26)
+
+
+### Bug fixes
+
+* fail-closed compaction, atomic turn commit, retry safety and harness refactor ([#76](https://github.com/tripplen23/mew/issues/76)) ([d92dbe3](https://github.com/tripplen23/mew/commit/d92dbe397229df47df804e3e76f3e9dfcde963fe))
+* move harness tests from src/ to tests/ per CONTRIBUTING.md ([#74](https://github.com/tripplen23/mew/issues/74)) ([669dbb5](https://github.com/tripplen23/mew/commit/669dbb50a5d7bf457124268fa0050d0d7f9b5fd2))
+
 ## [0.3.4](https://github.com/tripplen23/mew/compare/v0.3.3...v0.3.4) (2026-07-24)
 
 
