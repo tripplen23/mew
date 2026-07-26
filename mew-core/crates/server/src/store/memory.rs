@@ -14,8 +14,8 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use super::{
-    Backend, NewSession, Session, SessionPatch, SessionStore, SessionSummary, StoreError,
-    validate_title,
+    Backend, CompactionPatch, NewSession, Session, SessionPatch, SessionStore, SessionSummary,
+    StoreError, compaction_patch, validate_compaction_checkpoint, validate_title,
 };
 
 /// In-memory session store, guarded by a single async `RwLock`.
@@ -53,6 +53,8 @@ struct SessionRow {
     compaction_summary: Option<String>,
     /// Message index already covered by `compaction_summary`.
     compacted_up_to: Option<usize>,
+    /// Stable id of the message at `compacted_up_to - 1`.
+    compacted_up_to_message_id: Option<Uuid>,
 }
 
 impl MemoryStore {
@@ -86,6 +88,7 @@ impl SessionRow {
             messages,
             compaction_summary: self.compaction_summary.clone(),
             compacted_up_to: self.compacted_up_to,
+            compacted_up_to_message_id: self.compacted_up_to_message_id,
         }
     }
 }
@@ -109,10 +112,7 @@ impl SessionStore for MemoryStore {
             .find(|s| s.id == id)
             .ok_or(StoreError::NotFound)?;
 
-        // Hydrate messages ordered by `created_at` ascending, mirroring the
-        // Pg `(session_id, created_at)` index ordering.
-        let mut messages = guard.messages.get(&id).cloned().unwrap_or_default();
-        messages.sort_by_key(|m| m.created_at);
+        let messages = guard.messages.get(&id).cloned().unwrap_or_default();
         Ok(row.to_session(messages))
     }
 
@@ -127,6 +127,7 @@ impl SessionStore for MemoryStore {
             updated_at: now,
             compaction_summary: None,
             compacted_up_to: None,
+            compacted_up_to_message_id: None,
         };
         let session = row.to_session(Vec::new());
 
@@ -149,7 +150,18 @@ impl SessionStore for MemoryStore {
     }
 
     async fn patch_session(&self, id: Uuid, patch: SessionPatch) -> Result<Session, StoreError> {
+        let compaction = compaction_patch(&patch)?;
         let mut guard = self.inner.write().await;
+        if !guard.sessions.iter().any(|session| session.id == id) {
+            return Err(StoreError::NotFound);
+        }
+        let messages = guard.messages.get(&id).cloned().unwrap_or_default();
+        if let CompactionPatch::Set {
+            up_to, message_id, ..
+        } = &compaction
+        {
+            validate_compaction_checkpoint(&messages, *up_to, *message_id)?;
+        }
         let row = guard
             .sessions
             .iter_mut()
@@ -164,20 +176,25 @@ impl SessionStore for MemoryStore {
         if let Some(mode) = patch.mode {
             row.mode = mode;
         }
-        if let Some(summary) = patch.compaction_summary {
-            row.compaction_summary = if summary.is_empty() {
-                None
-            } else {
-                Some(summary)
-            };
-        }
-        if let Some(boundary) = patch.compacted_up_to {
-            row.compacted_up_to = if boundary == 0 { None } else { Some(boundary) };
+        match compaction {
+            CompactionPatch::Unchanged => {}
+            CompactionPatch::Clear => {
+                row.compaction_summary = None;
+                row.compacted_up_to = None;
+                row.compacted_up_to_message_id = None;
+            }
+            CompactionPatch::Set {
+                summary,
+                up_to,
+                message_id,
+            } => {
+                row.compaction_summary = Some(summary);
+                row.compacted_up_to = Some(up_to);
+                row.compacted_up_to_message_id = Some(message_id);
+            }
         }
         row.updated_at = Utc::now();
         let snapshot = row.clone();
-        let mut messages = guard.messages.get(&id).cloned().unwrap_or_default();
-        messages.sort_by_key(|m| m.created_at);
         Ok(snapshot.to_session(messages))
     }
 

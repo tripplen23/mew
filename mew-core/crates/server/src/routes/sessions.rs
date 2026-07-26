@@ -22,6 +22,18 @@ pub struct CreateSessionRequest {
     pub mode: Option<Mode>,
 }
 
+/// Request body for `PATCH /sessions/{id}`.
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateSessionRequest {
+    /// New title. Omit to keep the current title.
+    pub title: Option<String>,
+    /// New model. Omit to keep the current model.
+    pub model: Option<ModelId>,
+    /// New mode. Omit to keep the current mode.
+    pub mode: Option<Mode>,
+}
+
 /// `GET /sessions` — list every session as a summary (no message history),
 /// newest-first.
 #[utoipa::path(
@@ -114,7 +126,13 @@ pub async fn delete(
     State(state): State<AppState>,
     Path(id): Path<uuid::Uuid>,
 ) -> Result<StatusCode, AppError> {
+    let operation_lock = state.existing_session_operation_lock(id).await?;
+    let _operation_guard = operation_lock.lock().await;
     state.store.delete_session(id).await?;
+    state.session_tokens.write().await.remove(&id);
+    state
+        .remove_session_operation_lock(id, &operation_lock)
+        .await;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -128,7 +146,7 @@ pub async fn delete(
     params(
         ("id" = uuid::Uuid, Path, description = "Session id"),
     ),
-    request_body = SessionPatch,
+    request_body = UpdateSessionRequest,
     responses(
         (status = 200, description = "Session updated", body = Session),
         (status = 400, description = "Empty or whitespace title", body = crate::openapi::ErrorResponse),
@@ -139,8 +157,21 @@ pub async fn delete(
 pub async fn patch(
     State(state): State<AppState>,
     Path(id): Path<uuid::Uuid>,
-    Json(body): Json<SessionPatch>,
+    Json(body): Json<UpdateSessionRequest>,
 ) -> Result<Json<Session>, AppError> {
-    let session = state.store.patch_session(id, body).await?;
+    let operation_lock = state.existing_session_operation_lock(id).await?;
+    let _operation_guard = operation_lock.lock().await;
+    let session = state
+        .store
+        .patch_session(
+            id,
+            SessionPatch {
+                title: body.title,
+                model: body.model,
+                mode: body.mode,
+                ..Default::default()
+            },
+        )
+        .await?;
     Ok(Json(session))
 }

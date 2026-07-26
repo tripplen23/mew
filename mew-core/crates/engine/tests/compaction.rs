@@ -1,9 +1,10 @@
 //! Tests for context compaction and token accounting (P002-P008).
 
-use mewcode_engine::history::{
-    COMPACTION_PRESERVE_TURNS, COMPACTION_THRESHOLD, HistoryStrategy, build_compacted_history,
-    build_history_with_summary_tail, split_for_compaction, text_of,
+use mewcode_engine::compaction::{
+    COMPACTION_PRESERVE_TURNS, COMPACTION_THRESHOLD, build_compacted_history,
+    build_history_with_summary_tail, split_for_compaction,
 };
+use mewcode_engine::context::{HistoryStrategy, text_of};
 use mewcode_protocol::{Message, MessagePart, ModelId, Role};
 
 #[test]

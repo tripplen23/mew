@@ -11,7 +11,7 @@ use mewcode_protocol::{
 };
 use serde_json::{Value, json};
 
-use crate::memory::MemoryStore;
+use crate::context::MemoryStore;
 
 /// `mewcode_memory` tool.
 pub struct MewcodeMemoryTool {

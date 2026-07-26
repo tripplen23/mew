@@ -9,7 +9,9 @@
 
 use std::sync::{Arc, Mutex};
 
-use mewcode_engine::harness::{chat_turn_span, record_turn_input, record_turn_output};
+use mewcode_engine::observability::langfuse::{
+    chat_turn_span, record_turn_input, record_turn_output,
+};
 use mewcode_protocol::{Mode, ModelId};
 use tracing::field::{Field, Visit};
 use tracing::{Id, Subscriber};

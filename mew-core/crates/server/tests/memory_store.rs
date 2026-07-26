@@ -6,7 +6,7 @@
 use chrono::{Duration, Utc};
 use mewcode_protocol::{Message, MessagePart, Mode, ModelId, Role};
 use mewcode_server::store::memory::MemoryStore;
-use mewcode_server::store::{Backend, NewSession, SessionStore, StoreError};
+use mewcode_server::store::{Backend, NewSession, SessionPatch, SessionStore, StoreError};
 
 /// Build a `NewSession` with the given title and sensible defaults.
 fn new_session(title: &str) -> NewSession {
@@ -72,6 +72,25 @@ async fn get_missing_id_returns_not_found() {
         .await
         .expect_err("missing id should error");
     assert!(matches!(err, StoreError::NotFound));
+}
+
+#[tokio::test]
+async fn compaction_patch_for_missing_session_returns_not_found() {
+    let store = MemoryStore::new();
+    let error = store
+        .patch_session(
+            uuid::Uuid::new_v4(),
+            SessionPatch {
+                compaction_summary: Some("summary".into()),
+                compacted_up_to: Some(1),
+                compacted_up_to_message_id: Some(uuid::Uuid::new_v4()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect_err("missing session should win over checkpoint validation");
+
+    assert!(matches!(error, StoreError::NotFound));
 }
 
 #[tokio::test]
@@ -147,7 +166,7 @@ async fn append_message_bumps_updated_at() {
 }
 
 #[tokio::test]
-async fn get_session_orders_messages_by_created_at_ascending() {
+async fn get_session_preserves_message_append_order() {
     let store = MemoryStore::new();
     let created = store
         .create_session(new_session("ordered"))
@@ -179,7 +198,7 @@ async fn get_session_orders_messages_by_created_at_ascending() {
         .expect("get should succeed");
 
     let order: Vec<uuid::Uuid> = fetched.messages.iter().map(|m| m.id).collect();
-    assert_eq!(order, vec![m_early.id, m_mid.id, m_late.id]);
+    assert_eq!(order, vec![m_late.id, m_early.id, m_mid.id]);
 }
 
 #[tokio::test]
@@ -197,4 +216,95 @@ async fn list_sessions_returns_summaries_newest_first() {
     let summaries = store.list_sessions().await.expect("list should succeed");
     let ids: Vec<uuid::Uuid> = summaries.iter().map(|s| s.id).collect();
     assert_eq!(ids, vec![second.id, first.id]);
+}
+
+#[tokio::test]
+async fn compaction_anchor_round_trips() {
+    let store = MemoryStore::new();
+    let created = store
+        .create_session(new_session("checkpointed"))
+        .await
+        .expect("create should succeed");
+    let anchor_message = message_at("covered", Utc::now());
+    let anchor = anchor_message.id;
+    store
+        .append_message(created.id, anchor_message)
+        .await
+        .expect("anchor message should persist");
+
+    let patched = store
+        .patch_session(
+            created.id,
+            SessionPatch {
+                compaction_summary: Some("summary".into()),
+                compacted_up_to: Some(1),
+                compacted_up_to_message_id: Some(anchor),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("patch should succeed");
+
+    assert_eq!(patched.compacted_up_to_message_id, Some(anchor));
+    let fetched = store
+        .get_session(created.id)
+        .await
+        .expect("get should succeed");
+    assert_eq!(fetched.compacted_up_to_message_id, Some(anchor));
+
+    let error = store
+        .patch_session(
+            created.id,
+            SessionPatch {
+                compaction_summary: Some("incomplete".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect_err("partial checkpoint must be rejected");
+    assert!(matches!(error, StoreError::Invalid(_)));
+
+    let cleared = store
+        .patch_session(
+            created.id,
+            SessionPatch {
+                compaction_summary: Some(String::new()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("empty summary should clear the checkpoint");
+    assert!(cleared.compaction_summary.is_none());
+    assert!(cleared.compacted_up_to.is_none());
+    assert!(cleared.compacted_up_to_message_id.is_none());
+}
+
+#[tokio::test]
+async fn compaction_checkpoint_must_match_memory_transcript() {
+    let store = MemoryStore::new();
+    let created = store
+        .create_session(new_session("validated checkpoint"))
+        .await
+        .expect("create should succeed");
+    let message = message_at("covered", Utc::now());
+    store
+        .append_message(created.id, message.clone())
+        .await
+        .expect("message should persist");
+
+    for (up_to, message_id) in [(2, message.id), (1, uuid::Uuid::new_v4())] {
+        let error = store
+            .patch_session(
+                created.id,
+                SessionPatch {
+                    compaction_summary: Some("summary".into()),
+                    compacted_up_to: Some(up_to),
+                    compacted_up_to_message_id: Some(message_id),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect_err("checkpoint must reference its exact transcript boundary");
+        assert!(matches!(error, StoreError::Invalid(_)));
+    }
 }

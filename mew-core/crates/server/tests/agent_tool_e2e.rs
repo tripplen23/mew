@@ -29,7 +29,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use mewcode_engine::Harness;
-use mewcode_engine::memory::MemoryStore;
+use mewcode_engine::context::MemoryStore;
 use mewcode_engine::skills::SkillRegistry;
 use mewcode_engine::tools::{ProjectContext, default_registry};
 use mewcode_protocol::{Message, MessagePart, Mode, ModelId, StreamEvent};

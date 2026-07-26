@@ -82,12 +82,15 @@ pub struct Session {
     /// Ordered message history.
     pub messages: Vec<Message>,
     /// Optional compaction summary from the last manual or automatic compaction.
-    /// Injected into the history as a system message on the next turn.
+    /// Injected as a clearly delimited synthetic user/assistant history pair.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub compaction_summary: Option<String>,
     /// Message index already covered by `compaction_summary`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub compacted_up_to: Option<usize>,
+    /// Stable id of the message at `compacted_up_to - 1`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compacted_up_to_message_id: Option<uuid::Uuid>,
 }
 
 /// A lightweight view of a session, without message history.
@@ -141,6 +144,56 @@ pub struct SessionPatch {
     /// to clearing the summary — 0 means "no messages are covered").
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub compacted_up_to: Option<usize>,
+    /// Stable id paired atomically with a new compaction boundary.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compacted_up_to_message_id: Option<uuid::Uuid>,
+}
+
+pub(crate) enum CompactionPatch {
+    Unchanged,
+    Clear,
+    Set {
+        summary: String,
+        up_to: usize,
+        message_id: uuid::Uuid,
+    },
+}
+
+pub(crate) fn compaction_patch(patch: &SessionPatch) -> Result<CompactionPatch, StoreError> {
+    match (
+        patch.compaction_summary.as_deref(),
+        patch.compacted_up_to,
+        patch.compacted_up_to_message_id,
+    ) {
+        (None, None, None) => Ok(CompactionPatch::Unchanged),
+        (Some(summary), _, _) if summary.trim().is_empty() => Ok(CompactionPatch::Clear),
+        (_, Some(0), _) => Ok(CompactionPatch::Clear),
+        (Some(summary), Some(up_to), Some(message_id)) => Ok(CompactionPatch::Set {
+            summary: summary.trim().to_owned(),
+            up_to,
+            message_id,
+        }),
+        _ => Err(StoreError::Invalid(
+            "compaction summary, boundary, and boundary message id must be patched together".into(),
+        )),
+    }
+}
+
+pub(crate) fn validate_compaction_checkpoint(
+    messages: &[Message],
+    up_to: usize,
+    message_id: uuid::Uuid,
+) -> Result<(), StoreError> {
+    if up_to == 0
+        || messages
+            .get(up_to - 1)
+            .is_none_or(|message| message.id != message_id)
+    {
+        return Err(StoreError::Invalid(
+            "compaction boundary does not match the session transcript".into(),
+        ));
+    }
+    Ok(())
 }
 
 /// Trim a session title and reject empty/whitespace-only input. Shared by

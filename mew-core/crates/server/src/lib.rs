@@ -19,19 +19,24 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::Router;
-use mewcode_engine::approval::ApprovalBroker;
-use mewcode_engine::memory::MemoryStore;
+use mewcode_engine::context::MemoryStore;
+use mewcode_engine::tools::ApprovalBroker;
 use mewcode_protocol::routes::{
     CHAT, CHOICES, HEALTH, MEMORY_GET, MEMORY_POST, PROVIDERS, SESSION_BY_ID, SESSION_COMPACT,
     SESSIONS, SKILLS, STORAGE_STATUS,
 };
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 use tower_http::trace::TraceLayer;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
 use crate::openapi::ApiDoc;
-use crate::store::SessionStore;
+use crate::store::{SessionStore, StoreError};
+
+#[doc(hidden)]
+pub fn should_remove_operation_lock(error: &StoreError) -> bool {
+    matches!(error, StoreError::NotFound)
+}
 
 /// Shared application state.
 ///
@@ -49,6 +54,8 @@ pub struct AppState {
     pub approvals: ApprovalBroker,
     /// Per-session accumulated token usage for compaction decisions.
     pub session_tokens: Arc<RwLock<HashMap<uuid::Uuid, u64>>>,
+    /// Serializes mutations for each known session independently.
+    pub session_operations: Arc<Mutex<HashMap<uuid::Uuid, Arc<Mutex<()>>>>>,
 }
 
 impl AppState {
@@ -60,6 +67,65 @@ impl AppState {
             memory,
             approvals: ApprovalBroker::default(),
             session_tokens: Arc::new(RwLock::new(HashMap::new())),
+            session_operations: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    pub async fn session_operation_lock(&self, session_id: uuid::Uuid) -> Arc<Mutex<()>> {
+        let mut operations = self.session_operations.lock().await;
+        Arc::clone(
+            operations
+                .entry(session_id)
+                .or_insert_with(|| Arc::new(Mutex::new(()))),
+        )
+    }
+
+    pub async fn existing_session_operation_lock(
+        &self,
+        session_id: uuid::Uuid,
+    ) -> Result<Arc<Mutex<()>>, crate::store::StoreError> {
+        let operation_lock = self.session_operation_lock(session_id).await;
+        let operation_guard = operation_lock.lock().await;
+        if let Err(error) = self.store.get_session(session_id).await {
+            if should_remove_operation_lock(&error) {
+                self.remove_session_operation_lock(session_id, &operation_lock)
+                    .await;
+            } else {
+                self.remove_uncontended_session_operation_lock(session_id, &operation_lock)
+                    .await;
+            }
+            return Err(error);
+        }
+        drop(operation_guard);
+        Ok(operation_lock)
+    }
+
+    pub async fn remove_uncontended_session_operation_lock(
+        &self,
+        session_id: uuid::Uuid,
+        operation_lock: &Arc<Mutex<()>>,
+    ) {
+        let mut operations = self.session_operations.lock().await;
+        if operations
+            .get(&session_id)
+            .is_some_and(|current| Arc::ptr_eq(current, operation_lock))
+            && Arc::strong_count(operation_lock) == 2
+        {
+            operations.remove(&session_id);
+        }
+    }
+
+    pub async fn remove_session_operation_lock(
+        &self,
+        session_id: uuid::Uuid,
+        operation_lock: &Arc<Mutex<()>>,
+    ) {
+        let mut operations = self.session_operations.lock().await;
+        if operations
+            .get(&session_id)
+            .is_some_and(|current| Arc::ptr_eq(current, operation_lock))
+        {
+            operations.remove(&session_id);
         }
     }
 }

@@ -10,12 +10,12 @@
 
 use std::sync::Arc;
 
-use mewcode_engine::memory::MemoryStore;
+use mewcode_engine::context::MemoryStore;
 use mewcode_engine::skills::SkillRegistry;
 use mewcode_engine::tools::adapter::{RigToolAdapter, rig_tools};
 use mewcode_engine::tools::{MewcodeMemoryTool, ProjectContext, ReadFileTool, default_registry};
 use mewcode_protocol::tool::ToolContracts;
-use rig_core::tool::ToolDyn;
+use rig_core::tool::{ToolCallExtensions, ToolDyn};
 
 // `tempfile::TempDir::new` uses `mkdtemp(3)` for atomic uniqueness. The
 // previous `SystemTime::as_nanos()` approach could collide under parallel
@@ -175,4 +175,42 @@ async fn adapter_call_with_malformed_json_returns_error_payload() {
             .contains("invalid JSON"),
         "error message should mention invalid JSON"
     );
+}
+
+#[tokio::test]
+async fn adapter_structured_call_reports_success_outcome() {
+    let (_tmp, project) = fresh_project();
+    let ctx = ProjectContext::new(project);
+    let tool = Arc::new(ReadFileTool::new(ctx)) as Arc<dyn ToolContracts>;
+    let adapter = RigToolAdapter::new(tool);
+    let extensions = ToolCallExtensions::new();
+
+    let result = adapter
+        .call_structured(r#"{"path":"src/lib.rs"}"#.to_string(), &extensions)
+        .await;
+
+    assert!(result.outcome().is_success());
+    assert!(result.model_output().contains("pub fn hello"));
+}
+
+#[tokio::test]
+async fn adapter_structured_call_reports_invalid_args_outcome() {
+    let (_tmp, data_dir) = fresh_data_dir();
+    let store = MemoryStore::new(data_dir);
+    let tool = Arc::new(MewcodeMemoryTool::new(store)) as Arc<dyn ToolContracts>;
+    let adapter = RigToolAdapter::new(tool);
+    let extensions = ToolCallExtensions::new();
+
+    let result = adapter
+        .call_structured("not json at all".to_string(), &extensions)
+        .await;
+
+    assert!(result.outcome().is_error());
+    assert_eq!(
+        result.outcome().error_kind().unwrap().as_str(),
+        "invalid_args"
+    );
+    let parsed: serde_json::Value = serde_json::from_str(result.model_output()).unwrap();
+    assert_eq!(parsed["error"], true);
+    assert_eq!(parsed["kind"], "invalid_input");
 }

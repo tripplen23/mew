@@ -10,7 +10,7 @@ use std::sync::Arc;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
-use mewcode_engine::memory::MemoryStore as FactStore;
+use mewcode_engine::context::MemoryStore as FactStore;
 use mewcode_protocol::routes::SESSIONS;
 use mewcode_protocol::{Mode, ModelId};
 use mewcode_server::store::Session;
@@ -35,6 +35,11 @@ fn app() -> axum::Router {
     let fact_store = FactStore::new(std::env::temp_dir().join(uuid::Uuid::new_v4().to_string()));
     let state = AppState::new(test_config(), Arc::new(MemoryStore::default()), fact_store);
     build_app(state)
+}
+
+fn test_state() -> AppState {
+    let fact_store = FactStore::new(std::env::temp_dir().join(uuid::Uuid::new_v4().to_string()));
+    AppState::new(test_config(), Arc::new(MemoryStore::default()), fact_store)
 }
 
 fn session_path(id: &uuid::Uuid) -> String {
@@ -177,6 +182,49 @@ async fn patch_unknown_id_returns_not_found() {
 }
 
 #[tokio::test]
+async fn patch_rejects_internal_compaction_fields() {
+    use mewcode_protocol::{Message, MessagePart, Role};
+    use mewcode_server::store::SessionStore;
+
+    let fact_store = FactStore::new(std::env::temp_dir().join(uuid::Uuid::new_v4().to_string()));
+    let store = Arc::new(MemoryStore::default());
+    let state = AppState::new(test_config(), store.clone(), fact_store);
+    let app = build_app(state);
+    let created = create_session_on(&app).await;
+    let anchor = Message {
+        id: uuid::Uuid::new_v4(),
+        role: Role::User,
+        parts: vec![MessagePart::Text {
+            text: "anchor".into(),
+        }],
+        model: None,
+        created_at: chrono::Utc::now(),
+    };
+    store
+        .append_message(created.id, anchor.clone())
+        .await
+        .expect("anchor should persist");
+
+    let (status, _) = send(
+        app,
+        patch_session(
+            &created.id,
+            json!({
+                "compaction_summary": "forged",
+                "compacted_up_to": 1,
+                "compacted_up_to_message_id": anchor.id,
+            }),
+        ),
+    )
+    .await;
+
+    assert!(
+        status == StatusCode::BAD_REQUEST || status == StatusCode::UNPROCESSABLE_ENTITY,
+        "internal checkpoint fields must not be accepted over HTTP, got {status}",
+    );
+}
+
+#[tokio::test]
 async fn patch_whitespace_title_returns_bad_request() {
     let app = app();
     let created = create_session_on(&app).await;
@@ -190,11 +238,11 @@ async fn patch_whitespace_title_returns_bad_request() {
 }
 
 #[tokio::test]
-async fn patch_session_returns_messages_sorted_by_created_at() {
+async fn patch_session_preserves_message_append_order() {
     use mewcode_protocol::{Message, MessagePart, Role};
     use mewcode_server::store::SessionStore;
 
-    let fact_store = mewcode_engine::memory::MemoryStore::new(
+    let fact_store = mewcode_engine::context::MemoryStore::new(
         std::env::temp_dir().join(uuid::Uuid::new_v4().to_string()),
     );
     let store = Arc::new(MemoryStore::default());
@@ -203,8 +251,8 @@ async fn patch_session_returns_messages_sorted_by_created_at() {
 
     let created = create_session_on(&app).await;
 
-    // Append out of order directly through the store. `patch_session`
-    // should hydrate chronologically, matching `get_session`.
+    // Append with timestamps out of order directly through the store.
+    // PATCH must preserve canonical append order, matching `get_session`.
     let now = chrono::Utc::now();
     store
         .append_message(
@@ -252,5 +300,62 @@ async fn patch_session_returns_messages_sorted_by_created_at() {
             _ => panic!("expected text part"),
         })
         .collect();
-    assert_eq!(texts, vec!["first", "second"]);
+    assert_eq!(texts, vec!["second", "first"]);
+}
+
+#[tokio::test]
+async fn patch_and_delete_wait_for_session_operation_lock() {
+    use axum::extract::{Json, Path, State};
+    use mewcode_server::routes::sessions::UpdateSessionRequest;
+    use mewcode_server::routes::sessions::{delete, patch};
+    use mewcode_server::store::NewSession;
+
+    let state = test_state();
+    let session = state
+        .store
+        .create_session(NewSession {
+            title: "locked".into(),
+            model: ModelId::default(),
+            mode: Mode::default(),
+        })
+        .await
+        .expect("session should be created");
+
+    let lock = state
+        .existing_session_operation_lock(session.id)
+        .await
+        .expect("session should exist");
+    let guard = lock.lock().await;
+    let mut patch_future = Box::pin(patch(
+        State(state.clone()),
+        Path(session.id),
+        Json(UpdateSessionRequest {
+            title: Some("updated".into()),
+            model: None,
+            mode: None,
+        }),
+    ));
+    tokio::select! {
+        biased;
+        _ = &mut patch_future => panic!("PATCH bypassed the session operation lock"),
+        _ = tokio::task::yield_now() => {}
+    }
+    drop(guard);
+    let _ = patch_future
+        .await
+        .expect("PATCH should complete after unlock");
+
+    let lock = state
+        .existing_session_operation_lock(session.id)
+        .await
+        .expect("session should still exist");
+    let guard = lock.lock().await;
+    let mut delete_future = Box::pin(delete(State(state.clone()), Path(session.id)));
+    tokio::select! {
+        biased;
+        _ = &mut delete_future => panic!("DELETE bypassed the session operation lock"),
+        _ = tokio::task::yield_now() => {}
+    }
+    drop(guard);
+    assert_eq!(delete_future.await.unwrap(), StatusCode::NO_CONTENT);
 }

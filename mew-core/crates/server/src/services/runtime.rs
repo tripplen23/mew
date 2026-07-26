@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use mewcode_engine::memory::MemoryStore;
+use mewcode_engine::context::MemoryStore;
 
 pub(crate) fn project_root() -> PathBuf {
     std::env::current_dir()

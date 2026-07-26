@@ -3,16 +3,17 @@
 //! back through an mpsc channel until the model stops emitting tool
 //! calls or the user cancels.
 
-mod compaction;
 mod completion;
-mod trace;
+mod turn_compaction;
 
-pub use self::compaction::{CompactionCheckpoint, CompactionState};
-pub use self::compaction::{estimate_compacted_context, truncate_fallback};
 pub use self::completion::last_user_text;
 #[doc(hidden)]
 pub use self::completion::user_text_with_file_context;
-pub use self::trace::{chat_turn_span, record_turn_input, record_turn_output};
+pub use self::turn_compaction::{
+    CompactionBlocked, CompactionCheckpoint, CompactionMode, CompactionState, accept_summary,
+    should_compact_history,
+};
+pub use crate::compaction::estimate_compacted_context;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -22,15 +23,14 @@ use tokio::sync::mpsc;
 use tracing::Instrument;
 use uuid::Uuid;
 
-use crate::agent::{Agent, build_system_prompt};
-use crate::approval::ApprovalBroker;
+use crate::agent::{Agent, AgentActivity, Provider, build_system_prompt};
 use crate::config::EngineConfig;
+use crate::context::{HistoryStrategy, MemoryStore};
 use crate::error::EngineError;
-use crate::history::{self, HistoryStrategy};
-use crate::memory::MemoryStore;
-use crate::provider::Provider;
+use crate::observability::langfuse;
+use crate::observability::langfuse::FIELD_LANGFUSE_SESSION_ID;
 use crate::skills::SkillRegistry;
-use crate::tools::ToolRegistry;
+use crate::tools::{ApprovalBroker, ToolRegistry};
 
 /// The agent harness.
 #[derive(Clone)]
@@ -45,7 +45,7 @@ pub struct Harness {
     display_sink: Option<crate::tools::DisplaySink>,
     project_root: Option<PathBuf>,
     approval_broker: Option<ApprovalBroker>,
-    pub compaction: CompactionState,
+    compaction: CompactionState,
 }
 
 impl std::fmt::Debug for Harness {
@@ -57,6 +57,31 @@ impl std::fmt::Debug for Harness {
             .field("skill_count", &self.skills.len())
             .finish()
     }
+}
+
+/// Turn-level error wrapper that tracks whether the agent emitted text or
+/// tool activity before the error occurred — needed by the context-overflow
+/// retry gate. Exposed for tests.
+#[derive(Debug)]
+pub struct AttemptError {
+    pub error: EngineError,
+    pub agent_activity: bool,
+}
+
+impl AttemptError {
+    #[doc(hidden)]
+    pub fn new(error: EngineError, agent_activity: bool) -> Self {
+        Self {
+            error,
+            agent_activity,
+        }
+    }
+}
+
+/// Retry a context-overflow turn only when the first attempt produced no
+/// activity (no text, no tool calls). Exposed for tests.
+pub fn should_retry_after_compaction(attempt: &AttemptError) -> bool {
+    attempt.error.is_context_overflow() && !attempt.agent_activity
 }
 
 impl Harness {
@@ -121,8 +146,10 @@ impl Harness {
         mut self,
         summary: Option<String>,
         compacted_up_to: usize,
+        compacted_up_to_message_id: Option<Uuid>,
     ) -> Self {
-        self.compaction.checkpoint = CompactionCheckpoint::new(summary, compacted_up_to);
+        self.compaction.checkpoint =
+            CompactionCheckpoint::new(summary, compacted_up_to, compacted_up_to_message_id);
         self
     }
 
@@ -136,11 +163,14 @@ impl Harness {
     }
 
     /// Return a checkpoint created during the current turn, if any.
-    pub fn updated_compaction(&self) -> Option<(&str, usize)> {
-        self.compaction
-            .pending_update
-            .as_ref()
-            .map(|checkpoint| (checkpoint.summary.as_str(), checkpoint.up_to))
+    pub fn updated_compaction(&self) -> Option<(&str, usize, Uuid)> {
+        self.compaction.pending_update.as_ref().map(|checkpoint| {
+            (
+                checkpoint.summary.as_str(),
+                checkpoint.up_to,
+                checkpoint.compacted_up_to_message_id,
+            )
+        })
     }
 
     /// Attach a memory store for durable facts. When set, the memory content
@@ -163,114 +193,99 @@ impl Harness {
     }
 
     /// Run one agent invocation, streaming events through the channel.
-    /// The agent may make up to `MAX_AGENT_TURNS` sub-turns (tool calls
-    /// → results → reply) before finishing. Returns `Err` on any failure
-    /// and emits nothing on that path — the caller owns the `Error` event.
-    ///
-    /// If the provider returns a context-overflow error, compacts history
-    /// and retries once.
+    /// Context overflow is retried once only when the first attempt emitted no
+    /// text or tool activity; the retry always performs real summarization.
     pub async fn run_turn(
         &mut self,
         messages: &[Message],
         tx: mpsc::Sender<StreamEvent>,
     ) -> Result<(), EngineError> {
-        // A retry belongs to the same turn, so only clear an update left by a
-        // previous completed turn here—not inside history preparation.
         self.compaction.pending_update = None;
 
-        let span = trace::chat_turn_span(self.model, self.mode);
-        if let Some(session_id) = self.session_id {
-            span.record("langfuse.session.id", session_id.to_string());
-        }
-
-        match self
-            .run_turn_inner(messages, &tx)
-            .instrument(span.clone())
-            .await
-        {
-            Ok(_) => Ok(()),
-            Err(e) if e.is_context_overflow() => {
-                tracing::warn!("context overflow detected, forcing compaction and retrying");
-                // Force compaction by setting session_tokens to threshold
-                let limit = self.model.context_limit();
-                if limit > 0 {
-                    self.compaction.context_tokens =
-                        (limit as f64 * history::COMPACTION_THRESHOLD) as u64;
-                }
-                // Retry once with compacted history
-                self.run_turn_inner(messages, &tx)
-                    .instrument(span)
-                    .await
-                    .map(|_| ())
-            }
-            Err(e) => Err(e),
-        }
-    }
-
-    /// The turn proper: resolve config, select the user message, build
-    /// history from prior turns, optionally inject durable memory into
-    /// the system prompt, then run one agent invocation streaming
-    /// TextDelta events through the channel and emit the Finish event.
-    /// Returns the assistant reply on success so the caller can both
-    /// report it and discard it. The SSE emission is unchanged —
-    /// nothing reaches the channel on failure, so the server route stays
-    /// the single owner of the `Error` event.
-    async fn run_turn_inner(
-        &mut self,
-        messages: &[Message],
-        tx: &mpsc::Sender<StreamEvent>,
-    ) -> Result<String, EngineError> {
-        // The turn always answers the most recent user message. With no
-        // user message there is nothing to send, so fail without a provider.
+        // Validate the request and credentials before Start so boundary
+        // failures still produce only the caller-owned Error event.
         let user_text = if let Some(root) = self.project_root.as_deref() {
             completion::user_text_with_file_context(messages, root)
         } else {
             last_user_text(messages)
         }
         .ok_or_else(|| EngineError::Other("no user message in chat history".to_string()))?;
-
-        // Resolve the credential before any provider is constructed.
         let cfg = EngineConfig::from_env()?;
-
-        // Build history from messages before the current user prompt, so
-        // the prompt text is not duplicated when invoke_agent sends it
-        // via `.prompt(user_text).with_history(history)`.
         let current_user_pos = messages
             .iter()
             .enumerate()
             .rev()
-            .find(|(_, m)| m.role == Role::User)
-            .map(|(i, _)| i)
-            .unwrap_or(0);
+            .find(|(_, message)| message.role == Role::User)
+            .map_or(0, |(index, _)| index);
         let prior_messages = &messages[..current_user_pos];
 
-        let history = self.build_turn_history(prior_messages, &cfg, tx).await;
+        let span = langfuse::chat_turn_span(self.model, self.mode);
+        if let Some(session_id) = self.session_id {
+            span.record(FIELD_LANGFUSE_SESSION_ID, session_id.to_string());
+        }
 
-        // Build the system prompt, optionally injecting durable memory.
-        let system_prompt = self.compose_system_prompt();
-
-        let provider = Provider::for_model(self.model, &cfg)?;
-        trace::record_turn_input(&tracing::Span::current(), &system_prompt, &user_text);
-
-        // Emit Start before the first token so the client can prepare.
-        let message_id = Uuid::new_v4();
         let started = std::time::Instant::now();
-        let pwd = self
-            .project_root
-            .as_deref()
-            .and_then(|p| p.to_str())
-            .map(|s| s.to_string());
         tx.send(StreamEvent::Start {
-            message_id,
+            message_id: Uuid::new_v4(),
             mode: self.mode,
             model: self.model,
-            pwd,
+            pwd: self
+                .project_root
+                .as_deref()
+                .and_then(|path| path.to_str())
+                .map(str::to_string),
         })
         .await
-        .map_err(|e| EngineError::Other(e.to_string()))?;
+        .map_err(|error| EngineError::Other(error.to_string()))?;
 
-        // Stream the reply through the agent layer. Token/turn caps are
-        // owned by Agent's defaults; the harness doesn't override them.
+        let first = self
+            .run_turn_attempt(&user_text, prior_messages, &cfg, &tx, false, started)
+            .instrument(span.clone())
+            .await;
+        match first {
+            Ok(()) => Ok(()),
+            Err(attempt) if should_retry_after_compaction(&attempt) => {
+                tracing::warn!("context overflow before agent activity; forcing compaction");
+                self.run_turn_attempt(&user_text, prior_messages, &cfg, &tx, true, started)
+                    .instrument(span)
+                    .await
+                    .map_err(|attempt| attempt.error)
+            }
+            Err(attempt) => Err(attempt.error),
+        }
+    }
+
+    async fn run_turn_attempt(
+        &mut self,
+        user_text: &str,
+        prior_messages: &[Message],
+        cfg: &EngineConfig,
+        tx: &mpsc::Sender<StreamEvent>,
+        force_compaction: bool,
+        started: std::time::Instant,
+    ) -> Result<(), AttemptError> {
+        let history = if force_compaction {
+            // Report the real reason: "nothing left to compact" and "the
+            // compaction call itself failed" are very different diagnoses.
+            self.build_forced_turn_history(prior_messages, cfg, tx)
+                .await
+                .map_err(|blocked| {
+                    let error = match blocked {
+                        CompactionBlocked::NothingToCompact => EngineError::ContextOverflow(
+                            "no compactable history remains after context overflow".into(),
+                        ),
+                        CompactionBlocked::SummaryUnavailable(error) => error,
+                    };
+                    AttemptError::new(error, false)
+                })?
+        } else {
+            self.build_turn_history(prior_messages, cfg, tx).await
+        };
+        let system_prompt = self.compose_system_prompt();
+        let provider = Provider::for_model(self.model, cfg)
+            .map_err(|error| AttemptError::new(error, false))?;
+        langfuse::record_turn_input(&tracing::Span::current(), &system_prompt, user_text);
+
         let approved_tools;
         let tools_registry = if self.mode.allows_writes() {
             match (self.session_id, self.approval_broker.clone()) {
@@ -288,39 +303,35 @@ impl Harness {
         if let Some(sink) = self.display_sink.clone() {
             agent = agent.with_display_sink(sink);
         }
-        let (reply, usage) = agent.run_turn(user_text, history, tx).await?;
-        trace::record_turn_output(&tracing::Span::current(), &reply);
 
-        // Provider input usage already includes the history sent this turn,
-        // so it is a context snapshot rather than a value to accumulate.
+        let activity = AgentActivity::default();
+        let result = agent
+            .run_turn(user_text.to_string(), history, tx, activity.clone())
+            .await;
+        let (reply, usage) =
+            result.map_err(|error| AttemptError::new(error, activity.was_observed()))?;
+        langfuse::record_turn_output(&tracing::Span::current(), &reply);
+
         if !usage.is_empty() {
             self.record_context_usage(usage.total());
         }
 
-        // Emit Finish with actual token counts.
         tx.send(StreamEvent::Finish {
             duration_ms: started.elapsed().as_millis() as u64,
-            input_tokens: if usage.input_tokens > 0 {
-                Some(usage.input_tokens)
-            } else {
-                None
-            },
-            output_tokens: if usage.output_tokens > 0 {
-                Some(usage.output_tokens)
-            } else {
-                None
-            },
+            input_tokens: (usage.input_tokens > 0).then_some(usage.input_tokens),
+            output_tokens: (usage.output_tokens > 0).then_some(usage.output_tokens),
             session_tokens: Some(self.compaction.context_tokens),
-            context_limit: if self.model.context_limit() > 0 {
-                Some(self.model.context_limit())
-            } else {
-                None
-            },
+            context_limit: (self.model.context_limit() > 0).then(|| self.model.context_limit()),
         })
         .await
-        .map_err(|e| EngineError::Other(e.to_string()))?;
+        .map_err(|error| {
+            AttemptError::new(
+                EngineError::Other(error.to_string()),
+                activity.was_observed(),
+            )
+        })?;
 
-        Ok(reply)
+        Ok(())
     }
 
     /// Emit the success-path event sequence for one turn: exactly one `Start`

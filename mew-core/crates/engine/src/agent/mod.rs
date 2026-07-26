@@ -3,23 +3,25 @@
 //! This module owns everything that talks to the LLM through Rig's
 //! [`Agent`](rig_core::agent::struct.Agent) abstraction:
 //! - system-prompt construction ([`build_system_prompt`])
-//! - Rig agent execution ([`Agent::run_turn`])
+//! - Rig agent execution (`Agent::run_turn`)
 //! - streaming translation from Rig items to [`StreamEvent`]s (the stream module)
 //!
 //! The [`Harness`](crate::harness::Harness) consumes an [`Agent`] each turn:
 //! it builds the system prompt, creates an [`Agent`], and delegates execution.
 
 mod prompt;
+mod provider;
+mod rig;
 mod stream;
 
 use mewcode_protocol::{ModelId, StreamEvent};
-use rig_core::client::CompletionClient;
 use tokio::sync::mpsc;
 
 pub use self::prompt::build_system_prompt;
+pub use self::provider::Provider;
+pub use self::stream::AgentActivity;
 pub use self::stream::TurnUsage;
 use crate::error::EngineError;
-use crate::provider::Provider;
 
 pub(crate) const DEFAULT_MAX_TOKENS: u64 = 16384;
 
@@ -79,40 +81,13 @@ impl Agent {
 
     /// Run one user prompt through the configured Rig agent, streaming events
     /// through `tx` and returning the full assistant reply plus token usage.
-    pub async fn run_turn(
+    pub(crate) async fn run_turn(
         self,
         user_text: String,
         history: Vec<rig_core::completion::Message>,
         tx: &mpsc::Sender<StreamEvent>,
+        activity: AgentActivity,
     ) -> Result<(String, TurnUsage), EngineError> {
-        let model_id = self.model.as_str();
-        match &self.provider {
-            Provider::Anthropic(p) => {
-                let model = p
-                    .client()
-                    .completion_model(model_id)
-                    .with_automatic_caching_1h();
-                let agent = rig_core::agent::AgentBuilder::new(model)
-                    .name("mewcode")
-                    .preamble(&self.system_prompt)
-                    .max_tokens(self.max_tokens)
-                    .default_max_turns(self.max_turns)
-                    .tools(self.tools)
-                    .build();
-                stream::run_agent_stream(agent, user_text, history, tx, self.display_sink).await
-            }
-            Provider::OpenCodeGo(p) | Provider::OpenAi(p) => {
-                let agent = p
-                    .client()
-                    .agent(model_id)
-                    .name("mewcode")
-                    .preamble(&self.system_prompt)
-                    .max_tokens(self.max_tokens)
-                    .default_max_turns(self.max_turns)
-                    .tools(self.tools)
-                    .build();
-                stream::run_agent_stream(agent, user_text, history, tx, self.display_sink).await
-            }
-        }
+        rig::run_turn(self, user_text, history, tx, activity).await
     }
 }

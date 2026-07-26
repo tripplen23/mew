@@ -48,6 +48,7 @@ pub use tool_card::{
     render_diff, render_tool_call_header, render_tool_result_body, render_tool_result_header,
     summarise_json, truncate_one_line,
 };
+pub use transcript::window_bounds;
 
 use session::render_session;
 use theme::{COMPOSER_HORIZONTAL_PAD, COMPOSER_LEFT_PAD, theme_for};

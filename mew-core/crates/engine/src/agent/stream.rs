@@ -6,6 +6,8 @@
 //! protocol don't tangle.
 
 use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use futures::StreamExt;
 use mewcode_protocol::StreamEvent;
@@ -16,6 +18,19 @@ use tokio::sync::mpsc;
 
 use crate::error::EngineError;
 use crate::tools::DisplaySink;
+
+#[derive(Debug, Clone, Default)]
+pub struct AgentActivity(Arc<AtomicBool>);
+
+impl AgentActivity {
+    pub fn mark(&self) {
+        self.0.store(true, Ordering::Release);
+    }
+
+    pub fn was_observed(&self) -> bool {
+        self.0.load(Ordering::Acquire)
+    }
+}
 
 /// Per-turn token usage accumulated from all completion calls in the turn.
 #[derive(Debug, Clone, Copy, Default)]
@@ -66,6 +81,7 @@ pub async fn run_agent_stream<M: rig_core::completion::CompletionModel + 'static
     history: Vec<rig_core::completion::Message>,
     tx: &mpsc::Sender<StreamEvent>,
     display_sink: Option<DisplaySink>,
+    activity: AgentActivity,
 ) -> Result<(String, TurnUsage), EngineError> {
     let mut stream = agent.stream_prompt(user_text).history(history).await;
 
@@ -78,6 +94,7 @@ pub async fn run_agent_stream<M: rig_core::completion::CompletionModel + 'static
     while let Some(item) = stream.next().await {
         match item {
             Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(t))) => {
+                activity.mark();
                 let delta = t.text;
                 let _ = tx
                     .send(StreamEvent::TextDelta {
@@ -90,6 +107,8 @@ pub async fn run_agent_stream<M: rig_core::completion::CompletionModel + 'static
                 tool_call,
                 ..
             })) => {
+                // Mark before tool dispatch — overflow after this cannot replay it.
+                activity.mark();
                 call_args.insert(tool_call.id.clone(), tool_call.function.arguments.clone());
                 let _ = tx
                     .send(StreamEvent::ToolInputAvailable {
@@ -100,6 +119,7 @@ pub async fn run_agent_stream<M: rig_core::completion::CompletionModel + 'static
                     .await;
             }
             Ok(MultiTurnStreamItem::StreamUserItem(user_content)) => {
+                activity.mark();
                 // StreamedUserContent has a single variant (ToolResult), so we destructure directly.
                 let rig_core::streaming::StreamedUserContent::ToolResult { tool_result, .. } =
                     user_content;
@@ -157,6 +177,7 @@ pub async fn run_agent_stream<M: rig_core::completion::CompletionModel + 'static
                 if full_reply.is_empty() {
                     let text = response.output().to_string();
                     if !text.is_empty() {
+                        activity.mark();
                         let _ = tx
                             .send(StreamEvent::TextDelta {
                                 delta: text.clone(),

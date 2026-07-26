@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use mewcode_engine::memory::MemoryStore;
+use mewcode_engine::context::MemoryStore;
 
 #[test]
 fn empty_memory_returns_none_from_format() {

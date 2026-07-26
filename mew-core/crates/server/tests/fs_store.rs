@@ -11,7 +11,7 @@
 use chrono::{Duration, Utc};
 use mewcode_protocol::{Message, MessagePart, Mode, ModelId, Role};
 use mewcode_server::store::fs::FsStore;
-use mewcode_server::store::{Backend, NewSession, SessionStore, StoreError};
+use mewcode_server::store::{Backend, NewSession, SessionPatch, SessionStore, StoreError};
 
 /// Build a `NewSession` with the given title and sensible defaults.
 fn new_session(title: &str) -> NewSession {
@@ -134,10 +134,10 @@ async fn delete_cascades_to_messages() {
     assert!(matches!(err, StoreError::NotFound));
 }
 
-/// Property 5: `get_session` returns messages ordered by `created_at`
-/// ascending, even when appended out of chronological order.
+/// Property 5: `get_session` preserves append order even when message
+/// timestamps are out of order.
 #[tokio::test]
-async fn get_session_orders_messages_by_created_at_ascending() {
+async fn get_session_preserves_message_append_order() {
     let (_tmp, store) = temp_store();
     let created = store
         .create_session(new_session("ordered"))
@@ -169,7 +169,7 @@ async fn get_session_orders_messages_by_created_at_ascending() {
         .expect("get should succeed");
 
     let order: Vec<uuid::Uuid> = fetched.messages.iter().map(|m| m.id).collect();
-    assert_eq!(order, vec![m_early.id, m_mid.id, m_late.id]);
+    assert_eq!(order, vec![m_late.id, m_early.id, m_mid.id]);
 }
 
 /// Appending a message advances `updated_at` while leaving `created_at`
@@ -209,6 +209,120 @@ async fn append_message_bumps_updated_at() {
 /// Regression test: a session directory whose `meta.json` no longer parses
 /// must be skipped, not fail the wholel listing.
 /// Every other, still-valid session must still be returned.
+#[tokio::test]
+async fn compaction_anchor_round_trips_and_legacy_metadata_still_loads() {
+    let (_tmp, store) = temp_store();
+    let created = store
+        .create_session(new_session("checkpointed"))
+        .await
+        .expect("create should succeed");
+    let anchor_message = message_at("covered", Utc::now());
+    let anchor = anchor_message.id;
+    store
+        .append_message(created.id, anchor_message)
+        .await
+        .expect("anchor message should persist");
+
+    store
+        .patch_session(
+            created.id,
+            SessionPatch {
+                compaction_summary: Some("summary".into()),
+                compacted_up_to: Some(1),
+                compacted_up_to_message_id: Some(anchor),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("patch should succeed");
+    let fetched = store
+        .get_session(created.id)
+        .await
+        .expect("get should succeed");
+    assert_eq!(fetched.compacted_up_to_message_id, Some(anchor));
+
+    let meta_path = store
+        .data_dir()
+        .join("sessions")
+        .join(created.id.to_string())
+        .join("meta.json");
+    let mut metadata: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&meta_path).expect("metadata should be readable"),
+    )
+    .expect("metadata should be JSON");
+    metadata
+        .as_object_mut()
+        .expect("metadata should be an object")
+        .remove("compacted_up_to_message_id");
+    std::fs::write(
+        &meta_path,
+        serde_json::to_vec_pretty(&metadata).expect("metadata should serialize"),
+    )
+    .expect("legacy metadata should be writable");
+
+    let legacy = store
+        .get_session(created.id)
+        .await
+        .expect("legacy metadata should still load");
+    assert_eq!(legacy.compacted_up_to_message_id, None);
+
+    let error = store
+        .patch_session(
+            created.id,
+            SessionPatch {
+                compaction_summary: Some("incomplete".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect_err("partial checkpoint must be rejected");
+    assert!(matches!(error, StoreError::Invalid(_)));
+
+    let cleared = store
+        .patch_session(
+            created.id,
+            SessionPatch {
+                compacted_up_to: Some(0),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("zero boundary should clear the checkpoint");
+    assert!(cleared.compaction_summary.is_none());
+    assert!(cleared.compacted_up_to.is_none());
+    assert!(cleared.compacted_up_to_message_id.is_none());
+}
+
+#[tokio::test]
+async fn compaction_checkpoint_must_match_filesystem_transcript() {
+    let (_tmp, store) = temp_store();
+    let created = store
+        .create_session(new_session("validated checkpoint"))
+        .await
+        .expect("create should succeed");
+    let message = message_at("covered", Utc::now());
+    store
+        .append_message(created.id, message.clone())
+        .await
+        .expect("message should persist");
+
+    for (up_to, message_id) in [(2, message.id), (1, uuid::Uuid::new_v4())] {
+        let error = store
+            .patch_session(
+                created.id,
+                SessionPatch {
+                    compaction_summary: Some("summary".into()),
+                    compacted_up_to: Some(up_to),
+                    compacted_up_to_message_id: Some(message_id),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect_err("checkpoint must reference its exact transcript boundary");
+        assert!(matches!(error, StoreError::Invalid(_)));
+    }
+}
+
 #[tokio::test]
 async fn list_sessions_skips_unreadable_session_instead_of_failing() {
     let (_tmp, store) = temp_store();
