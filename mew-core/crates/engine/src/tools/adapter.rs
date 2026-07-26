@@ -13,7 +13,7 @@
 
 use std::sync::Arc;
 
-use rig_core::tool::ToolDyn;
+use rig_core::tool::{ToolCallExtensions, ToolDyn, ToolExecutionResult, ToolFailure};
 use rig_core::wasm_compat::WasmBoxedFuture;
 
 use mewcode_protocol::{ToolContracts, ToolError, ToolErrorPayload};
@@ -59,15 +59,11 @@ impl ToolDyn for RigToolAdapter {
                     // Return an explicit error payload so the model can
                     // correct its tool call instead of getting a confusing
                     // "missing field" message from a silent null.
-                    let payload: ToolErrorPayload = (&ToolError::InvalidInput {
+                    let error = ToolError::InvalidInput {
                         message: format!("invalid JSON arguments: {e}"),
                         hint: Some("check that the arguments are valid JSON".into()),
-                    })
-                        .into();
-                    return Ok(serde_json::to_string(&payload).unwrap_or_else(|_| {
-                        r#"{"error":true,"kind":"invalid_input","message":"invalid JSON"}"#
-                            .to_string()
-                    }));
+                    };
+                    return Ok(serialize_tool_error(&error));
                 }
             };
             match inner.execute(input).await {
@@ -82,13 +78,69 @@ impl ToolDyn for RigToolAdapter {
                     // so Rig sends it back to the model as the tool result.
                     // The model sees the error kind + hint and can retry
                     // with corrected input.
-                    let payload: ToolErrorPayload = (&e).into();
-                    Ok(serde_json::to_string(&payload).unwrap_or_else(|_| {
-                        r#"{"error":true,"kind":"other","message":"tool failed"}"#.to_string()
-                    }))
+                    Ok(serialize_tool_error(&e))
                 }
             }
         })
+    }
+
+    fn call_structured<'a>(
+        &'a self,
+        args: String,
+        _extensions: &'a ToolCallExtensions,
+    ) -> WasmBoxedFuture<'a, ToolExecutionResult> {
+        let inner = self.inner.clone();
+        Box::pin(async move {
+            let input: serde_json::Value = match serde_json::from_str(&args) {
+                Ok(v) => v,
+                Err(e) => {
+                    let error = ToolError::InvalidInput {
+                        message: format!("invalid JSON arguments: {e}"),
+                        hint: Some("check that the arguments are valid JSON".into()),
+                    };
+                    return ToolExecutionResult::failed(
+                        serialize_tool_error(&error),
+                        failure_for_tool_error(&error),
+                    );
+                }
+            };
+            match inner.execute(input).await {
+                Ok(output) => ToolExecutionResult::success(output.0.to_string()),
+                Err(error @ ToolError::Rejected { .. }) => {
+                    ToolExecutionResult::denied(serialize_tool_error(&error))
+                }
+                Err(error) => ToolExecutionResult::failed(
+                    serialize_tool_error(&error),
+                    failure_for_tool_error(&error),
+                ),
+            }
+        })
+    }
+}
+
+fn serialize_tool_error(error: &ToolError) -> String {
+    let payload: ToolErrorPayload = error.into();
+    serde_json::to_string(&payload)
+        .unwrap_or_else(|_| r#"{"error":true,"kind":"other","message":"tool failed"}"#.to_string())
+}
+
+fn failure_for_tool_error(error: &ToolError) -> ToolFailure {
+    match error {
+        ToolError::InvalidInput { message, .. } => ToolFailure::invalid_args(message),
+        ToolError::Io(error) => match error.kind() {
+            std::io::ErrorKind::NotFound => ToolFailure::not_found(error.to_string()),
+            std::io::ErrorKind::PermissionDenied => {
+                ToolFailure::permission_denied(error.to_string())
+            }
+            std::io::ErrorKind::TimedOut => ToolFailure::timeout(error.to_string()),
+            std::io::ErrorKind::Interrupted => ToolFailure::cancelled(error.to_string()),
+            _ => ToolFailure::other(error.to_string()).with_retryable(true),
+        },
+        ToolError::Rejected { message, .. } => ToolFailure::permission_denied(message),
+        ToolError::ToolNotFound(name) => {
+            ToolFailure::not_found(format!("tool '{name}' is not registered"))
+        }
+        ToolError::Other { message, .. } => ToolFailure::other(message),
     }
 }
 

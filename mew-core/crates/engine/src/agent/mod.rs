@@ -3,7 +3,7 @@
 //! This module owns everything that talks to the LLM through Rig's
 //! [`Agent`](rig_core::agent::struct.Agent) abstraction:
 //! - system-prompt construction ([`build_system_prompt`])
-//! - Rig agent execution ([`Agent::run_turn`])
+//! - Rig agent execution (`Agent::run_turn`)
 //! - streaming translation from Rig items to [`StreamEvent`]s (the stream module)
 //!
 //! The [`Harness`](crate::harness::Harness) consumes an [`Agent`] each turn:
