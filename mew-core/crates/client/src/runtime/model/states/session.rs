@@ -1,5 +1,8 @@
+use std::collections::HashMap;
+use std::rc::Rc;
 use std::time::Instant;
 
+use ratatui::text::Line;
 use tui_textarea::TextArea;
 use uuid::Uuid;
 
@@ -130,6 +133,131 @@ pub struct CompactionUiState {
     pub committed: Vec<CompactionEntry>,
 }
 
+/// Caches rendered lines for committed transcript history.
+///
+/// Markdown parse + syntect highlight is expensive and used to repeat on every
+/// frame for the entire transcript. Only committed messages are cached; the
+/// in-flight turn is re-rendered each frame as before.
+///
+/// No eviction, unbounded per-session growth matching `session.messages`.
+/// Upgrade: LRU cap if a single session's growth becomes a problem.
+#[derive(Debug, Default)]
+pub struct TranscriptCache {
+    /// Cached message lines, keyed by `(message_id, wrap_width)`.
+    ///
+    /// Committed messages are immutable — cache hits clone via `Rc` instead of
+    /// re-parsing markdown and re-running syntect.
+    messages: HashMap<Uuid, (u16, CachedBlock)>,
+    /// Cached compaction-entry lines, keyed by `(index, wrap_width)`.
+    ///
+    /// `committed` is append-only; `sync_session` clears this map on session
+    /// switch to guard against index reuse.
+    compaction: HashMap<usize, (u16, CachedBlock)>,
+    /// Session id that owns this cache. A mismatch means stale entries from a
+    /// previous session.
+    session_id: Option<Uuid>,
+    /// Largest `committed.len()` observed. Guards the append-only invariant
+    /// `compaction_lines` depends on (debug only).
+    #[cfg(debug_assertions)]
+    max_compaction_len_seen: usize,
+}
+
+/// Rendered lines for one transcript block, plus its wrapped row count.
+///
+/// `height` enables virtualized rendering: sum heights to derive scroll
+/// extent instead of wrapping the whole transcript every frame. Clone is
+/// cheap — an `Rc` bump plus a `u16`.
+#[derive(Debug, Clone)]
+pub struct CachedBlock {
+    /// Rendered lines for this block.
+    pub lines: Rc<Vec<Line<'static>>>,
+    /// Wrapped height in terminal rows at the cached width.
+    pub height: u16,
+}
+
+/// Look up `key` in `map`, falling back to `render()` on a miss or a
+/// width mismatch. Shared by [`TranscriptCache::message_lines`] and
+/// [`TranscriptCache::compaction_lines`] so the hit/miss logic can't drift
+/// between the two as it evolves.
+///
+/// `render` returns the lines *and* their wrapped height; wrapping is the
+/// view's concern, so the model never needs to know about ratatui layout.
+fn cached_lines<K: std::hash::Hash + Eq>(
+    map: &mut HashMap<K, (u16, CachedBlock)>,
+    key: K,
+    width: u16,
+    render: impl FnOnce() -> (Vec<Line<'static>>, u16),
+) -> CachedBlock {
+    if let Some((cached_width, block)) = map.get(&key) {
+        if *cached_width == width {
+            return block.clone();
+        }
+    }
+    let (lines, height) = render();
+    let block = CachedBlock {
+        lines: Rc::new(lines),
+        height,
+    };
+    map.insert(key, (width, block.clone()));
+    block
+}
+
+impl TranscriptCache {
+    /// Drop every cached entry if `session_id` no longer matches — called
+    /// once per render before any lookup/insert.
+    pub fn sync_session(&mut self, session_id: Uuid) {
+        if self.session_id != Some(session_id) {
+            self.messages.clear();
+            self.compaction.clear();
+            self.session_id = Some(session_id);
+            #[cfg(debug_assertions)]
+            {
+                self.max_compaction_len_seen = 0;
+            }
+        }
+    }
+
+    /// Look up or compute the rendered lines for one committed message.
+    pub fn message_lines(
+        &mut self,
+        id: Uuid,
+        width: u16,
+        render: impl FnOnce() -> (Vec<Line<'static>>, u16),
+    ) -> CachedBlock {
+        cached_lines(&mut self.messages, id, width, render)
+    }
+
+    /// Look up or compute the rendered lines for one committed compaction
+    /// entry, indexed by its position in `committed`. `committed_len` is
+    /// the current length of `CompactionUiState::committed`, used only to
+    /// assert (debug builds) that it never shrinks — the invariant this
+    /// cache's positional keys depend on.
+    pub fn compaction_lines(
+        &mut self,
+        index: usize,
+        #[cfg_attr(not(debug_assertions), allow(unused_variables))] committed_len: usize,
+        width: u16,
+        render: impl FnOnce() -> (Vec<Line<'static>>, u16),
+    ) -> CachedBlock {
+        #[cfg(debug_assertions)]
+        {
+            debug_assert!(
+                committed_len >= self.max_compaction_len_seen,
+                "compaction.committed must be append-only for positional cache keys to stay valid"
+            );
+            self.max_compaction_len_seen = committed_len.max(self.max_compaction_len_seen);
+        }
+        cached_lines(&mut self.compaction, index, width, render)
+    }
+
+    /// Number of cached message entries.`#[doc(hidden)]` keeps it out of
+    /// public docs while still allowing that cross-crate test visibility.
+    #[doc(hidden)]
+    pub fn message_cache_len(&self) -> usize {
+        self.messages.len()
+    }
+}
+
 /// State backing [`super::Screen::Session`].
 #[derive(Debug)]
 pub struct SessionState {
@@ -177,6 +305,9 @@ pub struct SessionState {
     pub context_limit: u64,
     /// FIFO queue of messages the user submitted while a turn was in flight
     pub message_queue: Vec<String>,
+    /// Rendered-lines cache for committed transcript history. See
+    /// [`TranscriptCache`] for why this exists and its invalidation rules.
+    pub transcript_cache: TranscriptCache,
 }
 
 impl SessionState {
@@ -206,6 +337,7 @@ impl SessionState {
             session_tokens: 0,
             context_limit: 0,
             message_queue: Vec::new(),
+            transcript_cache: TranscriptCache::default(),
         }
     }
 

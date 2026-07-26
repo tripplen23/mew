@@ -17,6 +17,7 @@ use rig_core::client::CompletionClient;
 use tokio::sync::mpsc;
 
 pub use self::prompt::build_system_prompt;
+pub use self::stream::AgentActivity;
 pub use self::stream::TurnUsage;
 use crate::error::EngineError;
 use crate::provider::Provider;
@@ -79,11 +80,12 @@ impl Agent {
 
     /// Run one user prompt through the configured Rig agent, streaming events
     /// through `tx` and returning the full assistant reply plus token usage.
-    pub async fn run_turn(
+    pub(crate) async fn run_turn(
         self,
         user_text: String,
         history: Vec<rig_core::completion::Message>,
         tx: &mpsc::Sender<StreamEvent>,
+        activity: AgentActivity,
     ) -> Result<(String, TurnUsage), EngineError> {
         let model_id = self.model.as_str();
         match &self.provider {
@@ -99,7 +101,8 @@ impl Agent {
                     .default_max_turns(self.max_turns)
                     .tools(self.tools)
                     .build();
-                stream::run_agent_stream(agent, user_text, history, tx, self.display_sink).await
+                stream::run_agent_stream(agent, user_text, history, tx, self.display_sink, activity)
+                    .await
             }
             Provider::OpenCodeGo(p) | Provider::OpenAi(p) => {
                 let agent = p
@@ -111,7 +114,8 @@ impl Agent {
                     .default_max_turns(self.max_turns)
                     .tools(self.tools)
                     .build();
-                stream::run_agent_stream(agent, user_text, history, tx, self.display_sink).await
+                stream::run_agent_stream(agent, user_text, history, tx, self.display_sink, activity)
+                    .await
             }
         }
     }

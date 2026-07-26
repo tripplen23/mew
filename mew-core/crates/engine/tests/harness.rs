@@ -5,10 +5,7 @@ use tokio::sync::mpsc;
 
 use mewcode_engine::{
     EngineConfig, SkillRegistry,
-    harness::{
-        CompactionCheckpoint, CompactionState, Harness, estimate_compacted_context,
-        truncate_fallback,
-    },
+    harness::{Harness, estimate_compacted_context, should_retry_after_compaction},
 };
 use mewcode_protocol::{Message, Mode, ModelId};
 
@@ -74,8 +71,11 @@ async fn invalid_checkpoint_falls_back_to_full_history() {
     let cfg = test_config();
 
     for boundary in [0, messages.len() + 1] {
-        let mut harness =
-            test_harness().with_compaction_summary(Some("invalid checkpoint".into()), boundary);
+        let mut harness = test_harness().with_compaction_summary(
+            Some("invalid checkpoint".into()),
+            boundary,
+            messages.first().map(|message| message.id),
+        );
         let (tx, _rx) = mpsc::channel(8);
 
         let history = harness.build_turn_history(&messages, &cfg, &tx).await;
@@ -87,18 +87,42 @@ async fn invalid_checkpoint_falls_back_to_full_history() {
     }
 }
 
-#[test]
-fn fallback_truncation_preserves_utf8_boundary() {
-    let input = format!("{}é-tail", "a".repeat(7_999));
+#[tokio::test]
+async fn checkpoint_requires_matching_boundary_message_id() {
+    let messages = prior_messages();
+    let cfg = test_config();
 
-    let output = truncate_fallback(input.clone(), 8_000);
-    let prefix = output
-        .strip_suffix("\n[...truncated]")
-        .expect("truncated output should carry its marker");
+    for anchor in [None, Some(uuid::Uuid::new_v4())] {
+        let mut harness =
+            test_harness().with_compaction_summary(Some("stale summary".into()), 1, anchor);
+        let (tx, _rx) = mpsc::channel(8);
 
-    assert!(output.len() <= 8_000);
-    assert!(prefix.len() <= 8_000);
-    assert!(input.starts_with(prefix));
+        let history = harness.build_turn_history(&messages, &cfg, &tx).await;
+        let texts = history_texts(&history);
+
+        assert!(texts.contains(&"first user"));
+        assert!(texts.contains(&"first assistant"));
+        assert!(!texts.iter().any(|text| text.contains("stale summary")));
+    }
+}
+
+#[tokio::test]
+async fn checkpoint_with_matching_boundary_message_id_replaces_prefix() {
+    let messages = prior_messages();
+    let cfg = test_config();
+    let mut harness = test_harness().with_compaction_summary(
+        Some("valid summary".into()),
+        1,
+        Some(messages[0].id),
+    );
+    let (tx, _rx) = mpsc::channel(8);
+
+    let history = harness.build_turn_history(&messages, &cfg, &tx).await;
+    let texts = history_texts(&history);
+
+    assert!(!texts.contains(&"first user"));
+    assert!(texts.contains(&"first assistant"));
+    assert!(texts.iter().any(|text| text.contains("valid summary")));
 }
 
 #[test]
@@ -121,29 +145,16 @@ fn compacted_context_estimate_counts_summary_and_tail_text() {
     assert_eq!(estimate_compacted_context("abcd", &tail), 3);
 }
 
-#[tokio::test]
-async fn pending_checkpoint_survives_repeated_history_preparation() {
-    let messages = prior_messages();
-    let checkpoint =
-        CompactionCheckpoint::new(Some("summary".into()), 1).expect("valid checkpoint");
-    let mut harness = test_harness();
-    harness.compaction.checkpoint = Some(checkpoint.clone());
-    harness.compaction.pending_update = Some(checkpoint);
-    let cfg = test_config();
-    let (tx, _rx) = mpsc::channel(8);
-
-    let _ = harness.build_turn_history(&messages, &cfg, &tx).await;
-    assert_eq!(harness.updated_compaction(), Some(("summary", 1)));
-
-    let _ = harness.build_turn_history(&messages, &cfg, &tx).await;
-    assert_eq!(harness.updated_compaction(), Some(("summary", 1)));
-}
-
 #[test]
-fn blank_generated_summary_does_not_advance_checkpoint() {
-    let mut state = CompactionState::default();
+fn context_overflow_retries_only_before_agent_activity() {
+    use mewcode_engine::EngineError;
+    use mewcode_engine::harness::AttemptError;
 
-    assert!(!state.install_checkpoint(" \n ".into(), 4));
-    assert!(state.checkpoint.is_none());
-    assert!(state.pending_update.is_none());
+    let idle_overflow = AttemptError::new(EngineError::ContextOverflow("too large".into()), false);
+    let active_overflow = AttemptError::new(EngineError::ContextOverflow("too large".into()), true);
+    let idle_other = AttemptError::new(EngineError::Other("failed".into()), false);
+
+    assert!(should_retry_after_compaction(&idle_overflow));
+    assert!(!should_retry_after_compaction(&active_overflow));
+    assert!(!should_retry_after_compaction(&idle_other));
 }

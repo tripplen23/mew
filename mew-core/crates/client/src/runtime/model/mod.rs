@@ -13,8 +13,8 @@ mod states;
 pub use cmd::{Cmd, QUIT_COMMAND};
 pub use msg::{CreateError, Msg, StreamMsg};
 pub use states::{
-    App, ChoicePromptState, CompactionEntry, CompactionUiState, CompactionView, CreationState,
-    FileEntry, FilePickerState, ModelPickerState, Overlay, PastedText, PickerState, SLASH_COMMANDS,
-    Screen, SessionListState, SessionState, SlashCommand, StreamingState, ThemeId, Toast,
-    ToastKind, ToolCallView, TurnItem,
+    App, CachedBlock, ChoicePromptState, CompactionEntry, CompactionUiState, CompactionView,
+    CreationState, FileEntry, FilePickerState, ModelPickerState, Overlay, PastedText, PickerState,
+    SLASH_COMMANDS, Screen, SessionListState, SessionState, SlashCommand, StreamingState, ThemeId,
+    Toast, ToastKind, ToolCallView, TranscriptCache, TurnItem,
 };

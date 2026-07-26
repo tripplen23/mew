@@ -47,6 +47,45 @@ fn session_dir(store: &FsStore, id: Uuid) -> PathBuf {
     store.data_dir().join("sessions").join(id.to_string())
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn failed_metadata_update_does_not_commit_message() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let (_tmp, store) = temp_store();
+    let session = store
+        .create_session(NewSession {
+            title: "ordered commit".into(),
+            model: ModelId::DEFAULT,
+            mode: Mode::Build,
+        })
+        .await
+        .expect("create session");
+    let dir = session_dir(&store, session.id);
+
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o500))
+        .expect("make session directory read-only");
+    let probe = dir.join("permission-probe");
+    if std::fs::File::create(&probe).is_ok() {
+        let _ = std::fs::remove_file(probe);
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))
+            .expect("restore session directory permissions");
+        return; // Root/CAP_DAC_OVERRIDE cannot exercise this permission fault.
+    }
+    let result = store
+        .append_message(session.id, text_message("must not commit"))
+        .await;
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))
+        .expect("restore session directory permissions");
+
+    assert!(result.is_err(), "metadata update should fail first");
+    let reloaded = store.get_session(session.id).await.expect("reload session");
+    assert!(
+        reloaded.messages.is_empty(),
+        "an error return must not leave a durable message"
+    );
+}
+
 /// Assert no leftover `*.tmp` files remain in the session directory.
 fn assert_no_tmp_files(store: &FsStore, id: Uuid) {
     let dir = session_dir(store, id);

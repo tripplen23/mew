@@ -23,8 +23,8 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use super::{
-    Backend, NewSession, Session, SessionPatch, SessionStore, SessionSummary, StoreError,
-    validate_title,
+    Backend, CompactionPatch, NewSession, Session, SessionPatch, SessionStore, SessionSummary,
+    StoreError, compaction_patch, validate_compaction_checkpoint, validate_title,
 };
 
 /// Name of the sessions subdirectory under the data dir.
@@ -59,6 +59,9 @@ struct MetaJson {
     /// Message index already covered by `compaction_summary`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     compacted_up_to: Option<usize>,
+    /// Stable id of the message at `compacted_up_to - 1`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    compacted_up_to_message_id: Option<Uuid>,
 }
 
 impl MetaJson {
@@ -85,6 +88,7 @@ impl MetaJson {
             messages,
             compaction_summary: self.compaction_summary.clone(),
             compacted_up_to: self.compacted_up_to,
+            compacted_up_to_message_id: self.compacted_up_to_message_id,
         }
     }
 }
@@ -111,6 +115,10 @@ fn cleanup_stale_temps(dir: &Path) -> Result<(), StoreError> {
     };
     for entry in entries.flatten() {
         let path = entry.path();
+        if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+            cleanup_stale_temps(&path)?;
+            continue;
+        }
         if path.extension().is_some_and(|e| e == "tmp") {
             // Only remove files older than 1 hour to avoid races with
             // running write operations.
@@ -160,13 +168,19 @@ impl FsStore {
         // A unique sibling temp file in the same directory, so the final
         // `rename` stays within one filesystem (and is therefore atomic).
         let tmp_path = dir.join(format!("{META_FILE}.{}.tmp", Uuid::new_v4()));
-        {
+        let result = (|| -> Result<(), StoreError> {
             let mut tmp = File::create(&tmp_path)?;
             tmp.write_all(&bytes)?;
             tmp.sync_all()?;
+            std::fs::rename(&tmp_path, dir.join(META_FILE))?;
+            // Persist the directory entry update, not only the file contents.
+            File::open(dir)?.sync_all()?;
+            Ok(())
+        })();
+        if result.is_err() {
+            let _ = std::fs::remove_file(&tmp_path);
         }
-        std::fs::rename(&tmp_path, dir.join(META_FILE))?;
-        Ok(())
+        result
     }
 }
 
@@ -275,11 +289,8 @@ impl SessionStore for FsStore {
         let dir = self.session_dir(id);
         // `read_meta` maps a missing file to `NotFound`.
         let meta = read_meta(&dir.join(META_FILE))?;
-        // Replay the append-only log, then sort by `created_at` ascending so
-        // out-of-order appends still hydrate chronologically — mirroring
-        // `MemoryStore` and the Pg `(session_id, created_at)` index ordering.
-        let mut messages = read_messages(&dir.join(MESSAGES_FILE))?;
-        messages.sort_by_key(|m| m.created_at);
+        // The JSONL sequence is canonical; timestamps are metadata only.
+        let messages = read_messages(&dir.join(MESSAGES_FILE))?;
         Ok(meta.to_session(messages))
     }
 
@@ -295,13 +306,24 @@ impl SessionStore for FsStore {
             updated_at: now,
             compaction_summary: None,
             compacted_up_to: None,
+            compacted_up_to_message_id: None,
         };
 
         let dir = self.session_dir(meta.id);
         std::fs::create_dir_all(&dir)?;
-        Self::write_meta_atomic(&dir, &meta)?;
-        // An empty append-only message log.
-        File::create(dir.join(MESSAGES_FILE))?;
+        let create_result = (|| -> Result<(), StoreError> {
+            // `meta.json` is the discoverability/commit marker: create and
+            // sync the empty log first, then publish metadata last.
+            File::create(dir.join(MESSAGES_FILE))?.sync_all()?;
+            Self::write_meta_atomic(&dir, &meta)?;
+            File::open(self.sessions_dir())?.sync_all()?;
+            Ok(())
+        })();
+        if let Err(error) = create_result {
+            let _ = std::fs::remove_dir_all(&dir);
+            let _ = File::open(self.sessions_dir()).and_then(|parent| parent.sync_all());
+            return Err(error);
+        }
 
         Ok(meta.to_session(Vec::new()))
     }
@@ -317,9 +339,17 @@ impl SessionStore for FsStore {
     }
 
     async fn patch_session(&self, id: Uuid, patch: SessionPatch) -> Result<Session, StoreError> {
+        let compaction = compaction_patch(&patch)?;
         let _guard = self.write_lock.lock().await;
         let dir = self.session_dir(id);
         let mut meta = read_meta(&dir.join(META_FILE))?;
+        let messages = read_messages(&dir.join(MESSAGES_FILE))?;
+        if let CompactionPatch::Set {
+            up_to, message_id, ..
+        } = &compaction
+        {
+            validate_compaction_checkpoint(&messages, *up_to, *message_id)?;
+        }
         if let Some(title) = patch.title {
             meta.title = validate_title(&title)?;
         }
@@ -329,24 +359,25 @@ impl SessionStore for FsStore {
         if let Some(mode) = patch.mode {
             meta.mode = mode;
         }
-        if let Some(summary) = patch.compaction_summary {
-            meta.compaction_summary = if summary.is_empty() {
-                None
-            } else {
-                Some(summary)
-            };
-        }
-        if let Some(boundary) = patch.compacted_up_to {
-            meta.compacted_up_to = if boundary == 0 { None } else { Some(boundary) };
+        match compaction {
+            CompactionPatch::Unchanged => {}
+            CompactionPatch::Clear => {
+                meta.compaction_summary = None;
+                meta.compacted_up_to = None;
+                meta.compacted_up_to_message_id = None;
+            }
+            CompactionPatch::Set {
+                summary,
+                up_to,
+                message_id,
+            } => {
+                meta.compaction_summary = Some(summary);
+                meta.compacted_up_to = Some(up_to);
+                meta.compacted_up_to_message_id = Some(message_id);
+            }
         }
         meta.updated_at = Utc::now();
         Self::write_meta_atomic(&dir, &meta)?;
-        let mut messages = read_messages(&dir.join(MESSAGES_FILE))?;
-        // Sort ascending by `created_at` to match `get_session` and the
-        // Pg `(session_id, created_at)` index ordering — out-of-order
-        // appends would otherwise show up wrong after a rename/model
-        // switch refresh.
-        messages.sort_by_key(|m| m.created_at);
         Ok(meta.to_session(messages))
     }
 
@@ -356,20 +387,18 @@ impl SessionStore for FsStore {
         // Load current metadata (also maps a missing session to `NotFound`).
         let mut meta = read_meta(&dir.join(META_FILE))?;
 
-        // Append one JSON line to the message log.
-        let line = serde_json::to_string(&message)?;
-        {
-            let mut log = OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(dir.join(MESSAGES_FILE))?;
-            writeln!(log, "{line}")?;
-            log.sync_all()?;
-        }
-
-        // Bump `updated_at` and rewrite meta atomically.
+        // Commit metadata first: after the message log is synced there must be
+        // no fallible step that can report failure for an already-durable append.
         meta.updated_at = Utc::now();
         Self::write_meta_atomic(&dir, &meta)?;
+
+        let line = serde_json::to_string(&message)?;
+        let mut log = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(dir.join(MESSAGES_FILE))?;
+        writeln!(log, "{line}")?;
+        log.sync_all()?;
         Ok(())
     }
 }

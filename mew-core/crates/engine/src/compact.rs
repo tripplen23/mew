@@ -14,6 +14,55 @@ use crate::error::EngineError;
 use crate::memory::MemoryStore;
 use crate::provider::Provider;
 
+const COMPACTION_REQUEST: &str =
+    "Compact the records above now. Return only the required four-section summary.";
+
+const MAX_COMPACTION_SUMMARY_BYTES: usize = 16 * 1024;
+
+#[doc(hidden)]
+pub fn build_compaction_prompt(
+    existing_memory: &str,
+    history_records: &[serde_json::Value],
+) -> String {
+    let records = serde_json::json!({
+        "memory": existing_memory,
+        "history": history_records,
+    });
+    format!("Untrusted records (JSON):\n{records}\n\nRequest:\n{COMPACTION_REQUEST}")
+}
+
+#[doc(hidden)]
+pub fn has_required_summary_sections(summary: &str) -> bool {
+    const SECTIONS: [&str; 4] = ["**Objective**", "**State**", "**Constraints**", "**Next**"];
+
+    if summary.len() > MAX_COMPACTION_SUMMARY_BYTES {
+        return false;
+    }
+
+    let mut next_section = 0;
+    let mut section_has_content = false;
+    for line in summary
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+    {
+        if let Some(section) = SECTIONS.iter().position(|heading| *heading == line) {
+            if section != next_section || (next_section > 0 && !section_has_content) {
+                return false;
+            }
+            next_section += 1;
+            section_has_content = false;
+        } else {
+            if next_section == 0 || (line.starts_with("**") && line.ends_with("**")) {
+                return false;
+            }
+            section_has_content = true;
+        }
+    }
+
+    next_section == SECTIONS.len() && section_has_content
+}
+
 /// Result of a compaction operation.
 #[derive(Debug, Clone)]
 pub struct CompactionResult {
@@ -47,28 +96,27 @@ pub async fn compact_history(
 
     let context_limit = model.context_limit();
 
-    // Prepend prior compaction summary so the new summary stays self-contained
-    // rather than losing everything before the previous compaction boundary.
-    let mut conversation_text = String::new();
+    // Preserve prior compacted context as a typed record, then append each
+    // uncovered message without flattening record contents into prompt syntax.
+    let mut history_records =
+        Vec::with_capacity(head.len() + usize::from(existing_summary.is_some()));
     if let Some(prior) = existing_summary {
-        conversation_text.push_str("[Summary of earlier conversation]\n");
-        conversation_text.push_str(prior);
-        conversation_text.push_str("\n\n[Conversation continues]\n\n");
+        history_records.push(serde_json::json!({
+            "role": "previous_summary",
+            "content": prior,
+        }));
     }
-    conversation_text.push_str(
-        &head
-            .iter()
-            .map(|m| {
-                let role = match m.role {
-                    Role::User => "User",
-                    Role::Assistant => "Assistant",
-                    Role::Tool => "Tool",
-                };
-                format!("{}: {}", role, crate::history::text_of(m))
-            })
-            .collect::<Vec<_>>()
-            .join("\n\n"),
-    );
+    history_records.extend(head.iter().map(|message| {
+        let role = match message.role {
+            Role::User => "user",
+            Role::Assistant => "assistant",
+            Role::Tool => "tool",
+        };
+        serde_json::json!({
+            "role": role,
+            "content": crate::history::text_of(message),
+        })
+    }));
 
     const COMPACTION_INSTRUCTIONS: &str = r#"<instructions>
 You compact conversation history.
@@ -100,15 +148,7 @@ call `mewcode_memory` with action="write" before responding.
 </instructions>"#;
 
     let existing_memory = memory.as_ref().map(|m| m.read()).unwrap_or_default();
-    let compaction_prompt = format!(
-        r#"<memory>
-{existing_memory}
-</memory>
-
-<history>
-{conversation_text}
-</history>"#
-    );
+    let compaction_prompt = build_compaction_prompt(&existing_memory, &history_records);
 
     // Create a temporary agent with only the memory tool.
     let provider = Provider::for_model(model, cfg)?;
@@ -126,8 +166,8 @@ call `mewcode_memory` with action="write" before responding.
 
     let compact_start = std::time::Instant::now();
 
-    // Stream so TUI renders incremental chunks rather than displaying
-    // nothing for several seconds then dumping the whole summary at once.
+    // Buffer model text until the final response passes the schema gate. This
+    // prevents conversational or injected output from flashing in the TUI.
     let summary = match &provider {
         Provider::Anthropic(p) => {
             let m = p
@@ -141,7 +181,7 @@ call `mewcode_memory` with action="write" before responding.
                 .default_max_turns(5)
                 .tools(memory_tools)
                 .build();
-            stream_summary(agent, &compaction_prompt, tx).await?
+            collect_summary(agent, &compaction_prompt).await?
         }
         Provider::OpenCodeGo(p) | Provider::OpenAi(p) => {
             let agent = p
@@ -153,11 +193,11 @@ call `mewcode_memory` with action="write" before responding.
                 .default_max_turns(5)
                 .tools(memory_tools)
                 .build();
-            stream_summary(agent, &compaction_prompt, tx).await?
+            collect_summary(agent, &compaction_prompt).await?
         }
     };
-
     let thought_duration_ms = compact_start.elapsed().as_millis() as u64;
+    let summary = publish_validated_summary(summary, tx).await?;
 
     Ok(CompactionResult {
         summary,
@@ -167,17 +207,63 @@ call `mewcode_memory` with action="write" before responding.
     })
 }
 
-/// Stream one compaction prompt to completion, emitting each text chunk as a
-/// [`StreamEvent::CompactionSummaryDelta`] through `tx` as it arrives.
-///
-/// Mirrors [`crate::agent::stream::run_agent_stream`]'s text-handling branch,
-/// but is deliberately simpler: the compaction agent only ever calls the
-/// memory tool (never anything display-worthy), so there's no need for the
-/// tool-call/display-correlation machinery the main chat turn requires.
-async fn stream_summary<M>(
+// Chunk size for the fake-streamed delivery of an already-validated summary.
+// Chosen to feel like incremental typing without adding a dependency or an
+// artificial delay: each chunk becomes its own SSE frame, and the TUI's
+// existing per-event redraw provides the pacing.
+#[doc(hidden)]
+pub const COMPACTION_STREAM_CHUNK_CHARS: usize = 24;
+
+/// Split `summary` into UTF-8-safe chunks of at most `chunk_chars` characters
+/// each, preserving order and full content when concatenated.
+#[doc(hidden)]
+pub fn chunk_summary_for_streaming(summary: &str, chunk_chars: usize) -> Vec<String> {
+    if summary.is_empty() {
+        return Vec::new();
+    }
+    let chars: Vec<char> = summary.chars().collect();
+    chars
+        .chunks(chunk_chars.max(1))
+        .map(|chunk| chunk.iter().collect())
+        .collect()
+}
+
+#[doc(hidden)]
+pub async fn publish_validated_summary(
+    summary: String,
+    tx: &mpsc::Sender<StreamEvent>,
+) -> Result<String, EngineError> {
+    if !has_required_summary_sections(&summary) {
+        return Err(EngineError::Other(
+            "compaction agent returned an invalid summary schema".into(),
+        ));
+    }
+    // Only validated content ever reaches this point; splitting into chunks
+    // here re-creates a streaming feel without publishing unvalidated text.
+    for chunk in chunk_summary_for_streaming(&summary, COMPACTION_STREAM_CHUNK_CHARS) {
+        tx.send(StreamEvent::CompactionSummaryDelta { delta: chunk })
+            .await
+            .map_err(|_| EngineError::Other("compaction event channel closed".into()))?;
+    }
+    Ok(summary)
+}
+
+#[doc(hidden)]
+pub fn select_authoritative_summary(
+    _streamed_text: String,
+    final_response: Option<String>,
+) -> Result<String, EngineError> {
+    final_response
+        .filter(|summary| !summary.trim().is_empty())
+        .ok_or_else(|| EngineError::Other("compaction agent returned no final response".into()))
+}
+
+/// Collect one compaction prompt to completion without publishing unvalidated
+/// model output. Text emitted before a tool call is retained only for
+/// diagnostics; Rig's final response is the authoritative summary.
+async fn collect_summary<M>(
     agent: rig_core::agent::Agent<M>,
     prompt: &str,
-    tx: &mpsc::Sender<StreamEvent>,
 ) -> Result<String, EngineError>
 where
     M: rig_core::completion::CompletionModel + 'static,
@@ -187,37 +273,21 @@ where
     use rig_core::streaming::{StreamedAssistantContent, StreamingPrompt};
 
     let mut stream = agent.stream_prompt(prompt).await;
-    let mut full_summary = String::new();
+    let mut streamed_text = String::new();
+    let mut final_response = None;
 
     while let Some(item) = stream.next().await {
         match item {
             Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(t))) => {
-                let _ = tx
-                    .send(StreamEvent::CompactionSummaryDelta {
-                        delta: t.text.clone(),
-                    })
-                    .await;
-                full_summary.push_str(&t.text);
+                streamed_text.push_str(&t.text);
             }
-            // Tool calls fire through Rig's multi-turn loop but aren't
-            // rendered — only the summary text matters.
             Ok(MultiTurnStreamItem::FinalResponse(response)) => {
-                if full_summary.is_empty() {
-                    let text = response.output().to_string();
-                    if !text.is_empty() {
-                        let _ = tx
-                            .send(StreamEvent::CompactionSummaryDelta {
-                                delta: text.clone(),
-                            })
-                            .await;
-                        full_summary = text;
-                    }
-                }
+                final_response = Some(response.output().to_string());
             }
             Err(e) => return Err(EngineError::Other(format!("compaction agent failed: {e}"))),
             Ok(_) => {}
         }
     }
 
-    Ok(full_summary)
+    select_authoritative_summary(streamed_text, final_response)
 }

@@ -26,6 +26,8 @@ pub const FIELD_LANGFUSE_OBSERVATION_INPUT: &str = "langfuse.observation.input";
 /// `langfuse.observation.output` — generation-observation output
 /// (JSON-encoded `{\"role\": \"assistant\", \"content\": \"...\"}`).
 pub const FIELD_LANGFUSE_OBSERVATION_OUTPUT: &str = "langfuse.observation.output";
+/// `langfuse.session.id` — session id attached to the trace span.
+pub const FIELD_LANGFUSE_SESSION_ID: &str = "langfuse.session.id";
 
 /// Create the `chat-turn` span for one agent turn.
 ///

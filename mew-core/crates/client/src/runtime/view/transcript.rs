@@ -12,7 +12,9 @@ use ratatui::widgets::{Paragraph, Wrap};
 
 use mewcode_protocol::{MessagePart, Role};
 
-use super::super::model::{CompactionView, SessionState, TurnItem};
+use std::rc::Rc;
+
+use super::super::model::{CachedBlock, CompactionView, SessionState, TranscriptCache, TurnItem};
 use super::entry::render_entry_lines;
 use super::markdown::render_markdown;
 use super::session::render_mentions;
@@ -23,21 +25,122 @@ use super::tool_card::{
 };
 use mewcode_protocol::{ToolCall, ToolDisplay, ToolResult};
 
+/// Wrapped height, in terminal rows, of `lines` at `width`.
+///
+/// Safe to compute per block and sum, because ratatui wraps each [`Line`]
+/// independently — pinned by the `wrapped_line_counts_are_additive` test in
+/// `tests/render_perf.rs`. That additivity is what lets the transcript be
+/// rendered as a window instead of wrapping the whole history every frame.
+fn wrapped_height(lines: &[Line<'static>], width: u16) -> u16 {
+    if width == 0 {
+        return 0;
+    }
+    Paragraph::new(Text::from(lines.to_vec()))
+        .wrap(Wrap { trim: false })
+        .line_count(width)
+        .min(u16::MAX as usize) as u16
+}
+
+/// Cached, height-measured block for one committed compaction entry.
+fn compaction_block(
+    cache: &mut TranscriptCache,
+    index: usize,
+    committed_len: usize,
+    width: u16,
+    view: &CompactionView,
+    theme: Theme,
+) -> CachedBlock {
+    cache.compaction_lines(index, committed_len, width, || {
+        let lines = render_compaction_section(view, theme, width);
+        let height = wrapped_height(&lines, width);
+        (lines, height)
+    })
+}
+
+/// Which blocks the viewport touches, given each block's wrapped height.
+///
+/// Returns `(first, local_scroll, end)`: render `blocks[first..end]` with a
+/// scroll offset of `local_scroll` rows. `None` means there is nothing to
+/// draw. Pure integer arithmetic — this is the whole point of virtualization,
+/// and it is kept free of `Frame`/`Paragraph` so it can be tested directly.
+#[doc(hidden)]
+pub fn window_bounds(heights: &[u16], scroll: u16, viewport: u16) -> Option<(usize, u16, usize)> {
+    if viewport == 0 || heights.is_empty() {
+        return None;
+    }
+
+    // First block whose row range contains `scroll`. The comparison is
+    // strict: when `skipped + height == scroll` the viewport starts exactly
+    // at the *next* block's first row, so this block is fully above it.
+    let mut skipped = 0u32;
+    let mut first = None;
+    for (index, height) in heights.iter().enumerate() {
+        if skipped + *height as u32 > scroll as u32 {
+            first = Some(index);
+            break;
+        }
+        skipped += *height as u32;
+    }
+    let first = first?;
+    debug_assert!(skipped <= scroll as u32, "loop exits before passing scroll");
+    // In `[0, height-1]` by the invariant above, so this never truncates.
+    let local_scroll = (scroll as u32 - skipped) as u16;
+
+    // Take whole blocks until the viewport is covered. `taken` counts full
+    // block heights, including the `local_scroll` rows that get scrolled
+    // away, so `budget` must include them too.
+    let budget = local_scroll as u32 + viewport as u32;
+    let mut taken = 0u32;
+    let mut end = first;
+    while end < heights.len() && taken < budget {
+        taken += heights[end] as u32;
+        end += 1;
+    }
+    Some((first, local_scroll, end))
+}
+
 /// Render the transcript panel and update its scroll bounds.
+///
+/// Only viewport-touching blocks are materialized. Scroll extent is integer
+/// sums of cached heights, so cost is viewport-sized, not session-sized
+/// (~30 ms → <1 ms on 800 messages; see `tests/render_perf.rs`).
 pub(super) fn render_transcript(
     frame: &mut Frame,
     chunk: Rect,
     s: &mut SessionState,
     theme: Theme,
 ) {
-    let mut lines: Vec<Line> = Vec::new();
+    // Width 0 collapses every height to 0, which clamps scroll and loses the
+    // user's position irrecoverably when the real width returns.
+    if chunk.width == 0 || chunk.height == 0 {
+        return;
+    }
     let is_entry = s.session.is_none();
-    match &s.session {
-        Some(session) => {
+    let width = chunk.width;
+    // Collect blocks — nothing materialized until the visible window is known.
+    let mut blocks: Vec<CachedBlock> = Vec::with_capacity(
+        s.session
+            .as_ref()
+            .map(|session| session.messages.len() + s.compaction.committed.len() + 1)
+            .unwrap_or(2),
+    );
+    if s.session.is_some() {
+        // Disjoint field access: `transcript_cache` is &mut while `session`
+        // and `compaction` are &immut — the borrow checker needs destructuring.
+        let SessionState {
+            session,
+            compaction,
+            transcript_cache,
+            ..
+        } = &mut *s;
+        if let Some(session) = session.as_mut() {
+            transcript_cache.sync_session(session.id);
+            let committed_len = compaction.committed.len();
+
             let mut msg_idx = 0;
             let mut comp_idx = 0;
-            while msg_idx < session.messages.len() || comp_idx < s.compaction.committed.len() {
-                let next_comp = s.compaction.committed.get(comp_idx);
+            while msg_idx < session.messages.len() || comp_idx < committed_len {
+                let next_comp = compaction.committed.get(comp_idx);
                 let next_msg = session.messages.get(msg_idx);
 
                 let comp_first = next_comp
@@ -46,26 +149,52 @@ pub(super) fn render_transcript(
 
                 if comp_first {
                     if let Some(entry) = next_comp {
-                        lines.extend(render_compaction_section(&entry.view, theme, chunk.width));
+                        blocks.push(compaction_block(
+                            transcript_cache,
+                            comp_idx,
+                            committed_len,
+                            width,
+                            &entry.view,
+                            theme,
+                        ));
                     }
                     comp_idx += 1;
                 } else if let Some(msg) = next_msg {
-                    lines.extend(render_message(msg, theme));
-                    lines.push(Line::from(""));
+                    blocks.push(transcript_cache.message_lines(msg.id, width, || {
+                        let mut lines = render_message(msg, theme);
+                        lines.push(Line::from(""));
+                        let height = wrapped_height(&lines, width);
+                        (lines, height)
+                    }));
                     msg_idx += 1;
                 } else {
                     break;
                 }
             }
-            for entry in &s.compaction.committed[comp_idx..] {
-                lines.extend(render_compaction_section(&entry.view, theme, chunk.width));
+            for (offset, entry) in compaction.committed[comp_idx..].iter().enumerate() {
+                blocks.push(compaction_block(
+                    transcript_cache,
+                    comp_idx + offset,
+                    committed_len,
+                    width,
+                    &entry.view,
+                    theme,
+                ));
             }
         }
-        None => {
-            lines.extend(render_entry_lines(s, theme, chunk));
-        }
+    } else {
+        let lines = render_entry_lines(s, theme, chunk);
+        let height = wrapped_height(&lines, width);
+        blocks.push(CachedBlock {
+            lines: Rc::new(lines),
+            height,
+        });
     }
+    // The in-flight turn is deliberately not cached: it changes on every
+    // delta and every spinner tick, so it is rebuilt each frame. Its cost is
+    // bounded by one turn's output, not by session length.
     if let Some(st) = &s.streaming {
+        let mut lines: Vec<Line<'static>> = Vec::new();
         lines.push(Line::from(Span::styled(
             format!("{} assistant", spinner_frame(st.started_at.elapsed())),
             Style::default()
@@ -103,19 +232,24 @@ pub(super) fn render_transcript(
                     }
                 }
                 TurnItem::Compaction(view) => {
-                    lines.extend(render_compaction_section(view, theme, chunk.width));
+                    lines.extend(render_compaction_section(view, theme, width));
                 }
             }
         }
+        let height = wrapped_height(&lines, width);
+        blocks.push(CachedBlock {
+            lines: Rc::new(lines),
+            height,
+        });
     }
 
-    let mut para = Paragraph::new(Text::from(lines))
-        .style(Style::default().fg(theme.text).bg(theme.ink_bg))
-        .wrap(Wrap { trim: false });
-    if is_entry {
-        para = para.alignment(Alignment::Center);
-    }
-    let total = para.line_count(chunk.width).min(u16::MAX as usize) as u16;
+    // `scroll`/`max_scroll` are `u16` → clamps at 65_535 rows
+    // (~8k messages). Past that, `follow` pins to bottom and streaming
+    // scrolls out of view. Pre-existing; upgrade: widen to `u32`.
+    let total: u32 = blocks
+        .iter()
+        .fold(0u32, |acc, block| acc.saturating_add(block.height as u32));
+    let total = total.min(u16::MAX as u32) as u16;
 
     s.viewport = chunk.height;
     s.max_scroll = total.saturating_sub(chunk.height);
@@ -127,7 +261,26 @@ pub(super) fn render_transcript(
         s.scroll = s.scroll.min(s.max_scroll);
     }
 
-    frame.render_widget(para.scroll((s.scroll, 0)), chunk);
+    let heights: Vec<u16> = blocks.iter().map(|block| block.height).collect();
+    let Some((first, local_scroll, end)) = window_bounds(&heights, s.scroll, chunk.height) else {
+        return;
+    };
+
+    // Materialize only the blocks the viewport actually touches.
+    let rows: usize = heights[first..end].iter().map(|h| *h as usize).sum();
+    let mut window: Vec<Line> = Vec::with_capacity(rows);
+    for block in &blocks[first..end] {
+        window.extend(block.lines.iter().cloned());
+    }
+
+    let mut para = Paragraph::new(Text::from(window))
+        .style(Style::default().fg(theme.text).bg(theme.ink_bg))
+        .wrap(Wrap { trim: false });
+    if is_entry {
+        para = para.alignment(Alignment::Center);
+    }
+
+    frame.render_widget(para.scroll((local_scroll, 0)), chunk);
 }
 
 fn render_message(msg: &mewcode_protocol::Message, theme: Theme) -> Vec<Line<'static>> {
