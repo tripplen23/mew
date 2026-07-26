@@ -10,6 +10,7 @@
 //! it builds the system prompt, creates an [`Agent`], and delegates execution.
 
 mod prompt;
+mod provider;
 mod stream;
 
 use mewcode_protocol::{ModelId, StreamEvent};
@@ -17,10 +18,10 @@ use rig_core::client::CompletionClient;
 use tokio::sync::mpsc;
 
 pub use self::prompt::build_system_prompt;
+pub use self::provider::Provider;
 pub use self::stream::AgentActivity;
 pub use self::stream::TurnUsage;
 use crate::error::EngineError;
-use crate::provider::Provider;
 
 pub(crate) const DEFAULT_MAX_TOKENS: u64 = 16384;
 

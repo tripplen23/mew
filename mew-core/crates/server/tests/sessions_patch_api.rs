@@ -10,7 +10,7 @@ use std::sync::Arc;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
-use mewcode_engine::memory::MemoryStore as FactStore;
+use mewcode_engine::context::MemoryStore as FactStore;
 use mewcode_protocol::routes::SESSIONS;
 use mewcode_protocol::{Mode, ModelId};
 use mewcode_server::store::Session;
@@ -242,7 +242,7 @@ async fn patch_session_preserves_message_append_order() {
     use mewcode_protocol::{Message, MessagePart, Role};
     use mewcode_server::store::SessionStore;
 
-    let fact_store = mewcode_engine::memory::MemoryStore::new(
+    let fact_store = mewcode_engine::context::MemoryStore::new(
         std::env::temp_dir().join(uuid::Uuid::new_v4().to_string()),
     );
     let store = Arc::new(MemoryStore::default());

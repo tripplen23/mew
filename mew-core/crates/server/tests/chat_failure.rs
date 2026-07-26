@@ -18,7 +18,7 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use chrono::Utc;
 use http_body_util::BodyExt;
-use mewcode_engine::memory::MemoryStore as FactStore;
+use mewcode_engine::context::MemoryStore as FactStore;
 use mewcode_protocol::env::OPENCODE_GO_API_KEY;
 use mewcode_protocol::event::ChatRequest;
 use mewcode_protocol::routes::{CHAT, HEALTH};

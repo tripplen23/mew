@@ -3,21 +3,17 @@
 //! back through an mpsc channel until the model stops emitting tool
 //! calls or the user cancels.
 
-mod compaction;
 mod completion;
-mod trace;
+mod turn_compaction;
 
-pub use self::compaction::estimate_compacted_context;
-pub use self::compaction::{
-    CompactionBlocked, CompactionCheckpoint, CompactionMode, CompactionState, accept_summary,
-    should_compact_history,
-};
 pub use self::completion::last_user_text;
 #[doc(hidden)]
 pub use self::completion::user_text_with_file_context;
-pub use self::trace::{chat_turn_span, record_turn_input, record_turn_output};
-
-use self::trace::FIELD_LANGFUSE_SESSION_ID;
+pub use self::turn_compaction::{
+    CompactionBlocked, CompactionCheckpoint, CompactionMode, CompactionState, accept_summary,
+    should_compact_history,
+};
+pub use crate::compaction::estimate_compacted_context;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -27,15 +23,14 @@ use tokio::sync::mpsc;
 use tracing::Instrument;
 use uuid::Uuid;
 
-use crate::agent::{Agent, AgentActivity, build_system_prompt};
-use crate::approval::ApprovalBroker;
+use crate::agent::{Agent, AgentActivity, Provider, build_system_prompt};
 use crate::config::EngineConfig;
+use crate::context::{HistoryStrategy, MemoryStore};
 use crate::error::EngineError;
-use crate::history::HistoryStrategy;
-use crate::memory::MemoryStore;
-use crate::provider::Provider;
+use crate::observability::langfuse;
+use crate::observability::langfuse::FIELD_LANGFUSE_SESSION_ID;
 use crate::skills::SkillRegistry;
-use crate::tools::ToolRegistry;
+use crate::tools::{ApprovalBroker, ToolRegistry};
 
 /// The agent harness.
 #[derive(Clone)]
@@ -224,7 +219,7 @@ impl Harness {
             .map_or(0, |(index, _)| index);
         let prior_messages = &messages[..current_user_pos];
 
-        let span = trace::chat_turn_span(self.model, self.mode);
+        let span = langfuse::chat_turn_span(self.model, self.mode);
         if let Some(session_id) = self.session_id {
             span.record(FIELD_LANGFUSE_SESSION_ID, session_id.to_string());
         }
@@ -289,7 +284,7 @@ impl Harness {
         let system_prompt = self.compose_system_prompt();
         let provider = Provider::for_model(self.model, cfg)
             .map_err(|error| AttemptError::new(error, false))?;
-        trace::record_turn_input(&tracing::Span::current(), &system_prompt, user_text);
+        langfuse::record_turn_input(&tracing::Span::current(), &system_prompt, user_text);
 
         let approved_tools;
         let tools_registry = if self.mode.allows_writes() {
@@ -315,7 +310,7 @@ impl Harness {
             .await;
         let (reply, usage) =
             result.map_err(|error| AttemptError::new(error, activity.was_observed()))?;
-        trace::record_turn_output(&tracing::Span::current(), &reply);
+        langfuse::record_turn_output(&tracing::Span::current(), &reply);
 
         if !usage.is_empty() {
             self.record_context_usage(usage.total());

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use mewcode_engine::memory::MemoryStore;
+use mewcode_engine::context::MemoryStore;
 use uuid::Uuid;
 
 use mewcode_server::ServerConfig;

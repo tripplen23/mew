@@ -1,9 +1,8 @@
 use mewcode_engine::EngineError;
-use mewcode_engine::compact::CompactionResult;
+use mewcode_engine::compaction::{COMPACTION_PRESERVE_TURNS, CompactionResult};
 use mewcode_engine::harness::{
     CompactionCheckpoint, CompactionMode, CompactionState, accept_summary, should_compact_history,
 };
-use mewcode_engine::history::COMPACTION_PRESERVE_TURNS;
 use mewcode_protocol::{Message, MessagePart};
 
 #[test]

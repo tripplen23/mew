@@ -1,18 +1,12 @@
-//! Context compaction.
-//!
-//! Provides a standalone [`compact_history`] function that can be called from both
-//! the automatic compaction trigger in [`Harness`](crate::Harness) and the
-//! manual `/compact` command endpoint.
-
 use std::sync::Arc;
 
 use mewcode_protocol::{Message, ModelId, Role, StreamEvent};
 use tokio::sync::mpsc;
 
+use crate::agent::Provider;
 use crate::config::EngineConfig;
+use crate::context::{MemoryStore, text_of};
 use crate::error::EngineError;
-use crate::memory::MemoryStore;
-use crate::provider::Provider;
 
 const COMPACTION_REQUEST: &str =
     "Compact the records above now. Return only the required four-section summary.";
@@ -114,7 +108,7 @@ pub async fn compact_history(
         };
         serde_json::json!({
             "role": role,
-            "content": crate::history::text_of(message),
+            "content": text_of(message),
         })
     }));
 

@@ -23,17 +23,18 @@ use serde_json::Value;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
-use crate::approval::ApprovalBroker;
-use crate::memory::MemoryStore;
+use crate::context::MemoryStore;
 use crate::skills::SkillRegistry;
 
 pub mod adapter;
+mod approval;
 mod fs;
 mod memory;
 mod search;
 mod shell;
 mod skills;
 
+pub use approval::ApprovalBroker;
 pub use fs::{EditFileTool, GlobTool, ListDirectoryTool, ReadFileTool, WriteFileTool};
 pub use memory::MewcodeMemoryTool;
 pub use search::GrepTool;

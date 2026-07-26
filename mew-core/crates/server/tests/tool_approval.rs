@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
-use mewcode_engine::memory::MemoryStore as FactStore;
+use mewcode_engine::context::MemoryStore as FactStore;
 use mewcode_protocol::StreamEvent;
 use mewcode_protocol::event::{CHOICE_ALLOW_ONCE, ChoiceResponse, ChoiceResponseRequest};
 use mewcode_protocol::routes::CHOICES;

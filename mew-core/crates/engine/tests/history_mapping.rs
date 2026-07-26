@@ -1,6 +1,6 @@
 //! Tests for [`HistoryStrategy`] message windowing and protocol mapping.
 
-use mewcode_engine::history::HistoryStrategy;
+use mewcode_engine::context::HistoryStrategy;
 use mewcode_protocol::{Message, MessagePart, Role};
 use rig_core::completion::Message as RigMessage;
 use rig_core::completion::message::UserContent;

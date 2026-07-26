@@ -2,9 +2,9 @@ use mewcode_protocol::{Message, StreamEvent};
 use tokio::sync::mpsc;
 
 use super::Harness;
+use crate::compaction;
 use crate::config::EngineConfig;
 use crate::error::EngineError;
-use crate::history;
 
 /// A summary paired with the exact message-prefix boundary it replaces.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -104,7 +104,7 @@ pub enum CompactionBlocked {
 /// nothing left to compact.
 #[doc(hidden)]
 pub fn accept_summary(
-    result: Result<crate::compact::CompactionResult, EngineError>,
+    result: Result<compaction::CompactionResult, EngineError>,
 ) -> Result<(String, u64), EngineError> {
     match result {
         Ok(result) if !result.summary.trim().is_empty() => {
@@ -115,15 +115,6 @@ pub fn accept_summary(
         )),
         Err(error) => Err(error),
     }
-}
-
-pub fn estimate_compacted_context(summary: &str, tail: &[Message]) -> u64 {
-    // Four chars per token is intentionally coarse; replace this
-    // with the provider tokenizer when one is available without an API call.
-    let chars = tail.iter().fold(summary.len(), |total, message| {
-        total.saturating_add(history::text_of(message).len())
-    });
-    (chars / history::CHARS_PER_TOKEN) as u64
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -140,7 +131,7 @@ pub fn should_compact_history(
     uncovered_messages: usize,
 ) -> bool {
     (mode == CompactionMode::Forced || automatic_triggered)
-        && uncovered_messages > history::COMPACTION_PRESERVE_TURNS * 2
+        && uncovered_messages > compaction::COMPACTION_PRESERVE_TURNS * 2
 }
 
 impl Harness {
@@ -150,7 +141,7 @@ impl Harness {
         if limit == 0 {
             return false;
         }
-        let threshold = (limit as f64 * history::COMPACTION_THRESHOLD) as u64;
+        let threshold = (limit as f64 * compaction::COMPACTION_THRESHOLD) as u64;
         self.compaction.context_tokens >= threshold
     }
 
@@ -199,7 +190,7 @@ impl Harness {
             return Err(blocked);
         }
         Ok(match checkpoint {
-            Some(checkpoint) => history::build_history_with_summary_tail(
+            Some(checkpoint) => compaction::build_history_with_summary_tail(
                 &checkpoint.summary,
                 uncovered,
                 &self.history_strategy,
@@ -233,8 +224,8 @@ impl Harness {
 
         // Prune tool results, then split into head (for LLM summary) and
         // tail (kept verbatim).
-        let pruned = history::prune_messages(uncovered);
-        let (compact_head, tail) = history::split_for_compaction(&pruned);
+        let pruned = compaction::prune_messages(uncovered);
+        let (compact_head, tail) = compaction::split_for_compaction(&pruned);
         let tokens_before = self.compaction.context_tokens;
         let context_limit = self.model.context_limit();
         tracing::info!(
@@ -248,7 +239,7 @@ impl Harness {
         let previous_summary = checkpoint
             .as_ref()
             .map(|checkpoint| checkpoint.summary.as_str());
-        let result = crate::compact::compact_history(
+        let result = compaction::compact_history(
             compact_head,
             self.model,
             cfg,
@@ -309,7 +300,7 @@ impl Harness {
                 )),
             );
         }
-        self.compaction.context_tokens = estimate_compacted_context(&summary, tail);
+        self.compaction.context_tokens = compaction::estimate_compacted_context(&summary, tail);
 
         let _ = tx
             .send(StreamEvent::Compacted {
@@ -319,7 +310,7 @@ impl Harness {
                 thought_duration_ms,
             })
             .await;
-        Ok(history::build_history_with_summary_tail(
+        Ok(compaction::build_history_with_summary_tail(
             &summary,
             tail,
             &self.history_strategy,

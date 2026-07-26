@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use anyhow::Context;
-use mewcode_engine::memory::MemoryStore;
+use mewcode_engine::context::MemoryStore;
 use mewcode_server::store::fs::{FsStore, resolve_data_dir};
 use mewcode_server::{AppState, config::ServerConfig};
 use opentelemetry::KeyValue;

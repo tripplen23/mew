@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use mewcode_engine::memory::MemoryStore;
+use mewcode_engine::context::MemoryStore;
 use mewcode_engine::tools::MewcodeMemoryTool;
 use mewcode_protocol::ToolError;
 use mewcode_protocol::tool::ToolContracts;

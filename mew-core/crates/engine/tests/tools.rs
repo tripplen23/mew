@@ -2,9 +2,9 @@
 
 use std::sync::Arc;
 
-use mewcode_engine::approval::ApprovalBroker;
 use mewcode_engine::tools::{
-    BashTool, EditFileTool, GrepTool, ProjectContext, WriteFileTool, default_registry,
+    ApprovalBroker, BashTool, EditFileTool, GrepTool, ProjectContext, WriteFileTool,
+    default_registry,
 };
 use mewcode_protocol::StreamEvent;
 use mewcode_protocol::event::{
@@ -404,7 +404,7 @@ fn plan_mode_exposes_but_denies_write_tools() {
     let _ = std::fs::remove_dir_all(&data_dir);
     std::fs::create_dir_all(&data_dir).unwrap();
 
-    let store = mewcode_engine::memory::MemoryStore::new(data_dir.clone());
+    let store = mewcode_engine::context::MemoryStore::new(data_dir.clone());
     let plan_reg = default_registry(ctx.clone(), skills.clone(), Some(store), Mode::Plan);
     let plan_names: Vec<&str> = plan_reg.names().into_iter().collect();
 
@@ -747,7 +747,7 @@ async fn plan_mode_denies_memory_when_store_provided() {
     let _ = std::fs::remove_dir_all(&data_dir);
     std::fs::create_dir_all(&data_dir).unwrap();
 
-    let store = mewcode_engine::memory::MemoryStore::new(data_dir.clone());
+    let store = mewcode_engine::context::MemoryStore::new(data_dir.clone());
     let plan_reg = default_registry(ctx, skills, Some(store), Mode::Plan);
     let plan_names: Vec<&str> = plan_reg.names().into_iter().collect();
 

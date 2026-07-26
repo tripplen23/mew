@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use mewcode_engine::history::{CHARS_PER_TOKEN, prune_messages, split_for_compaction};
+use mewcode_engine::compaction::{CHARS_PER_TOKEN, prune_messages, split_for_compaction};
 use mewcode_engine::{EngineConfig, compact_history};
 use mewcode_protocol::event::CompactionPhase;
 use mewcode_protocol::{Message, ModelId, StreamEvent};

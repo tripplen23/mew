@@ -10,7 +10,7 @@
 
 use std::sync::Arc;
 
-use mewcode_engine::memory::MemoryStore;
+use mewcode_engine::context::MemoryStore;
 use mewcode_engine::skills::SkillRegistry;
 use mewcode_engine::tools::adapter::{RigToolAdapter, rig_tools};
 use mewcode_engine::tools::{MewcodeMemoryTool, ProjectContext, ReadFileTool, default_registry};

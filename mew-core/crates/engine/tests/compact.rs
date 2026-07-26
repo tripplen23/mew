@@ -1,4 +1,4 @@
-use mewcode_engine::compact::{
+use mewcode_engine::compaction::{
     build_compaction_prompt, chunk_summary_for_streaming, has_required_summary_sections,
     publish_validated_summary, select_authoritative_summary,
 };
@@ -94,7 +94,7 @@ async fn only_valid_summary_is_published_to_tui() {
 
 #[tokio::test]
 async fn closed_channel_mid_chunk_fails_closed_without_partial_success() {
-    use mewcode_engine::compact::COMPACTION_STREAM_CHUNK_CHARS;
+    use mewcode_engine::compaction::COMPACTION_STREAM_CHUNK_CHARS;
 
     let (tx, rx) = mpsc::channel(1);
     let valid = "**Objective**\n- Ship it.\n\n**State**\n- Working.\n\n**Constraints**\n- Minimal.\n\n**Next**\n- Verify.";
