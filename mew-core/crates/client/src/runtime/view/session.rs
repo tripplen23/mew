@@ -347,6 +347,16 @@ fn render_active_overlay(frame: &mut Frame, area: Rect, s: &mut SessionState) {
         Overlay::Skills => render_overlay(frame, area, "Skills", skills_lines(s)),
         Overlay::Theme => render_overlay(frame, area, "Theme", theme_lines()),
         Overlay::Choice => render_overlay(frame, area, "Choose", super::overlay::choice_lines(s)),
+        Overlay::ConnectProvider => {
+            let body = super::overlay::connect_provider_lines(s);
+            let title = match s.connect_provider.step {
+                crate::runtime::model::ConnectStep::PickProvider => "Connect Provider",
+                crate::runtime::model::ConnectStep::EnterKey => "Enter API Key",
+                crate::runtime::model::ConnectStep::Validating => "Validating...",
+                crate::runtime::model::ConnectStep::Done => "Connected!",
+            };
+            render_overlay(frame, area, title, body)
+        }
         Overlay::ModelPicker => {
             // Compute the overlay rect first so the row builder knows
             // the inner width and can truncate each model to a single

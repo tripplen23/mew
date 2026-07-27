@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::net::{ModelEntry, Session, SessionSummary, SkillEntry};
 use mewcode_protocol::event::{ChoiceCancelReason, ChoiceRequest, ChoiceResponse};
-use mewcode_protocol::{Mode, ModelId};
+use mewcode_protocol::{Mode, ModelId, ProviderId};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileEntry {
@@ -64,6 +64,10 @@ pub const SLASH_COMMANDS: &[SlashCommand] = &[
         description: "Toggle notification sound",
     },
     SlashCommand {
+        command: "/connect",
+        description: "Connect a provider",
+    },
+    SlashCommand {
         command: "/compact",
         description: "Compact conversation context",
     },
@@ -97,6 +101,8 @@ pub enum Overlay {
     Theme,
     /// Structured single-select choice prompt.
     Choice,
+    /// Provider connect dialog (pick provider → enter key → validate → done).
+    ConnectProvider,
 }
 
 /// State while a session is being created from the first typed message.
@@ -258,6 +264,33 @@ impl TranscriptCache {
     }
 }
 
+/// State for the provider connect dialog.
+#[derive(Debug, Default)]
+pub struct ConnectProviderState {
+    /// Which step in the wizard: picking provider, entering key, or awaiting validation.
+    pub step: ConnectStep,
+    /// Which provider the user selected (set after step 1).
+    pub selected_provider: Option<ProviderId>,
+    /// The API key the user typed (masked in the UI).
+    pub api_key: String,
+    /// Error message from validation, if any.
+    pub error: Option<String>,
+}
+
+/// Steps in the provider connect wizard.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum ConnectStep {
+    /// Pick a provider from the list.
+    #[default]
+    PickProvider,
+    /// Enter the API key.
+    EnterKey,
+    /// Waiting for server validation.
+    Validating,
+    /// Connected successfully.
+    Done,
+}
+
 /// State backing [`super::Screen::Session`].
 #[derive(Debug)]
 pub struct SessionState {
@@ -293,6 +326,8 @@ pub struct SessionState {
     pub file_picker: FilePickerState,
     /// Pending structured choice prompt, if any.
     pub pending_choice: Option<ChoicePromptState>,
+    /// Provider connect dialog state.
+    pub connect_provider: ConnectProviderState,
     /// Whether the notification sound plays after each assistant turn.
     pub sound_enabled: bool,
     /// Manual-`/compact`-in-progress state plus committed compaction entries.
@@ -331,6 +366,7 @@ impl SessionState {
             slash_cursor: 0,
             file_picker: FilePickerState::default(),
             pending_choice: None,
+            connect_provider: ConnectProviderState::default(),
             sound_enabled: true,
             compaction: CompactionUiState::default(),
             pwd: None,

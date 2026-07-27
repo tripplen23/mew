@@ -23,8 +23,8 @@ use mewcode_engine::context::MemoryStore;
 use mewcode_engine::credential::CredentialStore;
 use mewcode_engine::tools::ApprovalBroker;
 use mewcode_protocol::routes::{
-    CHAT, CHOICES, HEALTH, MEMORY_GET, MEMORY_POST, PROVIDERS, PROVIDER_CONNECT,
-    PROVIDER_STATUS, SESSION_BY_ID, SESSION_COMPACT, SESSIONS, SKILLS, STORAGE_STATUS,
+    CHAT, CHOICES, HEALTH, MEMORY_GET, MEMORY_POST, PROVIDER_CONNECT, PROVIDER_STATUS, PROVIDERS,
+    SESSION_BY_ID, SESSION_COMPACT, SESSIONS, SKILLS, STORAGE_STATUS,
 };
 use tokio::sync::{Mutex, RwLock};
 use tower_http::trace::TraceLayer;

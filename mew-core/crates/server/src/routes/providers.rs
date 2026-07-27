@@ -1,6 +1,8 @@
 use axum::Json;
 use axum::extract::State;
-use mewcode_protocol::credential::{ConnectProviderRequest, ConnectProviderResponse, ProviderStatus};
+use mewcode_protocol::credential::{
+    ConnectProviderRequest, ConnectProviderResponse, ProviderStatus,
+};
 use mewcode_protocol::{ModelId, ModelKind, ProviderId};
 use serde::Serialize;
 
@@ -91,9 +93,7 @@ pub async fn connect_provider(
         (status = 200, description = "Provider connection status", body = [ProviderStatus]),
     ),
 )]
-pub async fn provider_status(
-    State(state): State<AppState>,
-) -> Json<Vec<ProviderStatus>> {
+pub async fn provider_status(State(state): State<AppState>) -> Json<Vec<ProviderStatus>> {
     let store = state.credentials.lock().await;
     Json(store.status())
 }

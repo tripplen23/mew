@@ -10,7 +10,8 @@ use mewcode_protocol::{Message, MessagePart, Mode};
 use crate::net::{CreateSessionRequest, SessionPatch};
 
 use super::super::model::{
-    Cmd, Overlay, PastedText, QUIT_COMMAND, SessionState, StreamingState, Toast,
+    Cmd, ConnectProviderState, ConnectStep, Overlay, PastedText, QUIT_COMMAND, SessionState,
+    StreamingState, Toast,
 };
 use super::key_to_input;
 use super::picker::{
@@ -20,6 +21,7 @@ use super::picker::{
 use super::slash::{
     SlashPickerResult, on_slash_picker_key, open_slash_picker, slash_default_cursor,
 };
+use mewcode_protocol::ProviderId;
 
 const COMPACT_PASTE_CHARS: usize = 120;
 
@@ -50,6 +52,7 @@ pub(super) fn on_session_key(
             // session title so the user can edit it in place.
             let was_rename = s.overlay == Overlay::RenameSession;
             let was_slash = s.overlay == Overlay::SlashPicker;
+            let was_connect = s.overlay == Overlay::ConnectProvider;
             s.overlay = Overlay::None;
             if was_rename {
                 s.input = TextArea::default();
@@ -59,6 +62,10 @@ pub(super) fn on_session_key(
                 // The picker only opens when the composer starts with `/`,
                 s.input = TextArea::default();
                 s.pasted.clear();
+            }
+            if was_connect {
+                s.connect_provider = ConnectProviderState::default();
+                s.input = TextArea::default();
             }
         }
         return Cmd::None;
@@ -79,6 +86,7 @@ pub(super) fn on_session_key(
         Overlay::ModelPicker => return on_model_picker_key(s, key),
         Overlay::FilePicker => return on_file_picker_key(s, key),
         Overlay::Choice => return on_choice_key(s, key),
+        Overlay::ConnectProvider => return on_connect_provider_key(s, key),
         Overlay::SessionList => return on_session_list_key(s, key),
         Overlay::RenameSession => {
             if key.code == KeyCode::Enter {
@@ -278,6 +286,7 @@ pub(super) fn on_session_submit(s: &mut SessionState, toast: &mut Option<Toast>)
             "sound" => on_sound_command(s, &args, toast),
             "model" => on_model_command(s),
             "session" => on_session_command(s, &args, toast),
+            "connect" => on_connect_command(s),
             "compact" => on_compact_command(s, toast),
             other => {
                 *toast = Some(Toast::error(format!("unknown command: /{other}")));
@@ -512,6 +521,72 @@ fn on_session_command(s: &mut SessionState, args: &[&str], toast: &mut Option<To
             s.overlay = Overlay::SessionList;
             s.session_list.picker.cursor = 0;
             Cmd::FetchSessions
+        }
+    }
+}
+
+/// Handle `/connect`: open the provider connect dialog.
+fn on_connect_command(s: &mut SessionState) -> Cmd {
+    s.overlay = Overlay::ConnectProvider;
+    s.connect_provider = ConnectProviderState::default();
+    Cmd::None
+}
+
+/// Handle key events while the provider connect dialog is open.
+pub(super) fn on_connect_provider_key(s: &mut SessionState, key: KeyEvent) -> Cmd {
+    use ConnectStep::*;
+    use mewcode_protocol::credential::ConnectProviderRequest;
+
+    let state = &mut s.connect_provider;
+
+    match state.step {
+        PickProvider => match key.code {
+            KeyCode::Enter => {
+                // Default to OpenCode Go if nothing selected
+                let provider = state.selected_provider.unwrap_or(ProviderId::OpenCodeGo);
+                state.selected_provider = Some(provider);
+                state.step = EnterKey;
+                s.input = TextArea::new(vec![String::new()]);
+                Cmd::None
+            }
+            KeyCode::Up | KeyCode::Down => {
+                // Toggle between the two providers
+                state.selected_provider = match state.selected_provider {
+                    Some(ProviderId::OpenCodeGo) => Some(ProviderId::OpenAi),
+                    _ => Some(ProviderId::OpenCodeGo),
+                };
+                Cmd::None
+            }
+            _ => Cmd::None,
+        },
+        EnterKey => match key.code {
+            KeyCode::Enter => {
+                let api_key = s.input.lines().join("\n").trim().to_string();
+                if api_key.is_empty() {
+                    state.error = Some("API key cannot be empty".to_string());
+                    return Cmd::None;
+                }
+                let provider = state.selected_provider.unwrap_or(ProviderId::OpenCodeGo);
+                state.api_key = api_key;
+                state.error = None;
+                state.step = Validating;
+                Cmd::ConnectProvider(ConnectProviderRequest {
+                    provider,
+                    api_key: state.api_key.clone(),
+                })
+            }
+            _ => {
+                s.input.input(key_to_input(key));
+                Cmd::None
+            }
+        },
+        Validating => Cmd::None,
+        Done => {
+            if key.code == KeyCode::Enter || key.code == KeyCode::Esc {
+                s.overlay = Overlay::None;
+                s.input = TextArea::default();
+            }
+            Cmd::None
         }
     }
 }

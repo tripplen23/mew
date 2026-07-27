@@ -7,8 +7,10 @@ use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 
-use mewcode_protocol::credential::{ConnectProviderRequest, ConnectProviderResponse, ProviderCredential, ProviderStatus};
 use mewcode_protocol::ProviderId;
+use mewcode_protocol::credential::{
+    ConnectProviderRequest, ConnectProviderResponse, ProviderCredential, ProviderStatus,
+};
 
 use crate::error::EngineError;
 
@@ -39,16 +41,11 @@ impl CredentialStore {
         if !path.exists() {
             return Ok(Self::default());
         }
-        let contents = std::fs::read_to_string(&path).map_err(|e| {
-            EngineError::Other(format!("failed to read credentials file: {e}"))
-        })?;
-        let list: Vec<ProviderCredential> = serde_yaml::from_str(&contents).map_err(|e| {
-            EngineError::Other(format!("invalid credentials file: {e}"))
-        })?;
-        let credentials = list
-            .into_iter()
-            .map(|c| (c.provider, c))
-            .collect();
+        let contents = std::fs::read_to_string(&path)
+            .map_err(|e| EngineError::Other(format!("failed to read credentials file: {e}")))?;
+        let list: Vec<ProviderCredential> = serde_yaml::from_str(&contents)
+            .map_err(|e| EngineError::Other(format!("invalid credentials file: {e}")))?;
+        let credentials = list.into_iter().map(|c| (c.provider, c)).collect();
         Ok(Self { credentials })
     }
 
@@ -87,10 +84,7 @@ impl CredentialStore {
 
     /// Validate and store a new credential.
     /// Makes a test API call to the provider to verify the key works.
-    pub async fn connect(
-        &mut self,
-        req: ConnectProviderRequest,
-    ) -> ConnectProviderResponse {
+    pub async fn connect(&mut self, req: ConnectProviderRequest) -> ConnectProviderResponse {
         let ConnectProviderRequest { provider, api_key } = req;
 
         // Validate the key with a test call.
@@ -121,16 +115,13 @@ impl CredentialStore {
     /// Persist credentials to disk.
     fn save(&self) -> Result<(), EngineError> {
         let dir = config_dir();
-        std::fs::create_dir_all(&dir).map_err(|e| {
-            EngineError::Other(format!("failed to create config dir: {e}"))
-        })?;
+        std::fs::create_dir_all(&dir)
+            .map_err(|e| EngineError::Other(format!("failed to create config dir: {e}")))?;
         let list: Vec<&ProviderCredential> = self.credentials.values().collect();
-        let yaml = serde_yaml::to_string(&list).map_err(|e| {
-            EngineError::Other(format!("failed to serialize credentials: {e}"))
-        })?;
-        std::fs::write(credentials_path(), yaml).map_err(|e| {
-            EngineError::Other(format!("failed to write credentials file: {e}"))
-        })?;
+        let yaml = serde_yaml::to_string(&list)
+            .map_err(|e| EngineError::Other(format!("failed to serialize credentials: {e}")))?;
+        std::fs::write(credentials_path(), yaml)
+            .map_err(|e| EngineError::Other(format!("failed to write credentials file: {e}")))?;
         Ok(())
     }
 }
@@ -191,10 +182,8 @@ async fn validate_key(provider: ProviderId, api_key: &str) -> Result<String, Str
                 "invalid API key — {provider} returned {status}: {body}",
             ))
         }
-        status => {
-            Err(format!(
-                "unexpected response from {provider}: HTTP {status}"
-            ))
-        }
+        status => Err(format!(
+            "unexpected response from {provider}: HTTP {status}"
+        )),
     }
 }

@@ -15,7 +15,9 @@ use mewcode_protocol::event::ChatRequest;
 use mewcode_protocol::event::{ChoiceCancelReason, ChoiceResponse};
 use mewcode_protocol::{Message, MessagePart};
 
-use super::model::{App, Cmd, CreateError, Msg, Overlay, Screen, StreamMsg, StreamingState, Toast};
+use super::model::{
+    App, Cmd, ConnectStep, CreateError, Msg, Overlay, Screen, StreamMsg, StreamingState, Toast,
+};
 
 pub(crate) mod picker;
 mod session;
@@ -317,6 +319,44 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
                 }
                 Err(e) => {
                     *toast = Some(Toast::error(format!("/session delete: {e}")));
+                }
+            }
+            Cmd::None
+        }
+
+        Msg::ProviderConnected(result) => {
+            if s.overlay != Overlay::ConnectProvider {
+                return Cmd::None;
+            }
+            match result {
+                Ok(resp) => {
+                    use mewcode_protocol::credential::ConnectProviderResponse;
+                    match resp {
+                        ConnectProviderResponse::Ok { provider, .. } => {
+                            s.connect_provider.step = ConnectStep::Done;
+                            *toast = Some(Toast::info(format!(
+                                "Connected to {} successfully",
+                                provider
+                            )));
+                            // Refresh model list so new provider shows up
+                            s.model_picker.models = None;
+                            let fetch = Cmd::FetchModels;
+                            // Keep overlay open so user can see success
+                            return Cmd::Batch(vec![fetch]);
+                        }
+                        ConnectProviderResponse::InvalidKey { reason, .. } => {
+                            s.connect_provider.step = ConnectStep::EnterKey;
+                            s.connect_provider.error = Some(reason);
+                        }
+                        ConnectProviderResponse::Error { message, .. } => {
+                            s.connect_provider.step = ConnectStep::EnterKey;
+                            s.connect_provider.error = Some(message);
+                        }
+                    }
+                }
+                Err(e) => {
+                    s.connect_provider.step = ConnectStep::EnterKey;
+                    s.connect_provider.error = Some(e);
                 }
             }
             Cmd::None
