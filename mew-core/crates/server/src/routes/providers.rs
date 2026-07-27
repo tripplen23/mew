@@ -1,7 +1,8 @@
 use axum::Json;
 use axum::extract::State;
+use mewcode_engine::credential::validate_key;
 use mewcode_protocol::credential::{
-    ConnectProviderRequest, ConnectProviderResponse, ProviderStatus,
+    ConnectProviderRequest, ConnectProviderResponse, ProviderCredential, ProviderStatus,
 };
 use mewcode_protocol::{ModelId, ModelKind, ProviderId};
 use serde::Serialize;
@@ -66,6 +67,10 @@ pub async fn list_providers(State(state): State<AppState>) -> Json<Vec<ProviderE
 }
 
 /// `POST /providers/connect` — validate and store an API key.
+///
+/// Validation happens without holding the credentials lock so other handlers
+/// are not blocked during the outbound HTTP call. The lock is only held for
+/// the brief insert+save.
 #[utoipa::path(
     post,
     path = "/providers/connect",
@@ -79,9 +84,36 @@ pub async fn connect_provider(
     State(state): State<AppState>,
     Json(req): Json<ConnectProviderRequest>,
 ) -> Json<ConnectProviderResponse> {
-    let mut store = state.credentials.lock().await;
-    let resp = store.connect(req).await;
-    Json(resp)
+    let ConnectProviderRequest { provider, api_key } = req;
+
+    // Validate without holding the lock.
+    let result = validate_key(provider, &api_key).await;
+
+    match result {
+        Ok(validated_at) => {
+            let credential = ProviderCredential {
+                provider,
+                api_key: api_key.clone(),
+                validated_at: Some(validated_at.clone()),
+                label: None,
+            };
+            // Brief critical section: lock, insert, save, unlock.
+            let mut store = state.credentials.lock().await;
+            if let Err(e) = store.store(credential) {
+                return Json(ConnectProviderResponse::Error {
+                    provider,
+                    message: format!("key validated but failed to save: {e}"),
+                });
+            }
+            // Release lock (guard dropped here).
+            drop(store);
+            Json(ConnectProviderResponse::Ok {
+                provider,
+                validated_at,
+            })
+        }
+        Err(reason) => Json(ConnectProviderResponse::InvalidKey { provider, reason }),
+    }
 }
 
 /// `GET /providers/status` — connection status for all providers.

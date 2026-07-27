@@ -12,7 +12,10 @@ use utoipa::ToSchema;
 use crate::ProviderId;
 
 /// A stored API credential for one provider.
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+///
+/// Debug output redacts the API key so incidental logging/tracing
+/// never prints plaintext credentials.
+#[derive(Clone, Serialize, Deserialize, ToSchema)]
 pub struct ProviderCredential {
     /// Which provider this credential belongs to.
     pub provider: ProviderId,
@@ -38,13 +41,35 @@ impl ProviderCredential {
     }
 }
 
+impl fmt::Debug for ProviderCredential {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ProviderCredential")
+            .field("provider", &self.provider)
+            .field("api_key", &"***")
+            .field("validated_at", &self.validated_at)
+            .field("label", &self.label)
+            .finish()
+    }
+}
+
 /// Request body for `POST /providers/connect`.
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+///
+/// Debug output redacts the API key.
+#[derive(Clone, Serialize, Deserialize, ToSchema)]
 pub struct ConnectProviderRequest {
     /// Which provider to connect.
     pub provider: ProviderId,
     /// The API key to validate and store.
     pub api_key: String,
+}
+
+impl fmt::Debug for ConnectProviderRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ConnectProviderRequest")
+            .field("provider", &self.provider)
+            .field("api_key", &"***")
+            .finish()
+    }
 }
 
 /// Response for `POST /providers/connect`.

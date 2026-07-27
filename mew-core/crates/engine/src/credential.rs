@@ -8,9 +8,7 @@ use std::env;
 use std::path::PathBuf;
 
 use mewcode_protocol::ProviderId;
-use mewcode_protocol::credential::{
-    ConnectProviderRequest, ConnectProviderResponse, ProviderCredential, ProviderStatus,
-};
+use mewcode_protocol::credential::{ProviderCredential, ProviderStatus};
 
 use crate::error::EngineError;
 
@@ -31,7 +29,7 @@ fn credentials_path() -> PathBuf {
 /// In-memory view of stored credentials.
 #[derive(Debug, Clone, Default)]
 pub struct CredentialStore {
-    credentials: HashMap<ProviderId, ProviderCredential>,
+    pub(crate) credentials: HashMap<ProviderId, ProviderCredential>,
 }
 
 impl CredentialStore {
@@ -82,45 +80,32 @@ impl CredentialStore {
             .collect()
     }
 
-    /// Validate and store a new credential.
-    /// Makes a test API call to the provider to verify the key works.
-    pub async fn connect(&mut self, req: ConnectProviderRequest) -> ConnectProviderResponse {
-        let ConnectProviderRequest { provider, api_key } = req;
-
-        // Validate the key with a test call.
-        match validate_key(provider, &api_key).await {
-            Ok(validated_at) => {
-                let credential = ProviderCredential {
-                    provider,
-                    api_key: api_key.clone(),
-                    validated_at: Some(validated_at),
-                    label: None,
-                };
-                self.credentials.insert(provider, credential);
-                if let Err(e) = self.save() {
-                    return ConnectProviderResponse::Error {
-                        provider,
-                        message: format!("key validated but failed to save: {e}"),
-                    };
-                }
-                ConnectProviderResponse::Ok {
-                    provider,
-                    validated_at: chrono::Utc::now().to_rfc3339(),
-                }
-            }
-            Err(reason) => ConnectProviderResponse::InvalidKey { provider, reason },
-        }
+    /// Store a validated credential and persist atomically to disk.
+    pub fn store(&mut self, credential: ProviderCredential) -> Result<(), EngineError> {
+        self.credentials.insert(credential.provider, credential);
+        self.save()
     }
 
-    /// Persist credentials to disk.
-    fn save(&self) -> Result<(), EngineError> {
+    /// Persist credentials to disk with atomic write and restricted permissions.
+    pub fn save(&self) -> Result<(), EngineError> {
         let dir = config_dir();
         std::fs::create_dir_all(&dir)
             .map_err(|e| EngineError::Other(format!("failed to create config dir: {e}")))?;
         let list: Vec<&ProviderCredential> = self.credentials.values().collect();
         let yaml = serde_yaml::to_string(&list)
             .map_err(|e| EngineError::Other(format!("failed to serialize credentials: {e}")))?;
-        std::fs::write(credentials_path(), yaml)
+
+        // Atomic write: write to temp file, then rename.
+        let tmp_path = credentials_path().with_extension("yaml.tmp");
+        std::fs::write(&tmp_path, &yaml)
+            .map_err(|e| EngineError::Other(format!("failed to write credentials file: {e}")))?;
+        // Restrict to owner-only (0600) on Unix.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o600)).ok();
+        }
+        std::fs::rename(&tmp_path, credentials_path())
             .map_err(|e| EngineError::Other(format!("failed to write credentials file: {e}")))?;
         Ok(())
     }
@@ -140,7 +125,7 @@ fn env_key(provider: ProviderId) -> Option<String> {
 
 /// Make a test API call to verify the key works.
 /// Returns the ISO-8601 timestamp on success, or an error message.
-async fn validate_key(provider: ProviderId, api_key: &str) -> Result<String, String> {
+pub async fn validate_key(provider: ProviderId, api_key: &str) -> Result<String, String> {
     let (url, auth_header) = match provider {
         ProviderId::OpenCodeGo => (
             "https://opencode.ai/zen/go/v1/models",
