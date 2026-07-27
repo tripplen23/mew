@@ -3,7 +3,7 @@ repos:
     hooks:
       - id: cargo-fmt
         name: cargo fmt
-        entry: cargo fmt --all --
+        entry: sh -c 'cd mew-core && cargo fmt --all --'
         language: system
         types: [rust]
         pass_filenames: false
@@ -11,7 +11,7 @@ repos:
         files: ^mew-core/.*\.rs$
       - id: cargo-clippy
         name: cargo clippy
-        entry: cargo clippy --workspace --all-targets -- -D warnings
+        entry: sh -c 'cd mew-core && cargo clippy --workspace --all-targets -- -D warnings'
         language: system
         types: [rust]
         pass_filenames: false

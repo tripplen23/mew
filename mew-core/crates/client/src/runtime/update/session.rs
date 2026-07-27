@@ -590,6 +590,7 @@ pub(super) fn on_connect_provider_key(s: &mut SessionState, key: KeyEvent) -> Cm
         Done => {
             if key.code == KeyCode::Enter || key.code == KeyCode::Esc {
                 s.overlay = Overlay::None;
+                state.api_key.clear();
                 state.key_input = TextArea::default();
             }
             Cmd::None

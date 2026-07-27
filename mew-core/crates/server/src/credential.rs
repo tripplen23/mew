@@ -94,15 +94,22 @@ impl CredentialStore {
         let yaml = serde_yaml::to_string(&list)
             .map_err(|e| EngineError::Other(format!("failed to serialize credentials: {e}")))?;
 
-        // Atomic write: write to temp file, then rename.
+        // Atomic write: create temp file with restricted permissions, then rename.
         let tmp_path = credentials_path().with_extension("yaml.tmp");
-        std::fs::write(&tmp_path, &yaml)
-            .map_err(|e| EngineError::Other(format!("failed to write credentials file: {e}")))?;
-        // Restrict to owner-only (0600) on Unix.
-        #[cfg(unix)]
         {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o600)).ok();
+            use std::io::Write;
+            let mut opts = std::fs::OpenOptions::new();
+            opts.write(true).create_new(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                opts.mode(0o600);
+            }
+            let mut file = opts.open(&tmp_path).map_err(|e| {
+                EngineError::Other(format!("failed to create temp credentials file: {e}"))
+            })?;
+            file.write_all(yaml.as_bytes())
+                .map_err(|e| EngineError::Other(format!("failed to write credentials: {e}")))?;
         }
         std::fs::rename(&tmp_path, credentials_path())
             .map_err(|e| EngineError::Other(format!("failed to write credentials file: {e}")))?;
