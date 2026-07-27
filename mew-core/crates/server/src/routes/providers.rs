@@ -1,6 +1,10 @@
 use axum::Json;
+use axum::extract::State;
+use mewcode_protocol::credential::{ConnectProviderRequest, ConnectProviderResponse, ProviderStatus};
 use mewcode_protocol::{ModelId, ModelKind, ProviderId};
 use serde::Serialize;
+
+use crate::AppState;
 
 /// One model entry in a provider's model list.
 #[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
@@ -37,11 +41,12 @@ pub struct ProviderEntry {
         (status = 200, description = "Provider registry", body = [ProviderEntry]),
     ),
 )]
-pub async fn list_providers() -> Json<Vec<ProviderEntry>> {
+pub async fn list_providers(State(state): State<AppState>) -> Json<Vec<ProviderEntry>> {
+    let store = state.credentials.lock().await;
     let entries = [ProviderId::OpenCodeGo, ProviderId::OpenAi]
         .into_iter()
         .map(|provider| {
-            let available = provider_available(provider);
+            let available = store.has(provider);
             let models = if available {
                 models_for_provider(provider)
             } else {
@@ -56,6 +61,41 @@ pub async fn list_providers() -> Json<Vec<ProviderEntry>> {
         })
         .collect();
     Json(entries)
+}
+
+/// `POST /providers/connect` — validate and store an API key.
+#[utoipa::path(
+    post,
+    path = "/providers/connect",
+    tag = "meta",
+    request_body = ConnectProviderRequest,
+    responses(
+        (status = 200, description = "Connection result", body = ConnectProviderResponse),
+    ),
+)]
+pub async fn connect_provider(
+    State(state): State<AppState>,
+    Json(req): Json<ConnectProviderRequest>,
+) -> Json<ConnectProviderResponse> {
+    let mut store = state.credentials.lock().await;
+    let resp = store.connect(req).await;
+    Json(resp)
+}
+
+/// `GET /providers/status` — connection status for all providers.
+#[utoipa::path(
+    get,
+    path = "/providers/status",
+    tag = "meta",
+    responses(
+        (status = 200, description = "Provider connection status", body = [ProviderStatus]),
+    ),
+)]
+pub async fn provider_status(
+    State(state): State<AppState>,
+) -> Json<Vec<ProviderStatus>> {
+    let store = state.credentials.lock().await;
+    Json(store.status())
 }
 
 fn models_for_provider(provider: ProviderId) -> Vec<ModelEntry> {
@@ -73,14 +113,5 @@ fn model_entry(model: ModelId) -> ModelEntry {
         display_name: model.display_name(),
         provider: model.provider(),
         kind: model.kind(),
-    }
-}
-
-fn provider_available(provider: ProviderId) -> bool {
-    match provider {
-        ProviderId::OpenCodeGo => true,
-        ProviderId::OpenAi => std::env::var("OPENAI_API_KEY")
-            .ok()
-            .is_some_and(|k| !k.trim().is_empty()),
     }
 }

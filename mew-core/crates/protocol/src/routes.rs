@@ -36,3 +36,9 @@ pub const MEMORY_POST: &str = "/memory";
 
 /// `POST /sessions/{id}/compact` — manually trigger context compaction.
 pub const SESSION_COMPACT: &str = "/sessions/{id}/compact";
+
+/// `POST /providers/connect` — validate and store a provider API key.
+pub const PROVIDER_CONNECT: &str = "/providers/connect";
+
+/// `GET /providers/status` — connection status for all providers.
+pub const PROVIDER_STATUS: &str = "/providers/status";

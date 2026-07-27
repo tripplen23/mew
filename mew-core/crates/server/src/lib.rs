@@ -20,10 +20,11 @@ use std::sync::Arc;
 
 use axum::Router;
 use mewcode_engine::context::MemoryStore;
+use mewcode_engine::credential::CredentialStore;
 use mewcode_engine::tools::ApprovalBroker;
 use mewcode_protocol::routes::{
-    CHAT, CHOICES, HEALTH, MEMORY_GET, MEMORY_POST, PROVIDERS, SESSION_BY_ID, SESSION_COMPACT,
-    SESSIONS, SKILLS, STORAGE_STATUS,
+    CHAT, CHOICES, HEALTH, MEMORY_GET, MEMORY_POST, PROVIDERS, PROVIDER_CONNECT,
+    PROVIDER_STATUS, SESSION_BY_ID, SESSION_COMPACT, SESSIONS, SKILLS, STORAGE_STATUS,
 };
 use tokio::sync::{Mutex, RwLock};
 use tower_http::trace::TraceLayer;
@@ -50,6 +51,8 @@ pub struct AppState {
     pub store: Arc<dyn SessionStore>,
     /// Memory fact store.
     pub memory: MemoryStore,
+    /// Provider credential store.
+    pub credentials: Arc<tokio::sync::Mutex<CredentialStore>>,
     /// In-memory pending choice/approval broker.
     pub approvals: ApprovalBroker,
     /// Per-session accumulated token usage for compaction decisions.
@@ -61,10 +64,12 @@ pub struct AppState {
 impl AppState {
     /// Construct a new state over the given session store and memory store.
     pub fn new(config: ServerConfig, store: Arc<dyn SessionStore>, memory: MemoryStore) -> Self {
+        let credentials = CredentialStore::load().unwrap_or_default();
         Self {
             config,
             store,
             memory,
+            credentials: Arc::new(tokio::sync::Mutex::new(credentials)),
             approvals: ApprovalBroker::default(),
             session_tokens: Arc::new(RwLock::new(HashMap::new())),
             session_operations: Arc::new(Mutex::new(HashMap::new())),
@@ -137,6 +142,14 @@ pub fn build_app(state: AppState) -> Router {
         .route(
             PROVIDERS,
             axum::routing::get(routes::providers::list_providers),
+        )
+        .route(
+            PROVIDER_CONNECT,
+            axum::routing::post(routes::providers::connect_provider),
+        )
+        .route(
+            PROVIDER_STATUS,
+            axum::routing::get(routes::providers::provider_status),
         )
         .route(SKILLS, axum::routing::get(routes::skills::list_skills))
         .route(
