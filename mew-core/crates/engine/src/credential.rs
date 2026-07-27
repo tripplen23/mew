@@ -126,37 +126,24 @@ fn env_key(provider: ProviderId) -> Option<String> {
 /// Make a test API call to verify the key works.
 /// Returns the ISO-8601 timestamp on success, or an error message.
 pub async fn validate_key(provider: ProviderId, api_key: &str) -> Result<String, String> {
-    let (url, auth_header) = match provider {
-        ProviderId::OpenCodeGo => (
-            "https://opencode.ai/zen/go/v1/models",
-            format!("Bearer {api_key}"),
-        ),
-        ProviderId::OpenAi => (
-            "https://api.openai.com/v1/models",
-            format!("Bearer {api_key}"),
-        ),
-    };
+    match provider {
+        ProviderId::OpenCodeGo => validate_opencodego_key(api_key).await,
+        ProviderId::OpenAi => validate_openai_key(api_key).await,
+    }
+}
 
-    let client = reqwest::Client::builder()
+/// Validate an OpenAI key by listing models (requires auth).
+async fn validate_openai_key(api_key: &str) -> Result<String, String> {
+    let url = "https://api.openai.com/v1/models";
+    let resp = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .build()
-        .map_err(|e| format!("failed to create HTTP client: {e}"))?;
-
-    let resp = client
+        .map_err(|e| format!("failed to create HTTP client: {e}"))?
         .get(url)
-        .header("Authorization", &auth_header)
-        .header("Content-Type", "application/json")
+        .header("Authorization", format!("Bearer {api_key}"))
         .send()
         .await
-        .map_err(|e| {
-            if e.is_timeout() {
-                "connection timed out — check your network".to_string()
-            } else if e.is_connect() {
-                format!("could not reach {provider} — check your network")
-            } else {
-                format!("network error: {e}")
-            }
-        })?;
+        .map_err(|e| network_error(e, "OpenAI"))?;
 
     match resp.status() {
         reqwest::StatusCode::OK => Ok(chrono::Utc::now().to_rfc3339()),
@@ -164,11 +151,61 @@ pub async fn validate_key(provider: ProviderId, api_key: &str) -> Result<String,
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
             Err(format!(
-                "invalid API key — {provider} returned {status}: {body}",
+                "invalid API key — OpenAI returned {status}: {body}",
             ))
         }
-        status => Err(format!(
-            "unexpected response from {provider}: HTTP {status}"
-        )),
+        status => Err(format!("unexpected response from OpenAI: HTTP {status}")),
+    }
+}
+
+/// Validate an OpenCode Go key by making a minimal chat completion.
+/// The `/models` endpoint is public (always returns 200), so we use a
+/// real inference call with max_tokens=1 to verify the key.
+async fn validate_opencodego_key(api_key: &str) -> Result<String, String> {
+    let url = "https://opencode.ai/zen/go/v1/chat/completions";
+    let body = serde_json::json!({
+        "model": "minimax-m3",
+        "messages": [{"role": "user", "content": "hi"}],
+        "max_tokens": 1,
+        "stream": false
+    });
+
+    let resp = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("failed to create HTTP client: {e}"))?
+        .post(url)
+        .header("Authorization", format!("Bearer {api_key}"))
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| network_error(e, "OpenCode Go"))?;
+
+    match resp.status() {
+        reqwest::StatusCode::OK => Ok(chrono::Utc::now().to_rfc3339()),
+        reqwest::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN => {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            Err(format!(
+                "invalid API key — OpenCode Go returned {status}: {body}",
+            ))
+        }
+        status => {
+            let body = resp.text().await.unwrap_or_default();
+            Err(format!(
+                "validation failed — OpenCode Go returned HTTP {status}: {body}",
+            ))
+        }
+    }
+}
+
+fn network_error(e: reqwest::Error, provider: &str) -> String {
+    if e.is_timeout() {
+        "connection timed out — check your network".to_string()
+    } else if e.is_connect() {
+        format!("could not reach {provider} — check your network")
+    } else {
+        format!("network error: {e}")
     }
 }
