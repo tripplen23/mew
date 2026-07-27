@@ -7,10 +7,9 @@ use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 
+use mewcode_engine::EngineError;
 use mewcode_protocol::ProviderId;
 use mewcode_protocol::credential::{ProviderCredential, ProviderStatus};
-
-use crate::error::EngineError;
 
 /// File name inside the Mew config directory.
 const CREDENTIALS_FILE: &str = "credentials.yaml";

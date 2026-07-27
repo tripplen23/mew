@@ -4,6 +4,7 @@
 #![forbid(unsafe_code)]
 
 pub mod config;
+pub mod credential;
 pub mod error;
 pub mod openapi;
 pub mod routes;
@@ -20,7 +21,6 @@ use std::sync::Arc;
 
 use axum::Router;
 use mewcode_engine::context::MemoryStore;
-use mewcode_engine::credential::CredentialStore;
 use mewcode_engine::tools::ApprovalBroker;
 use mewcode_protocol::routes::{
     CHAT, CHOICES, HEALTH, MEMORY_GET, MEMORY_POST, PROVIDER_CONNECT, PROVIDER_STATUS, PROVIDERS,
@@ -31,6 +31,7 @@ use tower_http::trace::TraceLayer;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
+use crate::credential::CredentialStore;
 use crate::openapi::ApiDoc;
 use crate::store::{SessionStore, StoreError};
 

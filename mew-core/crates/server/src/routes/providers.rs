@@ -1,6 +1,6 @@
+use crate::credential::validate_key;
 use axum::Json;
 use axum::extract::State;
-use mewcode_engine::credential::validate_key;
 use mewcode_protocol::credential::{
     ConnectProviderRequest, ConnectProviderResponse, ProviderCredential, ProviderStatus,
 };
