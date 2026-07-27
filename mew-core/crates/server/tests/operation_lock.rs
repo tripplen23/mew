@@ -10,7 +10,7 @@ fn test_state() -> mewcode_server::AppState {
     let config = ServerConfig {
         host: "127.0.0.1".into(),
         port: 0,
-        opencode_go_api_key: "test-key".into(),
+        opencode_go_api_key: Some("test-key".into()),
         openai_api_key: None,
         default_model: None,
         log: "off".into(),

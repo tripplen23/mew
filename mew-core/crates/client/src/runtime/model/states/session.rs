@@ -265,16 +265,40 @@ impl TranscriptCache {
 }
 
 /// State for the provider connect dialog.
-#[derive(Debug, Default)]
 pub struct ConnectProviderState {
     /// Which step in the wizard: picking provider, entering key, or awaiting validation.
     pub step: ConnectStep,
     /// Which provider the user selected (set after step 1).
     pub selected_provider: Option<ProviderId>,
-    /// The API key the user typed (masked in the UI).
+    /// The API key the user typed.
     pub api_key: String,
     /// Error message from validation, if any.
     pub error: Option<String>,
+    /// Inline text input for the key entry step (masked in UI).
+    pub key_input: TextArea<'static>,
+}
+
+impl Default for ConnectProviderState {
+    fn default() -> Self {
+        Self {
+            step: ConnectStep::default(),
+            selected_provider: None,
+            api_key: String::new(),
+            error: None,
+            key_input: TextArea::default(),
+        }
+    }
+}
+
+impl std::fmt::Debug for ConnectProviderState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ConnectProviderState")
+            .field("step", &self.step)
+            .field("selected_provider", &self.selected_provider)
+            .field("api_key", &"***")
+            .field("error", &self.error)
+            .finish()
+    }
 }
 
 /// Steps in the provider connect wizard.

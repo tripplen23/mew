@@ -603,17 +603,22 @@ pub(super) fn connect_provider_lines(s: &SessionState) -> Vec<Line<'static>> {
                 .selected_provider
                 .map(|p| p.to_string())
                 .unwrap_or_default();
+            let key_text = state.key_input.lines().join("");
+            let masked: String = key_text.chars().map(|_| '•').collect();
+            let cursor_pos = key_text.len();
+            let cursor = if cursor_pos > 0 { "▌" } else { "" };
             let mut lines = vec![
                 Line::from(vec![
                     Span::raw("Provider: "),
                     Span::styled(provider, Style::default().add_modifier(Modifier::BOLD)),
                 ]),
                 Line::from(""),
-                Line::from("Enter your API key:"),
-                Line::from(Span::styled(
-                    "Key input is hidden in this dialog (type below)",
-                    Style::default().fg(Color::DarkGray),
-                )),
+                Line::from("Enter your API key (type directly):"),
+                Line::from(""),
+                Line::from(vec![Span::styled(
+                    format!("  {masked}{cursor}"),
+                    Style::default().fg(Color::Yellow),
+                )]),
             ];
             if let Some(ref error) = state.error {
                 lines.push(Line::from(""));

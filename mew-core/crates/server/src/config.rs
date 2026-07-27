@@ -56,8 +56,9 @@ pub struct ServerConfig {
     /// Port to bind to.
     #[serde(default = "default_port")]
     pub port: u16,
-    /// OpenCode Go API key. Required.
-    pub opencode_go_api_key: String,
+    /// OpenCode Go API key. Optional — users can connect via TUI `/connect` instead.
+    #[serde(default)]
+    pub opencode_go_api_key: Option<String>,
     /// Native OpenAI API key. Optional.
     #[serde(default)]
     pub openai_api_key: Option<String>,

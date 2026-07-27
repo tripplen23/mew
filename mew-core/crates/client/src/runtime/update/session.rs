@@ -65,7 +65,6 @@ pub(super) fn on_session_key(
             }
             if was_connect {
                 s.connect_provider = ConnectProviderState::default();
-                s.input = TextArea::default();
             }
         }
         return Cmd::None;
@@ -546,7 +545,7 @@ pub(super) fn on_connect_provider_key(s: &mut SessionState, key: KeyEvent) -> Cm
                 let provider = state.selected_provider.unwrap_or(ProviderId::OpenCodeGo);
                 state.selected_provider = Some(provider);
                 state.step = EnterKey;
-                s.input = TextArea::new(vec![String::new()]);
+                state.key_input = TextArea::default();
                 Cmd::None
             }
             KeyCode::Up | KeyCode::Down => {
@@ -561,7 +560,7 @@ pub(super) fn on_connect_provider_key(s: &mut SessionState, key: KeyEvent) -> Cm
         },
         EnterKey => match key.code {
             KeyCode::Enter => {
-                let api_key = s.input.lines().join("\n").trim().to_string();
+                let api_key = state.key_input.lines().join("\n").trim().to_string();
                 if api_key.is_empty() {
                     state.error = Some("API key cannot be empty".to_string());
                     return Cmd::None;
@@ -576,7 +575,7 @@ pub(super) fn on_connect_provider_key(s: &mut SessionState, key: KeyEvent) -> Cm
                 })
             }
             _ => {
-                s.input.input(key_to_input(key));
+                state.key_input.input(key_to_input(key));
                 Cmd::None
             }
         },
@@ -584,7 +583,7 @@ pub(super) fn on_connect_provider_key(s: &mut SessionState, key: KeyEvent) -> Cm
         Done => {
             if key.code == KeyCode::Enter || key.code == KeyCode::Esc {
                 s.overlay = Overlay::None;
-                s.input = TextArea::default();
+                state.key_input = TextArea::default();
             }
             Cmd::None
         }
