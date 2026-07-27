@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.6](https://github.com/tripplen23/mew/compare/v0.3.5...v0.3.6) (2026-07-27)
+
+
+### Bug fixes
+
+* add release-please manifest and sync Cargo.toml version to 0.3.5 ([#151](https://github.com/tripplen23/mew/issues/151)) ([c06bf5f](https://github.com/tripplen23/mew/commit/c06bf5f3b9b12819ab0f9e4bb55bb7135a1d71c0))
+
 ## [0.3.5](https://github.com/tripplen23/mew/compare/v0.3.4...v0.3.5) (2026-07-26)
 
 
