@@ -35,10 +35,19 @@ impl EngineConfig {
     /// Required: `OPENCODE_GO_API_KEY`.
     /// Optional: `MEWCODE_ENGINE_BASE_URL` (defaults to OpenCode Go production),
     /// `OPENAI_API_KEY`.
+    ///
+    /// Falls back to the credential store (`~/.config/mew/credentials.yaml`)
+    /// when environment variables are not set, so users who connected via
+    /// `/connect` TUI can chat without restarting the server.
     pub fn from_env() -> Result<Self, EngineError> {
         let api_key = env::var(OPENCODE_GO_API_KEY)
             .ok()
             .filter(|s| !s.trim().is_empty())
+            .or_else(|| {
+                crate::credential::CredentialStore::load()
+                    .ok()
+                    .and_then(|store| store.api_key(mewcode_protocol::ProviderId::OpenCodeGo))
+            })
             .ok_or(EngineError::MissingApiKey)?;
 
         let base_url = env::var(ENV_BASE_URL).unwrap_or_else(|_| DEFAULT_BASE_URL.to_string());
@@ -50,7 +59,12 @@ impl EngineConfig {
 
         let openai_api_key = env::var(OPENAI_API_KEY)
             .ok()
-            .filter(|s| !s.trim().is_empty());
+            .filter(|s| !s.trim().is_empty())
+            .or_else(|| {
+                crate::credential::CredentialStore::load()
+                    .ok()
+                    .and_then(|store| store.api_key(mewcode_protocol::ProviderId::OpenAi))
+            });
 
         Ok(Self {
             api_key,

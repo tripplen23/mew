@@ -604,9 +604,7 @@ pub(super) fn connect_provider_lines(s: &SessionState) -> Vec<Line<'static>> {
                 .map(|p| p.to_string())
                 .unwrap_or_default();
             let key_text = state.key_input.lines().join("");
-            let masked: String = key_text.chars().map(|_| '•').collect();
-            let cursor_pos = key_text.len();
-            let cursor = if cursor_pos > 0 { "▌" } else { "" };
+            let cursor = if key_text.is_empty() { "▌" } else { "│" };
             let mut lines = vec![
                 Line::from(vec![
                     Span::raw("Provider: "),
@@ -616,7 +614,7 @@ pub(super) fn connect_provider_lines(s: &SessionState) -> Vec<Line<'static>> {
                 Line::from("Enter your API key (type directly):"),
                 Line::from(""),
                 Line::from(vec![Span::styled(
-                    format!("  {masked}{cursor}"),
+                    format!("  {key_text}{cursor}"),
                     Style::default().fg(Color::Yellow),
                 )]),
             ];
