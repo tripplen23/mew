@@ -213,6 +213,13 @@ pub(super) fn on_session_paste(s: &mut SessionState, text: String) -> Cmd {
         return Cmd::None;
     }
 
+    // When the connect provider dialog is in EnterKey step, paste goes
+    // into the overlay's key input, not the chat composer.
+    if s.overlay == Overlay::ConnectProvider && s.connect_provider.step == ConnectStep::EnterKey {
+        s.connect_provider.key_input.insert_str(text);
+        return Cmd::None;
+    }
+
     let char_count = text.chars().count();
     let line_count = text.lines().count().max(1);
     if line_count == 1 && char_count <= COMPACT_PASTE_CHARS {
