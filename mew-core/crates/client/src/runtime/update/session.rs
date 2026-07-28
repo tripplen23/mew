@@ -535,6 +535,8 @@ fn on_session_command(s: &mut SessionState, args: &[&str], toast: &mut Option<To
 fn on_connect_command(s: &mut SessionState) -> Cmd {
     s.overlay = Overlay::ConnectProvider;
     s.connect_provider = ConnectProviderState::default();
+    s.input = TextArea::default();
+    s.pasted.clear();
     Cmd::None
 }
 
@@ -542,6 +544,10 @@ fn on_connect_command(s: &mut SessionState) -> Cmd {
 pub(super) fn on_connect_provider_key(s: &mut SessionState, key: KeyEvent) -> Cmd {
     use ConnectStep::*;
     use mewcode_protocol::credential::ConnectProviderRequest;
+
+    if s.connect_provider.step == EnterKey {
+        promote_composer_draft_to_connect_key(s);
+    }
 
     let state = &mut s.connect_provider;
 
@@ -600,4 +606,14 @@ pub(super) fn on_connect_provider_key(s: &mut SessionState, key: KeyEvent) -> Cm
             Cmd::None
         }
     }
+}
+
+fn promote_composer_draft_to_connect_key(s: &mut SessionState) {
+    let draft = s.input.lines().join("\n");
+    if draft.is_empty() {
+        return;
+    }
+    s.connect_provider.key_input.insert_str(&draft);
+    s.input = TextArea::default();
+    s.pasted.clear();
 }

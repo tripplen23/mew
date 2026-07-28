@@ -603,7 +603,8 @@ pub(super) fn connect_provider_lines(s: &SessionState) -> Vec<Line<'static>> {
                 .selected_provider
                 .map(|p| p.to_string())
                 .unwrap_or_default();
-            let key_text = state.key_input.lines().join("");
+            let mut key_text = state.key_input.lines().join("");
+            key_text.push_str(&s.input.lines().join(""));
             let cursor = if key_text.is_empty() { "▌" } else { "│" };
             let mut lines = vec![
                 Line::from(vec![

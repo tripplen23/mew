@@ -390,6 +390,9 @@ async fn build_engine_config(state: &AppState) -> mewcode_engine::EngineConfig {
         .or_else(|| state.config.openai_api_key.clone())
         .or_else(|| std::env::var("OPENAI_API_KEY").ok());
 
+    let base_url = std::env::var(mewcode_engine::config::ENV_BASE_URL)
+        .unwrap_or_else(|_| mewcode_engine::config::DEFAULT_BASE_URL.to_string());
+
     mewcode_engine::EngineConfig {
         api_key,
         openai_api_key,
@@ -400,6 +403,6 @@ async fn build_engine_config(state: &AppState) -> mewcode_engine::EngineConfig {
             .as_deref()
             .and_then(|s| s.parse().ok())
             .unwrap_or(mewcode_protocol::ModelId::DEFAULT),
-        base_url: "https://opencode.ai/zen/go".to_string(),
+        base_url,
     }
 }
