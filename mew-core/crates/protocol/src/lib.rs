@@ -13,6 +13,7 @@ pub mod display;
 pub mod env;
 pub mod event;
 pub mod message;
+pub mod migration;
 pub mod mode;
 pub mod model;
 pub mod routes;
