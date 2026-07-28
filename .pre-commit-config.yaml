@@ -7,7 +7,6 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
-        always_run: true
         files: ^mew-core/.*\.rs$
       - id: cargo-clippy
         name: cargo clippy
@@ -29,5 +28,4 @@ repos:
         language: system
         types: [go]
         pass_filenames: false
-        always_run: true
         files: ^mew-mcp/.*\.go$
