@@ -26,6 +26,43 @@ pub struct ParityReport {
     pub verdict: Verdict,
 }
 
+impl ParityReport {
+    /// Create a report with an auto-computed verdict.
+    ///
+    /// Returns `Passed` only when every assertion passes and there are no
+    /// unexplained blocker/major deviations. Otherwise `Failed`. Returns
+    /// `Inconclusive` when there are no assertions at all (nothing to judge).
+    pub fn new(
+        run_id: String,
+        baseline_version: String,
+        candidate_version: String,
+        assertions: Vec<AssertionResult>,
+        deviations: Vec<Deviation>,
+        token_usage: TokenUsage,
+    ) -> Self {
+        let verdict = if assertions.is_empty() {
+            Verdict::Inconclusive
+        } else if assertions.iter().all(|a| a.passed)
+            && !deviations
+                .iter()
+                .any(|d| d.severity == DeviationSeverity::Blocker && !d.explained)
+        {
+            Verdict::Passed
+        } else {
+            Verdict::Failed
+        };
+        Self {
+            run_id,
+            baseline_version,
+            candidate_version,
+            assertions,
+            deviations,
+            token_usage,
+            verdict,
+        }
+    }
+}
+
 /// Result of a single behavioral assertion check.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AssertionResult {
@@ -69,9 +106,9 @@ pub struct Deviation {
     pub id: String,
     /// What was observed in the baseline.
     pub description: String,
-    /// What was observed in the candidate.
+    /// What was observed in the baseline (original system).
     pub baseline_behavior: String,
-    /// What was observed in the candidate.
+    /// What was observed in the candidate (migrated system).
     pub candidate_behavior: String,
     /// Severity.
     pub severity: DeviationSeverity,
@@ -80,7 +117,7 @@ pub struct Deviation {
     pub explained: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum DeviationSeverity {
     /// Expected and documented. Not a defect.

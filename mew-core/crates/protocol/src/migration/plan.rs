@@ -16,6 +16,27 @@ pub struct MigrationPlan {
     pub estimated_tokens: u64,
 }
 
+impl MigrationPlan {
+    /// Validate the plan's internal consistency.
+    ///
+    /// Returns an error if any dependency references a non-existent step.
+    pub fn validate(&self) -> Result<(), String> {
+        let ids: std::collections::HashSet<&str> =
+            self.steps.iter().map(|s| s.id.as_str()).collect();
+        for step in &self.steps {
+            for dep in &step.depends_on {
+                if !ids.contains(dep.as_str()) {
+                    return Err(format!(
+                        "step '{}' depends on unknown step '{}'",
+                        step.id, dep
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 /// A single step in the migration plan.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MigrationStep {
