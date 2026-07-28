@@ -23,7 +23,7 @@ pub struct RunManifest {
 /// Information about the source system being migrated.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SourceInfo {
-    /// Repository URL (e.g. https://github.com/user/repo).
+    /// Repository URL (e.g. <https://github.com/user/repo>).
     pub repo_url: String,
     /// Git commit hash pinned for reproducibility.
     pub commit: String,
