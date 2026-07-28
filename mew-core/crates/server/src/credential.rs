@@ -71,10 +71,6 @@ impl CredentialStore {
                     .credentials
                     .get(&provider)
                     .and_then(|c| c.validated_at.clone()),
-                label: self
-                    .credentials
-                    .get(&provider)
-                    .and_then(|c| c.label.clone()),
             })
             .collect()
     }

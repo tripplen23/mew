@@ -1,7 +1,7 @@
 //! Server configuration.
 
-use figment::Figment;
 use figment::providers::{Env, Format, Toml};
+use figment::Figment;
 use mewcode_protocol::env::{CONFIG_FILE, OPENCODE_GO_API_KEY};
 use serde::Deserialize;
 
@@ -56,7 +56,7 @@ pub struct ServerConfig {
     /// Port to bind to.
     #[serde(default = "default_port")]
     pub port: u16,
-    /// OpenCode Go API key. Optional — users can connect via TUI `/connect` instead.
+    /// OpenCode Go API key. Optional.
     #[serde(default)]
     pub opencode_go_api_key: Option<String>,
     /// Native OpenAI API key. Optional.

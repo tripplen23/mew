@@ -24,9 +24,6 @@ pub struct ProviderCredential {
     /// When the key was last validated via a test API call.
     /// `None` = never validated (uploaded but not tested).
     pub validated_at: Option<String>,
-    /// Human-readable label (e.g. "Work account").
-    #[serde(default)]
-    pub label: Option<String>,
 }
 
 impl ProviderCredential {
@@ -36,7 +33,6 @@ impl ProviderCredential {
             provider,
             api_key,
             validated_at: None,
-            label: None,
         }
     }
 }
@@ -47,7 +43,6 @@ impl fmt::Debug for ProviderCredential {
             .field("provider", &self.provider)
             .field("api_key", &"***")
             .field("validated_at", &self.validated_at)
-            .field("label", &self.label)
             .finish()
     }
 }
@@ -106,8 +101,6 @@ pub struct ProviderStatus {
     pub connected: bool,
     /// When the key was last validated (if connected).
     pub validated_at: Option<String>,
-    /// Human-friendly label (if set).
-    pub label: Option<String>,
 }
 
 impl fmt::Display for ProviderStatus {

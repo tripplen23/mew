@@ -64,7 +64,9 @@ pub(super) fn on_session_key(
                 s.pasted.clear();
             }
             if was_connect {
+                let prev_attempt = s.connect_provider.attempt;
                 s.connect_provider = ConnectProviderState::default();
+                s.connect_provider.attempt = prev_attempt.wrapping_add(1);
             }
         }
         return Cmd::None;
@@ -537,7 +539,11 @@ fn on_session_command(s: &mut SessionState, args: &[&str], toast: &mut Option<To
 /// Handle `/connect`: open the provider connect dialog.
 fn on_connect_command(s: &mut SessionState) -> Cmd {
     s.overlay = Overlay::ConnectProvider;
-    s.connect_provider = ConnectProviderState::default();
+    let next = s.connect_provider.attempt.wrapping_add(1);
+    s.connect_provider = ConnectProviderState {
+        attempt: next,
+        ..Default::default()
+    };
     s.input = TextArea::default();
     s.pasted.clear();
     Cmd::None

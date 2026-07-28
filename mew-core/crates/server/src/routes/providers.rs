@@ -95,7 +95,6 @@ pub async fn connect_provider(
                 provider,
                 api_key: api_key.clone(),
                 validated_at: Some(validated_at.clone()),
-                label: None,
             };
             // Brief critical section: lock, insert, save, unlock.
             let mut store = state.credentials.lock().await;
