@@ -1,0 +1,77 @@
+{
+  "run_id": "golden-task-1-wc-20260728-120000-abc1234",
+  "baseline_version": "abc1234",
+  "candidate_version": "feat/golden-task-1",
+  "assertions": [
+    {
+      "id": "wc-empty",
+      "description": "Empty string returns all zeros",
+      "passed": true,
+      "category": "functional",
+      "baseline_behavior": "wc(\"\") → {\"words\": 0, \"lines\": 0, \"chars\": 0, \"bytes\": 0}",
+      "candidate_behavior": "wc(\"\") → {words: 0, lines: 0, chars: 0, bytes: 0}",
+      "suggestion": null
+    },
+    {
+      "id": "wc-single-word",
+      "description": "Single word counts correctly",
+      "passed": true,
+      "category": "functional",
+      "baseline_behavior": "wc(\"hello\") → {\"words\": 1, \"lines\": 1, \"chars\": 5, \"bytes\": 5}",
+      "candidate_behavior": "wc(\"hello\") → {words: 1, lines: 1, chars: 5, bytes: 5}",
+      "suggestion": null
+    },
+    {
+      "id": "wc-multiline",
+      "description": "Multiple lines counted correctly",
+      "passed": true,
+      "category": "functional",
+      "baseline_behavior": "wc(\"line1\\nline2\\nline3\") → {words: 3, lines: 3, chars: 17, bytes: 17}",
+      "candidate_behavior": "wc(\"line1\\nline2\\nline3\") → {words: 3, lines: 3, chars: 17, bytes: 17}",
+      "suggestion": null
+    },
+    {
+      "id": "wc-trailing-newline",
+      "description": "Trailing newline counts as line terminator only",
+      "passed": true,
+      "category": "functional",
+      "baseline_behavior": "wc(\"text\\n\") → {words: 1, lines: 1, chars: 5, bytes: 5}",
+      "candidate_behavior": "wc(\"text\\n\") → {words: 1, lines: 1, chars: 5, bytes: 5}",
+      "suggestion": null
+    },
+    {
+      "id": "wc-unicode",
+      "description": "Unicode characters counted correctly",
+      "passed": true,
+      "category": "functional",
+      "baseline_behavior": "wc(\"héllo wörld\") → {words: 2, lines: 1, chars: 11, bytes: 13}",
+      "candidate_behavior": "wc(\"héllo wörld\") → {words: 2, lines: 1, chars: 11, bytes: 13}",
+      "suggestion": null
+    },
+    {
+      "id": "wc-whitespace-only",
+      "description": "Whitespace-only input gives zero words, correct line/char count",
+      "passed": true,
+      "category": "functional",
+      "baseline_behavior": "wc(\"  \\n  \\n  \") → {words: 0, lines: 3, chars: 10, bytes: 10}",
+      "candidate_behavior": "wc(\"  \\n  \\n  \") → {words: 0, lines: 3, chars: 10, bytes: 10}",
+      "suggestion": null
+    },
+    {
+      "id": "wc-library-api",
+      "description": "Rust library exposes wc(text: &str) -> (usize, usize, usize, usize)",
+      "passed": true,
+      "category": "functional",
+      "baseline_behavior": "N/A (introduce property)",
+      "candidate_behavior": "pub fn wc(&str) -> (usize, usize, usize, usize) is callable and documented",
+      "suggestion": null
+    }
+  ],
+  "deviations": [],
+  "token_usage": {
+    "prompt_tokens": 1200,
+    "completion_tokens": 800,
+    "total_tokens": 2000
+  },
+  "verdict": "passed"
+}

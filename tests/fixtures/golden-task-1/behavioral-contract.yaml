@@ -1,0 +1,67 @@
+run_id: golden-task-1-wc-20260728-120000-abc1234
+baseline_version: abc1234
+candidate_version: HEAD
+properties:
+  - id: wc-empty
+    description: "Empty string returns all zeros"
+    action: preserve
+    oracle:
+      kind: executable-baseline
+      command: "python3 -c 'from wc import wc; print(wc(\"\"))'"
+      expected: '{"words": 0, "lines": 0, "chars": 0, "bytes": 0}'
+    tolerance: exact
+
+  - id: wc-single-word
+    description: "Single word counts correctly"
+    action: preserve
+    oracle:
+      kind: executable-baseline
+      command: "python3 -c 'from wc import wc; print(wc(\"hello\"))'"
+      expected: '{"words": 1, "lines": 1, "chars": 5, "bytes": 5}'
+    tolerance: exact
+
+  - id: wc-multiline
+    description: "Multiple lines counted correctly"
+    action: preserve
+    oracle:
+      kind: executable-baseline
+      command: "python3 -c 'from wc import wc; print(wc(\"line1\\nline2\\nline3\"))'"
+      expected: '{"words": 3, "lines": 3, "chars": 17, "bytes": 17}'
+    tolerance: exact
+
+  - id: wc-trailing-newline
+    description: "Trailing newline counts as line terminator only"
+    action: preserve
+    oracle:
+      kind: executable-baseline
+      command: "python3 -c 'from wc import wc; print(wc(\"text\\n\"))'"
+      expected: '{"words": 1, "lines": 1, "chars": 5, "bytes": 5}'
+    tolerance: exact
+
+  - id: wc-unicode
+    description: "Unicode characters counted as scalar values, not bytes"
+    action: preserve
+    oracle:
+      kind: executable-baseline
+      command: "python3 -c 'from wc import wc; print(wc(\"héllo wörld\"))'"
+      expected: '{"words": 2, "lines": 1, "chars": 11, "bytes": 13}'
+    tolerance: exact
+
+  - id: wc-whitespace-only
+    description: "Whitespace-only input gives zero words, correct line/char count"
+    action: preserve
+    oracle:
+      kind: executable-baseline
+      command: "python3 -c 'from wc import wc; print(wc(\"  \\n  \\n  \"))'"
+      expected: '{"words": 0, "lines": 3, "chars": 10, "bytes": 10}'
+    tolerance: exact
+
+  - id: wc-library-api
+    description: "Rust library exposes wc(text: &str) -> (usize, usize, usize, usize)"
+    action: introduce
+    oracle:
+      kind: contract-spec
+      assertion: "pub fn wc(text: &str) -> (usize, usize, usize, usize) is callable and documented"
+
+verification_route: differential
+unknowns: []

@@ -1,0 +1,41 @@
+run_id: golden-task-1-wc-20260728-120000-abc1234
+scope_mode: language_port
+units:
+  - id: inspect-baseline
+    order: 1
+    description: "Read tests/fixtures/wc.py and document its behavior surface"
+    depends_on: []
+    target_paths:
+      - tests/fixtures/wc.py
+    verification: "python3 -c 'import wc; wc.wc(\"test\")' exits 0"
+
+  - id: write-rust-lib
+    order: 2
+    description: "Implement wc() in mew-core/crates/engine/src/wc.rs with identical behavior"
+    depends_on: [inspect-baseline]
+    target_paths:
+      - mew-core/crates/engine/src/wc.rs
+    verification: "cargo check -p mewcode-engine"
+
+  - id: add-tests
+    order: 3
+    description: "Add Rust tests matching every Python baseline case"
+    depends_on: [write-rust-lib]
+    target_paths:
+      - mew-core/crates/engine/src/wc.rs
+    verification: "cargo test -p mewcode-engine wc::"
+
+  - id: register-module
+    order: 4
+    description: "Register wc module in engine/src/lib.rs"
+    depends_on: [write-rust-lib]
+    target_paths:
+      - mew-core/crates/engine/src/lib.rs
+    verification: "cargo doc --workspace --no-deps -D warnings"
+
+  - id: parity-verification
+    order: 5
+    description: "Run all wc tests and produce parity-report.json"
+    depends_on: [add-tests, register-module]
+    verification: "python3 scripts/validate_run.py tests/fixtures/golden-task-1/"
+    target_paths: []
