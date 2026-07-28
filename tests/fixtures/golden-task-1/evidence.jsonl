@@ -1,0 +1,15 @@
+{"run_id":"golden-task-1-wc-20260728-120000-abc1234","timestamp":"2026-07-28T12:00:00Z","action":"scope_locked","detail":"Target: tests/fixtures/wc.py, Baseline: HEAD, Candidate: feat/golden-task-1"}
+{"run_id":"golden-task-1-wc-20260728-120000-abc1234","timestamp":"2026-07-28T12:00:01Z","action":"contract_drafted","detail":"7 properties (6 preserve, 1 introduce), verification route: differential"}
+{"run_id":"golden-task-1-wc-20260728-120000-abc1234","timestamp":"2026-07-28T12:00:02Z","action":"plan_built","detail":"5 units, estimated 500 tokens"}
+{"run_id":"golden-task-1-wc-20260728-120000-abc1234","timestamp":"2026-07-28T12:00:03Z","action":"approved","approved_by":"tripplen23","approved_at":"2026-07-28T12:00:03Z","contract_sha256":"abc123"}
+{"run_id":"golden-task-1-wc-20260728-120000-abc1234","timestamp":"2026-07-28T12:01:00Z","action":"unit_started","unit":"inspect-baseline"}
+{"run_id":"golden-task-1-wc-20260728-120000-abc1234","timestamp":"2026-07-28T12:01:05Z","action":"unit_completed","unit":"inspect-baseline","outcome":"pass"}
+{"run_id":"golden-task-1-wc-20260728-120000-abc1234","timestamp":"2026-07-28T12:01:10Z","action":"unit_started","unit":"write-rust-lib"}
+{"run_id":"golden-task-1-wc-20260728-120000-abc1234","timestamp":"2026-07-28T12:02:00Z","action":"unit_completed","unit":"write-rust-lib","outcome":"pass"}
+{"run_id":"golden-task-1-wc-20260728-120000-abc1234","timestamp":"2026-07-28T12:02:05Z","action":"unit_started","unit":"add-tests"}
+{"run_id":"golden-task-1-wc-20260728-120000-abc1234","timestamp":"2026-07-28T12:02:30Z","action":"unit_completed","unit":"add-tests","outcome":"pass"}
+{"run_id":"golden-task-1-wc-20260728-120000-abc1234","timestamp":"2026-07-28T12:02:35Z","action":"unit_started","unit":"register-module"}
+{"run_id":"golden-task-1-wc-20260728-120000-abc1234","timestamp":"2026-07-28T12:03:00Z","action":"unit_completed","unit":"register-module","outcome":"pass"}
+{"run_id":"golden-task-1-wc-20260728-120000-abc1234","timestamp":"2026-07-28T12:03:05Z","action":"unit_started","unit":"parity-verification"}
+{"run_id":"golden-task-1-wc-20260728-120000-abc1234","timestamp":"2026-07-28T12:03:30Z","action":"unit_completed","unit":"parity-verification","outcome":"pass"}
+{"run_id":"golden-task-1-wc-20260728-120000-abc1234","timestamp":"2026-07-28T12:03:31Z","action":"final_verification","test_command":"cargo test -p mewcode-engine wc::","exit_code":0,"fmt_command":"cargo fmt --check","fmt_exit_code":0,"doc_command":"RUSTDOCFLAGS=-D warnings cargo doc --workspace --no-deps","doc_exit_code":0}

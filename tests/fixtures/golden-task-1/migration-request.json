@@ -1,0 +1,29 @@
+{
+  "id": "golden-task-1-wc",
+  "golden_task": "golden-task-1",
+  "scope": "language_port",
+  "target_repo": ".",
+  "desired_evolution": "Port the Python wc (word/line/char count) implementation at tests/fixtures/wc.py to Rust as a library function with identical output for all input encodings (UTF-8, ASCII, empty, binary). Preserve all existing behavior.",
+  "source": {
+    "repo_url": "https://github.com/tripplen23/mew",
+    "commit": "HEAD",
+    "language": "python",
+    "entry_point": "tests/fixtures/wc.py"
+  },
+  "target": {
+    "language": "rust",
+    "constraints": [
+      "no unsafe",
+      "must pass cargo clippy -D warnings",
+      "must pass cargo fmt --check",
+      "byte-identical output to Python reference"
+    ],
+    "deterministic": true
+  },
+  "references": [],
+  "compatibility": {
+    "preserve": ["all existing wc output for valid inputs"],
+    "introduce": ["Rust library API for wc functionality"],
+    "unknowns": []
+  }
+}
