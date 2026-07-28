@@ -69,9 +69,12 @@ pub struct TokenUsage {
 
 impl TokenUsage {
     /// Merge another TokenUsage into self (for accumulating across steps).
+    ///
+    /// Recomputes `total_tokens` as `prompt + completion` so the
+    /// invariant is preserved even if the incoming totals are inconsistent.
     pub fn merge(&mut self, other: &TokenUsage) {
         self.prompt_tokens += other.prompt_tokens;
         self.completion_tokens += other.completion_tokens;
-        self.total_tokens += other.total_tokens;
+        self.total_tokens = self.prompt_tokens + self.completion_tokens;
     }
 }
