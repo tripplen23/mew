@@ -515,12 +515,29 @@ fn slash_skills_opens_skills_overlay_and_fetches_when_uncached() {
 }
 
 #[test]
-fn unknown_slash_command_errors_without_starting_turn() {
+fn unknown_slash_input_starts_chat_turn() {
     let mut app = type_into_session("/bogus");
-    assert!(matches!(update(&mut app, key(KeyCode::Enter)), Cmd::None));
-    assert!(app.toast.is_some());
+    assert!(matches!(
+        update(&mut app, key(KeyCode::Enter)),
+        Cmd::StartChat(_)
+    ));
+    assert!(app.toast.is_none());
     assert_eq!(sess(&app).overlay, Overlay::None);
-    assert!(sess(&app).streaming.is_none());
+    assert!(sess(&app).streaming.is_some());
+}
+
+#[test]
+fn rust_doc_comment_starting_with_slashes_is_chat_text() {
+    let text = "/// Bumped on each submission to discard stale responses.";
+    let mut app = type_into_session(text);
+    match update(&mut app, key(KeyCode::Enter)) {
+        Cmd::StartChat(req) => assert_eq!(
+            req.messages.last().unwrap().parts,
+            vec![MessagePart::Text { text: text.into() }]
+        ),
+        other => panic!("expected StartChat, got {other:?}"),
+    }
+    assert!(app.toast.is_none());
 }
 
 #[test]

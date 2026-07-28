@@ -55,6 +55,8 @@ use theme::{COMPOSER_HORIZONTAL_PAD, COMPOSER_LEFT_PAD, theme_for};
 use toast::render_toast;
 
 const CURSOR_MARKER: &str = "\u{E000}";
+const EMPTY_TEXT_CURSOR: &str = "▌";
+const FILLED_TEXT_CURSOR: &str = "│";
 
 /// Draw the whole application: the active screen, then any toast on top.
 pub fn render(frame: &mut Frame, app: &mut App) {
@@ -93,6 +95,14 @@ pub(super) fn park_cursor_in_field(frame: &mut Frame, chunk: Rect, textarea: &Te
     let x = inner_x.saturating_add(visual_col as u16).min(max_x);
     let y = inner_y.saturating_add(visual_row as u16).min(max_y);
     frame.set_cursor_position(Position::new(x, y));
+}
+
+pub(super) fn text_cursor_glyph(text: &str) -> &'static str {
+    if text.is_empty() {
+        EMPTY_TEXT_CURSOR
+    } else {
+        FILLED_TEXT_CURSOR
+    }
 }
 
 #[doc(hidden)]

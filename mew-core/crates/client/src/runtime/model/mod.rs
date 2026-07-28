@@ -16,6 +16,6 @@ pub use states::{
     App, CachedBlock, ChoicePromptState, CompactionEntry, CompactionUiState, CompactionView,
     ConnectProviderState, ConnectStep, CreationState, FileEntry, FilePickerState, ModelPickerState,
     Overlay, PastedText, PickerState, SLASH_COMMANDS, Screen, SessionListState, SessionState,
-    SlashCommand, StreamingState, ThemeId, Toast, ToastKind, ToolCallView, TranscriptCache,
-    TurnItem,
+    SlashCommand, SlashCommandKind, StreamingState, ThemeId, Toast, ToastKind, ToolCallView,
+    TranscriptCache, TurnItem, slash_command_by_token,
 };

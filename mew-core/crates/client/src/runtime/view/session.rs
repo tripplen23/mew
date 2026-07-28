@@ -8,8 +8,8 @@ use unicode_width::UnicodeWidthStr;
 
 use super::super::model::{ConnectStep, Overlay, SessionState};
 use super::overlay::{
-    centered_rect, render_overlay, render_scrolled_overlay, render_slash_picker, skills_lines,
-    theme_lines, tools_lines,
+    centered_rect, connect_provider_key_text, render_overlay, render_scrolled_overlay,
+    render_slash_picker, skills_lines, theme_lines, tools_lines,
 };
 use super::park_cursor_in_field;
 use super::theme::{COMPOSER_HORIZONTAL_PAD, COMPOSER_LEFT_PAD, Theme};
@@ -481,10 +481,4 @@ fn park_cursor_in_overlay_text_input(
         x.min(rect.x + rect.width.saturating_sub(2)),
         y.min(rect.y + rect.height.saturating_sub(2)),
     ));
-}
-
-fn connect_provider_key_text(s: &SessionState) -> String {
-    let mut text = s.connect_provider.key_input.lines().join("");
-    text.push_str(&s.input.lines().join(""));
-    text
 }

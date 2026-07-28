@@ -517,21 +517,21 @@ fn session_list_d_emits_delete_cmd() {
 // --- unknown slash -------------------------------------------------------
 
 #[test]
-fn unknown_slash_command_toasts_and_keeps_overlay() {
+fn unknown_slash_command_is_sent_as_chat_text() {
     let mut app = test_app();
     {
         let s = active_state(&mut app);
+        seed_active_session(s);
         type_text(s, "/nonsense");
     }
     let cmd = update(&mut app, press_enter());
 
-    assert!(matches!(cmd, Cmd::None));
+    assert!(matches!(cmd, Cmd::StartChat(_)), "got {cmd:?}");
     let s = active_state(&mut app);
     assert_eq!(s.overlay, Overlay::None);
-    // The unknown-command branch should not change any slash-related state.
     assert!(s.model_picker.models.is_none());
     assert!(s.session_list.summaries.is_empty());
-    assert!(app.toast.is_some());
+    assert!(app.toast.is_none());
 }
 
 // --- existing commands still work ----------------------------------------

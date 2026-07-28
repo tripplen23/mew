@@ -11,6 +11,7 @@ use mewcode_protocol::tool::allowed_tools_for_mode;
 
 use super::super::model::{SLASH_COMMANDS, SessionState, ThemeId};
 use super::super::update::picker::filtered_files;
+use super::text_cursor_glyph;
 
 /// The `/tools` overlay body: the tools allowed in the active mode plus
 /// the total count. Engine may also expose denied tools to the model so it can
@@ -603,9 +604,7 @@ pub(super) fn connect_provider_lines(s: &SessionState) -> Vec<Line<'static>> {
                 .selected_provider
                 .map(|p| p.to_string())
                 .unwrap_or_default();
-            let mut key_text = state.key_input.lines().join("");
-            key_text.push_str(&s.input.lines().join(""));
-            let cursor = if key_text.is_empty() { "▌" } else { "│" };
+            let key_text = connect_provider_key_text(s);
             let mut lines = vec![
                 Line::from(vec![
                     Span::raw("Provider: "),
@@ -615,7 +614,7 @@ pub(super) fn connect_provider_lines(s: &SessionState) -> Vec<Line<'static>> {
                 Line::from("Enter your API key (type directly):"),
                 Line::from(""),
                 Line::from(vec![Span::styled(
-                    format!("  {key_text}{cursor}"),
+                    format!("  {key_text}{}", text_cursor_glyph(&key_text)),
                     Style::default().fg(Color::Yellow),
                 )]),
             ];
@@ -649,4 +648,10 @@ pub(super) fn connect_provider_lines(s: &SessionState) -> Vec<Line<'static>> {
             )),
         ],
     }
+}
+
+pub(super) fn connect_provider_key_text(s: &SessionState) -> String {
+    let mut text = s.connect_provider.key_input.lines().join("");
+    text.push_str(&s.input.lines().join(""));
+    text
 }

@@ -11,7 +11,7 @@ use crate::net::{CreateSessionRequest, SessionPatch};
 
 use super::super::model::{
     Cmd, ConnectProviderState, ConnectStep, Overlay, PastedText, QUIT_COMMAND, SessionState,
-    StreamingState, Toast,
+    SlashCommandKind, StreamingState, Toast, slash_command_by_token,
 };
 use super::key_to_input;
 use super::picker::{
@@ -213,8 +213,7 @@ pub(super) fn on_session_paste(s: &mut SessionState, text: String) -> Cmd {
         return Cmd::None;
     }
 
-    // When the connect provider dialog is in EnterKey step, paste goes
-    // into the overlay's key input, not the chat composer.
+    // Paste into the overlay's key input, not the composer.
     if s.overlay == Overlay::ConnectProvider && s.connect_provider.step == ConnectStep::EnterKey {
         s.connect_provider.key_input.insert_str(text);
         return Cmd::None;
@@ -273,35 +272,39 @@ pub(super) fn on_session_submit(s: &mut SessionState, toast: &mut Option<Toast>)
     }
 
     if let Some(rest) = visible_trimmed.strip_prefix('/') {
-        s.input = TextArea::default();
-        s.pasted.clear();
         let mut parts = rest.split_whitespace();
         let cmd = parts.next().unwrap_or("");
         let args: Vec<&str> = parts.collect();
-        return match cmd {
-            "tools" => {
+        let Some(command) = slash_command_by_token(cmd) else {
+            return submit_chat_text(s, &visible_text);
+        };
+        s.input = TextArea::default();
+        s.pasted.clear();
+        return match command.kind {
+            SlashCommandKind::Tools => {
                 s.overlay = Overlay::Tools;
                 Cmd::None
             }
-            "skills" => on_skills_command(s),
-            "theme" => {
+            SlashCommandKind::Skills => on_skills_command(s),
+            SlashCommandKind::Theme => {
                 s.overlay = Overlay::Theme;
                 Cmd::None
             }
-            "mode" => on_mode_command(s, &args, toast),
-            "sound" => on_sound_command(s, &args, toast),
-            "model" => on_model_command(s),
-            "session" => on_session_command(s, &args, toast),
-            "connect" => on_connect_command(s),
-            "compact" => on_compact_command(s, toast),
-            other => {
-                *toast = Some(Toast::error(format!("unknown command: /{other}")));
-                Cmd::None
-            }
+            SlashCommandKind::Mode => on_mode_command(s, &args, toast),
+            SlashCommandKind::Sound => on_sound_command(s, &args, toast),
+            SlashCommandKind::Model => on_model_command(s),
+            SlashCommandKind::Session => on_session_command(s, &args, toast),
+            SlashCommandKind::Connect => on_connect_command(s),
+            SlashCommandKind::Compact => on_compact_command(s, toast),
+            SlashCommandKind::Quit => Cmd::Quit,
         };
     }
 
-    let text = expand_pastes(s, &visible_text);
+    submit_chat_text(s, &visible_text)
+}
+
+fn submit_chat_text(s: &mut SessionState, visible_text: &str) -> Cmd {
+    let text = expand_pastes(s, visible_text);
     let trimmed = text.trim();
     let user_text = trimmed.to_string();
     let user_msg = Message::user(vec![MessagePart::Text {
