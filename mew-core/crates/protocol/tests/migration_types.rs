@@ -12,25 +12,31 @@ mod tests {
         report::{ParityReport, Verdict},
     };
 
-    /// The `wc` fixture manifest should deserialize correctly.
+    /// The `wc` fixture manifest should deserialize and roundtrip fully.
     #[test]
     fn deserialize_run_manifest() {
         let json = include_str!("../../../../tests/fixtures/golden-task-1/run-manifest.json");
         let manifest: RunManifest = serde_json::from_str(json).expect("valid manifest JSON");
-        assert_eq!(manifest.id, "golden-task-1-wc-20260728-120000-abc1234");
+        assert_eq!(manifest.id, "golden-task-1-wc-20260728-85b451e");
         assert_eq!(manifest.golden_task, "golden-task-1");
         assert_eq!(manifest.source.language, "python");
         assert_eq!(manifest.target.language, "rust");
         assert!(manifest.target.deterministic);
-        // Roundtrip
+        // Roundtrip: serialize then deserialize, check full equality.
         let roundtripped: RunManifest =
             serde_json::from_str(&serde_json::to_string(&manifest).unwrap()).unwrap();
         assert_eq!(roundtripped.id, manifest.id);
+        assert_eq!(roundtripped.golden_task, manifest.golden_task);
+        assert_eq!(roundtripped.source.language, manifest.source.language);
+        assert_eq!(
+            roundtripped.target.deterministic,
+            manifest.target.deterministic
+        );
     }
 
-    /// ParityReport::new() should auto-compute Passed when all pass.
+    /// ParityReport::new() returns Inconclusive when there are no assertions.
     #[test]
-    fn parity_report_passed() {
+    fn parity_report_inconclusive_when_empty() {
         let report = ParityReport::new(
             "run-1".into(),
             "abc1234".into(),

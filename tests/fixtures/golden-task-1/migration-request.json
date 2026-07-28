@@ -6,7 +6,7 @@
   "desired_evolution": "Port the Python wc (word/line/char count) implementation at tests/fixtures/wc.py to Rust as a library function with identical output for all input encodings (UTF-8, ASCII, empty, binary). Preserve all existing behavior.",
   "source": {
     "repo_url": "https://github.com/tripplen23/mew",
-    "commit": "HEAD",
+    "commit": "85b451e",
     "language": "python",
     "entry_point": "tests/fixtures/wc.py"
   },

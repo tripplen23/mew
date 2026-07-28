@@ -1,4 +1,4 @@
-run_id: golden-task-1-wc-20260728-120000-abc1234
+run_id: golden-task-1-wc-20260728-85b451e
 baseline_version: abc1234
 candidate_version: HEAD
 properties:
