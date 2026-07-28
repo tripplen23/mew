@@ -3,27 +3,29 @@ repos:
     hooks:
       - id: cargo-fmt
         name: cargo fmt
-        entry: cargo fmt --all --
+        entry: sh -c 'cd mew-core && cargo fmt --all --'
         language: system
         types: [rust]
         pass_filenames: false
-        always_run: true
+        files: ^mew-core/.*\.rs$
       - id: cargo-clippy
         name: cargo clippy
-        entry: cargo clippy --workspace --all-targets -- -D warnings
+        entry: sh -c 'cd mew-core && cargo clippy --workspace --all-targets -- -D warnings'
         language: system
         types: [rust]
         pass_filenames: false
+        files: ^mew-core/.*\.rs$
       - id: go-vet
         name: go vet
         entry: go vet ./...
         language: system
         types: [go]
         pass_filenames: false
+        files: ^mew-mcp/.*\.go$
       - id: go-fmt
         name: gofmt
         entry: sh -c 'test -z "$(gofmt -l mew-mcp)"'
         language: system
         types: [go]
         pass_filenames: false
-        always_run: true
+        files: ^mew-mcp/.*\.go$

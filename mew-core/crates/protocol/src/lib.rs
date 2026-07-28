@@ -8,6 +8,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod credential;
 pub mod display;
 pub mod env;
 pub mod event;
@@ -18,6 +19,9 @@ pub mod routes;
 pub mod skill;
 pub mod tool;
 
+pub use credential::{
+    ConnectProviderRequest, ConnectProviderResponse, ProviderCredential, ProviderStatus,
+};
 pub use display::{DiffDisplay, ToolDisplay};
 pub use event::StreamEvent;
 pub use message::{Message, MessagePart, Role, ToolCall, ToolResult};

@@ -4,6 +4,7 @@ use crossterm::event::KeyEvent;
 
 use super::FileEntry;
 use crate::net::{ModelEntry, Session, SessionSummary, SkillEntry};
+use mewcode_protocol::credential::ConnectProviderResponse;
 use mewcode_protocol::event::ChoiceRequest;
 
 /// Messages that drive the [`super::App`] through `update`.
@@ -38,6 +39,8 @@ pub enum Msg {
     SessionOpened(Result<Session, String>),
     /// A `DELETE /sessions/{id}` completed (or failed).
     SessionDeleted(Result<uuid::Uuid, String>),
+    /// A provider API key was validated (or rejected).
+    ProviderConnected(Result<ConnectProviderResponse, String>, u64),
 }
 
 /// Why a `POST /sessions` failed.

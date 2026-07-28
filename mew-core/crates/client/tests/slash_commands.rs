@@ -8,12 +8,13 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::Terminal;
-use ratatui::backend::TestBackend;
+use ratatui::backend::{Backend, TestBackend};
 use tui_textarea::TextArea;
 
-use mewcode_client::runtime::model::{App, Cmd, Msg, Overlay, Screen, SessionState};
+use mewcode_client::runtime::model::{App, Cmd, ConnectStep, Msg, Overlay, Screen, SessionState};
 use mewcode_client::runtime::update;
 use mewcode_client::runtime::view::render;
+use mewcode_protocol::ProviderId;
 use mewcode_protocol::{MessagePart, Mode, ModelId};
 
 fn test_app() -> App {
@@ -516,21 +517,21 @@ fn session_list_d_emits_delete_cmd() {
 // --- unknown slash -------------------------------------------------------
 
 #[test]
-fn unknown_slash_command_toasts_and_keeps_overlay() {
+fn unknown_slash_command_is_sent_as_chat_text() {
     let mut app = test_app();
     {
         let s = active_state(&mut app);
+        seed_active_session(s);
         type_text(s, "/nonsense");
     }
     let cmd = update(&mut app, press_enter());
 
-    assert!(matches!(cmd, Cmd::None));
+    assert!(matches!(cmd, Cmd::StartChat(_)), "got {cmd:?}");
     let s = active_state(&mut app);
     assert_eq!(s.overlay, Overlay::None);
-    // The unknown-command branch should not change any slash-related state.
     assert!(s.model_picker.models.is_none());
     assert!(s.session_list.summaries.is_empty());
-    assert!(app.toast.is_some());
+    assert!(app.toast.is_none());
 }
 
 // --- existing commands still work ----------------------------------------
@@ -581,6 +582,88 @@ fn slash_picker_lists_theme_command() {
         buf.contains("/theme"),
         "slash picker should list /theme:\n{buf}"
     );
+}
+
+#[test]
+fn connect_overlay_parks_cursor_in_api_key_field() {
+    let mut app = test_app();
+    {
+        let s = active_state(&mut app);
+        s.overlay = Overlay::ConnectProvider;
+        s.connect_provider.step = ConnectStep::EnterKey;
+        s.connect_provider.selected_provider = Some(ProviderId::OpenCodeGo);
+        s.connect_provider.key_input.insert_str("abc");
+    }
+
+    let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+    terminal.draw(|frame| render(frame, &mut app)).unwrap();
+    let buf = terminal.backend().to_string();
+    let row = buf
+        .lines()
+        .enumerate()
+        .find_map(|(row, line)| line.contains("abc│").then_some(row))
+        .expect("API key cursor should render in overlay");
+
+    assert_eq!(
+        terminal.backend_mut().get_cursor_position().unwrap().y,
+        row as u16
+    );
+}
+
+#[test]
+fn connect_overlay_keys_go_to_api_key_not_composer() {
+    let mut app = test_app();
+    {
+        let s = active_state(&mut app);
+        s.overlay = Overlay::ConnectProvider;
+        s.connect_provider.step = ConnectStep::EnterKey;
+        s.connect_provider.selected_provider = Some(ProviderId::OpenCodeGo);
+    }
+
+    update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE)),
+    );
+
+    let s = active_state(&mut app);
+    assert_eq!(s.connect_provider.key_input.lines(), &vec!["h".to_string()]);
+    assert_eq!(s.input.lines(), &vec!["".to_string()]);
+}
+
+#[test]
+fn connect_command_opens_with_empty_composer() {
+    let mut app = test_app();
+    type_text(active_state(&mut app), "/connect");
+
+    update(&mut app, press_enter());
+
+    let s = active_state(&mut app);
+    assert_eq!(s.overlay, Overlay::ConnectProvider);
+    assert_eq!(s.input.lines(), &vec!["".to_string()]);
+}
+
+#[test]
+fn connect_overlay_key_handler_promotes_stray_composer_text() {
+    let mut app = test_app();
+    {
+        let s = active_state(&mut app);
+        type_text(s, "abc");
+        s.overlay = Overlay::ConnectProvider;
+        s.connect_provider.step = ConnectStep::EnterKey;
+        s.connect_provider.selected_provider = Some(ProviderId::OpenCodeGo);
+    }
+
+    update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE)),
+    );
+
+    let s = active_state(&mut app);
+    assert_eq!(
+        s.connect_provider.key_input.lines(),
+        &vec!["abcd".to_string()]
+    );
+    assert_eq!(s.input.lines(), &vec!["".to_string()]);
 }
 
 #[test]

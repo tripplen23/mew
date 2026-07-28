@@ -262,6 +262,7 @@ pub(crate) async fn start_chat_stream(
             .with_display_sink(display_sink)
             .with_approval_broker(state.approvals.clone())
             .with_session_tokens(prior_tokens)
+            .with_engine_config(build_engine_config(&state).await)
             .with_compaction_summary(
                 session.compaction_summary,
                 session.compacted_up_to.unwrap_or(0),
@@ -370,4 +371,38 @@ pub(crate) async fn start_chat_stream(
     });
 
     srx
+}
+
+/// Build an EngineConfig from the credential store (YAML), ServerConfig,
+/// and environment variables, in priority order:
+///   1. Credential store (YAML, from /connect TUI)
+///   2. ServerConfig fields (from mewcode.toml or env)
+///   3. Raw environment variables
+async fn build_engine_config(state: &AppState) -> mewcode_engine::EngineConfig {
+    let store = state.credentials.lock().await;
+    let api_key = store
+        .api_key(mewcode_protocol::ProviderId::OpenCodeGo)
+        .or_else(|| state.config.opencode_go_api_key.clone())
+        .or_else(|| std::env::var("OPENCODE_GO_API_KEY").ok())
+        .unwrap_or_default();
+    let openai_api_key = store
+        .api_key(mewcode_protocol::ProviderId::OpenAi)
+        .or_else(|| state.config.openai_api_key.clone())
+        .or_else(|| std::env::var("OPENAI_API_KEY").ok());
+
+    let base_url = std::env::var(mewcode_engine::config::ENV_BASE_URL)
+        .unwrap_or_else(|_| mewcode_engine::config::DEFAULT_BASE_URL.to_string());
+
+    mewcode_engine::EngineConfig {
+        api_key,
+        openai_api_key,
+        openai_base_url: None,
+        default_model: state
+            .config
+            .default_model
+            .as_deref()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(mewcode_protocol::ModelId::DEFAULT),
+        base_url,
+    }
 }

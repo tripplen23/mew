@@ -2,9 +2,13 @@
 
 use eventsource_stream::Eventsource;
 use futures::{Stream, StreamExt};
+use mewcode_protocol::credential::{
+    ConnectProviderRequest, ConnectProviderResponse, ProviderStatus,
+};
 use mewcode_protocol::event::{ChatRequest, ChoiceResponseRequest};
 use mewcode_protocol::routes::{
-    CHAT, CHOICES, HEALTH, PROVIDERS, SESSION_BY_ID, SESSION_COMPACT, SESSIONS, SKILLS,
+    CHAT, CHOICES, HEALTH, PROVIDER_CONNECT, PROVIDER_STATUS, PROVIDERS, SESSION_BY_ID,
+    SESSION_COMPACT, SESSIONS, SKILLS,
 };
 use mewcode_protocol::{Message, Mode, ModelId, ModelKind, ProviderId, StreamEvent};
 use serde::{Deserialize, Serialize};
@@ -337,6 +341,34 @@ impl ApiClient {
             .await?;
         let _ = ensure_success(resp)?.bytes().await?;
         Ok(())
+    }
+
+    /// `POST /providers/connect` — validate and store an API key.
+    pub async fn connect_provider(
+        &self,
+        req: &ConnectProviderRequest,
+    ) -> Result<ConnectProviderResponse, NetError> {
+        let resp = self
+            .inner
+            .post(format!("{}{}", self.base_url, PROVIDER_CONNECT))
+            .json(req)
+            .timeout(Duration::from_secs(30))
+            .send()
+            .await?;
+        let bytes = ensure_success(resp)?.bytes().await?;
+        Ok(serde_json::from_slice(&bytes)?)
+    }
+
+    /// `GET /providers/status` — check connection status for all providers.
+    pub async fn provider_status(&self) -> Result<Vec<ProviderStatus>, NetError> {
+        let resp = self
+            .inner
+            .get(format!("{}{}", self.base_url, PROVIDER_STATUS))
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await?;
+        let bytes = ensure_success(resp)?.bytes().await?;
+        Ok(serde_json::from_slice(&bytes)?)
     }
 
     /// Resolve a model id string into the registry.

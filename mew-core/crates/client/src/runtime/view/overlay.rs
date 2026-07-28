@@ -11,6 +11,7 @@ use mewcode_protocol::tool::allowed_tools_for_mode;
 
 use super::super::model::{SLASH_COMMANDS, SessionState, ThemeId};
 use super::super::update::picker::filtered_files;
+use super::text_cursor_glyph;
 
 /// The `/tools` overlay body: the tools allowed in the active mode plus
 /// the total count. Engine may also expose denied tools to the model so it can
@@ -561,4 +562,96 @@ pub(super) fn render_scrolled_overlay(
     // Report the *list* viewport, not the raw inner height — the footer
     // row is not part of the list.
     *viewport_out = visible as u16;
+}
+
+/// Lines for the provider connect dialog.
+pub(super) fn connect_provider_lines(s: &SessionState) -> Vec<Line<'static>> {
+    use crate::runtime::model::ConnectStep;
+    let state = &s.connect_provider;
+    match state.step {
+        ConnectStep::PickProvider => {
+            let providers = [ProviderId::OpenCodeGo, ProviderId::OpenAi];
+            let mut lines = vec![Line::from("Select a provider to connect:")];
+            for p in providers {
+                let marker = if Some(p) == state.selected_provider {
+                    "▶"
+                } else {
+                    " "
+                };
+                lines.push(Line::from(vec![
+                    Span::raw(format!("  {marker} ")),
+                    Span::styled(
+                        p.to_string(),
+                        if Some(p) == state.selected_provider {
+                            Style::default()
+                                .add_modifier(Modifier::BOLD)
+                                .fg(Color::Cyan)
+                        } else {
+                            Style::default()
+                        },
+                    ),
+                ]));
+            }
+            lines.push(Line::from(""));
+            lines.push(Line::from(Span::styled(
+                "↑↓ select  Enter confirm  Esc cancel",
+                Style::default().fg(Color::DarkGray),
+            )));
+            lines
+        }
+        ConnectStep::EnterKey => {
+            let provider = state
+                .selected_provider
+                .map(|p| p.to_string())
+                .unwrap_or_default();
+            let key_text = connect_provider_key_text(s);
+            let mut lines = vec![
+                Line::from(vec![
+                    Span::raw("Provider: "),
+                    Span::styled(provider, Style::default().add_modifier(Modifier::BOLD)),
+                ]),
+                Line::from(""),
+                Line::from("Enter your API key (type directly):"),
+                Line::from(""),
+                Line::from(vec![Span::styled(
+                    format!("  {key_text}{}", text_cursor_glyph(&key_text)),
+                    Style::default().fg(Color::Yellow),
+                )]),
+            ];
+            if let Some(ref error) = state.error {
+                lines.push(Line::from(""));
+                lines.push(Line::from(Span::styled(
+                    format!("✗ {error}"),
+                    Style::default().fg(Color::Red),
+                )));
+            }
+            lines.push(Line::from(""));
+            lines.push(Line::from(Span::styled(
+                "Enter submit  Esc cancel",
+                Style::default().fg(Color::DarkGray),
+            )));
+            lines
+        }
+        ConnectStep::Validating => vec![Line::from(Span::styled(
+            "Validating API key...",
+            Style::default().fg(Color::Yellow),
+        ))],
+        ConnectStep::Done => vec![
+            Line::from(Span::styled(
+                "✓ Connected successfully!",
+                Style::default().fg(Color::Green),
+            )),
+            Line::from(""),
+            Line::from(Span::styled(
+                "Enter or Esc to close",
+                Style::default().fg(Color::DarkGray),
+            )),
+        ],
+    }
+}
+
+pub(super) fn connect_provider_key_text(s: &SessionState) -> String {
+    let mut text = s.connect_provider.key_input.lines().join("");
+    text.push_str(&s.input.lines().join(""));
+    text
 }

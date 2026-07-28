@@ -46,6 +46,7 @@ pub struct Harness {
     project_root: Option<PathBuf>,
     approval_broker: Option<ApprovalBroker>,
     compaction: CompactionState,
+    engine_config: Option<EngineConfig>,
 }
 
 impl std::fmt::Debug for Harness {
@@ -105,6 +106,7 @@ impl Harness {
             project_root: None,
             approval_broker: None,
             compaction: CompactionState::default(),
+            engine_config: None,
         }
     }
 
@@ -180,6 +182,13 @@ impl Harness {
         self
     }
 
+    /// Override the engine config used for provider resolution.
+    /// When set, this is used instead of calling `EngineConfig::from_env()`.
+    pub fn with_engine_config(mut self, cfg: EngineConfig) -> Self {
+        self.engine_config = Some(cfg);
+        self
+    }
+
     /// The exact system prompt sent this turn: static sections plus, when
     /// present, the durable-memory section. Single source of truth so
     /// `run_turn_inner` always sends what this returns.
@@ -210,7 +219,11 @@ impl Harness {
             last_user_text(messages)
         }
         .ok_or_else(|| EngineError::Other("no user message in chat history".to_string()))?;
-        let cfg = EngineConfig::from_env()?;
+        let cfg = self
+            .engine_config
+            .clone()
+            .map(Ok)
+            .unwrap_or_else(EngineConfig::from_env)?;
         let current_user_pos = messages
             .iter()
             .enumerate()

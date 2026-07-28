@@ -19,7 +19,6 @@ pub mod tools;
 pub use agent::{Agent, Provider, build_system_prompt};
 pub use compaction::{CompactionResult, compact_history};
 pub use config::EngineConfig;
-pub use context::MemoryStore;
 pub use error::EngineError;
 pub use harness::Harness;
 pub use skills::{LoadedSkill, SkillRegistry, SkillSource};

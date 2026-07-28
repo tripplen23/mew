@@ -10,7 +10,8 @@ use mewcode_protocol::{Message, MessagePart, Mode};
 use crate::net::{CreateSessionRequest, SessionPatch};
 
 use super::super::model::{
-    Cmd, Overlay, PastedText, QUIT_COMMAND, SessionState, StreamingState, Toast,
+    Cmd, ConnectProviderState, ConnectStep, Overlay, PastedText, QUIT_COMMAND, SessionState,
+    SlashCommandKind, StreamingState, Toast, slash_command_by_token,
 };
 use super::key_to_input;
 use super::picker::{
@@ -20,6 +21,7 @@ use super::picker::{
 use super::slash::{
     SlashPickerResult, on_slash_picker_key, open_slash_picker, slash_default_cursor,
 };
+use mewcode_protocol::ProviderId;
 
 const COMPACT_PASTE_CHARS: usize = 120;
 
@@ -50,6 +52,7 @@ pub(super) fn on_session_key(
             // session title so the user can edit it in place.
             let was_rename = s.overlay == Overlay::RenameSession;
             let was_slash = s.overlay == Overlay::SlashPicker;
+            let was_connect = s.overlay == Overlay::ConnectProvider;
             s.overlay = Overlay::None;
             if was_rename {
                 s.input = TextArea::default();
@@ -59,6 +62,11 @@ pub(super) fn on_session_key(
                 // The picker only opens when the composer starts with `/`,
                 s.input = TextArea::default();
                 s.pasted.clear();
+            }
+            if was_connect {
+                let prev_attempt = s.connect_provider.attempt;
+                s.connect_provider = ConnectProviderState::default();
+                s.connect_provider.attempt = prev_attempt.wrapping_add(1);
             }
         }
         return Cmd::None;
@@ -79,6 +87,7 @@ pub(super) fn on_session_key(
         Overlay::ModelPicker => return on_model_picker_key(s, key),
         Overlay::FilePicker => return on_file_picker_key(s, key),
         Overlay::Choice => return on_choice_key(s, key),
+        Overlay::ConnectProvider => return on_connect_provider_key(s, key),
         Overlay::SessionList => return on_session_list_key(s, key),
         Overlay::RenameSession => {
             if key.code == KeyCode::Enter {
@@ -206,6 +215,12 @@ pub(super) fn on_session_paste(s: &mut SessionState, text: String) -> Cmd {
         return Cmd::None;
     }
 
+    // Paste into the overlay's key input, not the composer.
+    if s.overlay == Overlay::ConnectProvider && s.connect_provider.step == ConnectStep::EnterKey {
+        s.connect_provider.key_input.insert_str(text);
+        return Cmd::None;
+    }
+
     let char_count = text.chars().count();
     let line_count = text.lines().count().max(1);
     if line_count == 1 && char_count <= COMPACT_PASTE_CHARS {
@@ -259,34 +274,39 @@ pub(super) fn on_session_submit(s: &mut SessionState, toast: &mut Option<Toast>)
     }
 
     if let Some(rest) = visible_trimmed.strip_prefix('/') {
-        s.input = TextArea::default();
-        s.pasted.clear();
         let mut parts = rest.split_whitespace();
         let cmd = parts.next().unwrap_or("");
         let args: Vec<&str> = parts.collect();
-        return match cmd {
-            "tools" => {
+        let Some(command) = slash_command_by_token(cmd) else {
+            return submit_chat_text(s, &visible_text);
+        };
+        s.input = TextArea::default();
+        s.pasted.clear();
+        return match command.kind {
+            SlashCommandKind::Tools => {
                 s.overlay = Overlay::Tools;
                 Cmd::None
             }
-            "skills" => on_skills_command(s),
-            "theme" => {
+            SlashCommandKind::Skills => on_skills_command(s),
+            SlashCommandKind::Theme => {
                 s.overlay = Overlay::Theme;
                 Cmd::None
             }
-            "mode" => on_mode_command(s, &args, toast),
-            "sound" => on_sound_command(s, &args, toast),
-            "model" => on_model_command(s),
-            "session" => on_session_command(s, &args, toast),
-            "compact" => on_compact_command(s, toast),
-            other => {
-                *toast = Some(Toast::error(format!("unknown command: /{other}")));
-                Cmd::None
-            }
+            SlashCommandKind::Mode => on_mode_command(s, &args, toast),
+            SlashCommandKind::Sound => on_sound_command(s, &args, toast),
+            SlashCommandKind::Model => on_model_command(s),
+            SlashCommandKind::Session => on_session_command(s, &args, toast),
+            SlashCommandKind::Connect => on_connect_command(s),
+            SlashCommandKind::Compact => on_compact_command(s, toast),
+            SlashCommandKind::Quit => Cmd::Quit,
         };
     }
 
-    let text = expand_pastes(s, &visible_text);
+    submit_chat_text(s, &visible_text)
+}
+
+fn submit_chat_text(s: &mut SessionState, visible_text: &str) -> Cmd {
+    let text = expand_pastes(s, visible_text);
     let trimmed = text.trim();
     let user_text = trimmed.to_string();
     let user_msg = Message::user(vec![MessagePart::Text {
@@ -514,4 +534,95 @@ fn on_session_command(s: &mut SessionState, args: &[&str], toast: &mut Option<To
             Cmd::FetchSessions
         }
     }
+}
+
+/// Handle `/connect`: open the provider connect dialog.
+fn on_connect_command(s: &mut SessionState) -> Cmd {
+    s.overlay = Overlay::ConnectProvider;
+    let next = s.connect_provider.attempt.wrapping_add(1);
+    s.connect_provider = ConnectProviderState {
+        attempt: next,
+        ..Default::default()
+    };
+    s.input = TextArea::default();
+    s.pasted.clear();
+    Cmd::None
+}
+
+/// Handle key events while the provider connect dialog is open.
+pub(super) fn on_connect_provider_key(s: &mut SessionState, key: KeyEvent) -> Cmd {
+    use ConnectStep::*;
+    use mewcode_protocol::credential::ConnectProviderRequest;
+
+    if s.connect_provider.step == EnterKey {
+        promote_composer_draft_to_connect_key(s);
+    }
+
+    let state = &mut s.connect_provider;
+
+    match state.step {
+        PickProvider => match key.code {
+            KeyCode::Enter => {
+                // Default to OpenCode Go if nothing selected
+                let provider = state.selected_provider.unwrap_or(ProviderId::OpenCodeGo);
+                state.selected_provider = Some(provider);
+                state.step = EnterKey;
+                state.key_input = TextArea::default();
+                Cmd::None
+            }
+            KeyCode::Up | KeyCode::Down => {
+                // Toggle between the two providers
+                state.selected_provider = match state.selected_provider {
+                    Some(ProviderId::OpenCodeGo) => Some(ProviderId::OpenAi),
+                    _ => Some(ProviderId::OpenCodeGo),
+                };
+                Cmd::None
+            }
+            _ => Cmd::None,
+        },
+        EnterKey => match key.code {
+            KeyCode::Enter => {
+                let api_key = state.key_input.lines().join("\n").trim().to_string();
+                if api_key.is_empty() {
+                    state.error = Some("API key cannot be empty".to_string());
+                    return Cmd::None;
+                }
+                let provider = state.selected_provider.unwrap_or(ProviderId::OpenCodeGo);
+                state.api_key = api_key;
+                state.error = None;
+                state.step = Validating;
+                state.attempt = state.attempt.wrapping_add(1);
+                Cmd::ConnectProvider(
+                    ConnectProviderRequest {
+                        provider,
+                        api_key: state.api_key.clone(),
+                    },
+                    state.attempt,
+                )
+            }
+            _ => {
+                state.key_input.input(key_to_input(key));
+                Cmd::None
+            }
+        },
+        Validating => Cmd::None,
+        Done => {
+            if key.code == KeyCode::Enter || key.code == KeyCode::Esc {
+                s.overlay = Overlay::None;
+                state.api_key.clear();
+                state.key_input = TextArea::default();
+            }
+            Cmd::None
+        }
+    }
+}
+
+fn promote_composer_draft_to_connect_key(s: &mut SessionState) {
+    let draft = s.input.lines().join("\n");
+    if draft.is_empty() {
+        return;
+    }
+    s.connect_provider.key_input.insert_str(&draft);
+    s.input = TextArea::default();
+    s.pasted.clear();
 }

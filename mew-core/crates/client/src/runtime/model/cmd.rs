@@ -1,4 +1,5 @@
 use crate::net::{CreateSessionRequest, SessionPatch};
+use mewcode_protocol::credential::ConnectProviderRequest;
 use mewcode_protocol::event::{ChatRequest, ChoiceResponseRequest};
 
 /// Text the user types to exit the TUI.
@@ -42,6 +43,8 @@ pub enum Cmd {
     PlayNotificationSound,
     /// Trigger manual context compaction for the current session.
     Compact(uuid::Uuid),
+    /// Validate and store a provider API key.
+    ConnectProvider(ConnectProviderRequest, u64),
     /// Run multiple commands.
     Batch(Vec<Cmd>),
 }

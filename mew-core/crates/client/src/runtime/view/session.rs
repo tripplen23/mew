@@ -1,14 +1,15 @@
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::layout::{Constraint, Direction, Layout, Position, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Clear, Paragraph, Wrap};
 use std::sync::atomic::{AtomicU64, Ordering};
+use unicode_width::UnicodeWidthStr;
 
-use super::super::model::{Overlay, SessionState};
+use super::super::model::{ConnectStep, Overlay, SessionState};
 use super::overlay::{
-    centered_rect, render_overlay, render_scrolled_overlay, render_slash_picker, skills_lines,
-    theme_lines, tools_lines,
+    centered_rect, connect_provider_key_text, render_overlay, render_scrolled_overlay,
+    render_slash_picker, skills_lines, theme_lines, tools_lines,
 };
 use super::park_cursor_in_field;
 use super::theme::{COMPOSER_HORIZONTAL_PAD, COMPOSER_LEFT_PAD, Theme};
@@ -28,7 +29,11 @@ const MAX_INPUT_HEIGHT: u16 = 10;
 /// grow it (up to [`MAX_INPUT_HEIGHT`]) and shrink back when cleared, while
 /// the transcript fills the rest.
 pub(super) fn render_session(frame: &mut Frame, area: Rect, s: &mut SessionState, theme: Theme) {
-    let input_text = s.input.lines().join("\n");
+    let input_text = if active_overlay_text_input(s).is_some() {
+        String::new()
+    } else {
+        s.input.lines().join("\n")
+    };
     let input_height = input_height(area, &input_text);
     let queue_height = queue_display_height(s);
 
@@ -47,8 +52,24 @@ pub(super) fn render_session(frame: &mut Frame, area: Rect, s: &mut SessionState
     render_input(frame, chunks[2], &input_text, theme);
     render_status(frame, chunks[3], s, theme);
 
-    park_cursor_in_field(frame, chunks[2], &s.input);
+    if active_overlay_text_input(s).is_none() {
+        park_cursor_in_field(frame, chunks[2], &s.input);
+    }
     render_active_overlay(frame, area, s);
+}
+
+#[derive(Clone, Copy)]
+enum OverlayTextInput {
+    ConnectProviderKey,
+}
+
+fn active_overlay_text_input(s: &SessionState) -> Option<OverlayTextInput> {
+    match s.overlay {
+        Overlay::ConnectProvider if s.connect_provider.step == ConnectStep::EnterKey => {
+            Some(OverlayTextInput::ConnectProviderKey)
+        }
+        _ => None,
+    }
 }
 
 /// Maximum number of queued-message rows shown
@@ -347,6 +368,19 @@ fn render_active_overlay(frame: &mut Frame, area: Rect, s: &mut SessionState) {
         Overlay::Skills => render_overlay(frame, area, "Skills", skills_lines(s)),
         Overlay::Theme => render_overlay(frame, area, "Theme", theme_lines()),
         Overlay::Choice => render_overlay(frame, area, "Choose", super::overlay::choice_lines(s)),
+        Overlay::ConnectProvider => {
+            let body = super::overlay::connect_provider_lines(s);
+            let title = match s.connect_provider.step {
+                ConnectStep::PickProvider => "Connect Provider",
+                ConnectStep::EnterKey => "Enter API Key",
+                ConnectStep::Validating => "Validating...",
+                ConnectStep::Done => "Connected!",
+            };
+            render_overlay(frame, area, title, body);
+            if let Some(input) = active_overlay_text_input(s) {
+                park_cursor_in_overlay_text_input(frame, area, s, input);
+            }
+        }
         Overlay::ModelPicker => {
             // Compute the overlay rect first so the row builder knows
             // the inner width and can truncate each model to a single
@@ -423,4 +457,28 @@ fn render_active_overlay(frame: &mut Frame, area: Rect, s: &mut SessionState) {
         ),
         Overlay::SlashPicker => render_slash_picker(frame, area, s),
     }
+}
+
+fn park_cursor_in_overlay_text_input(
+    frame: &mut Frame,
+    area: Rect,
+    s: &SessionState,
+    input: OverlayTextInput,
+) {
+    let rect = centered_rect(area, 60, 60);
+    let inner_width = rect.width.saturating_sub(2) as usize;
+    if inner_width == 0 {
+        return;
+    }
+
+    let (left_pad, top_pad, text) = match input {
+        OverlayTextInput::ConnectProviderKey => (2, 4, connect_provider_key_text(s)),
+    };
+    let offset = left_pad + UnicodeWidthStr::width(text.as_str());
+    let x = rect.x + 1 + (offset % inner_width) as u16;
+    let y = rect.y + 1 + top_pad + (offset / inner_width) as u16;
+    frame.set_cursor_position(Position::new(
+        x.min(rect.x + rect.width.saturating_sub(2)),
+        y.min(rect.y + rect.height.saturating_sub(2)),
+    ));
 }
