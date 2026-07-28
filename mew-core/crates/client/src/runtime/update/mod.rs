@@ -324,8 +324,12 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
             Cmd::None
         }
 
-        Msg::ProviderConnected(result) => {
-            if s.overlay != Overlay::ConnectProvider {
+        Msg::ProviderConnected(result, attempt) => {
+            // Ignore stale responses from a previous submission.
+            if s.overlay != Overlay::ConnectProvider
+                || s.connect_provider.step != ConnectStep::Validating
+                || s.connect_provider.attempt != attempt
+            {
                 return Cmd::None;
             }
             match result {

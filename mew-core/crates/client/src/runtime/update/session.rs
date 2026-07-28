@@ -576,10 +576,14 @@ pub(super) fn on_connect_provider_key(s: &mut SessionState, key: KeyEvent) -> Cm
                 state.api_key = api_key;
                 state.error = None;
                 state.step = Validating;
-                Cmd::ConnectProvider(ConnectProviderRequest {
-                    provider,
-                    api_key: state.api_key.clone(),
-                })
+                state.attempt = state.attempt.wrapping_add(1);
+                Cmd::ConnectProvider(
+                    ConnectProviderRequest {
+                        provider,
+                        api_key: state.api_key.clone(),
+                    },
+                    state.attempt,
+                )
             }
             _ => {
                 state.key_input.input(key_to_input(key));

@@ -277,6 +277,9 @@ pub struct ConnectProviderState {
     pub error: Option<String>,
     /// Inline text input for the key entry step (masked in UI).
     pub key_input: TextArea<'static>,
+    /// Monotonic counter incremented on each submission so stale
+    /// responses from a previous attempt are ignored.
+    pub attempt: u64,
 }
 
 impl std::fmt::Debug for ConnectProviderState {

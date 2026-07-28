@@ -40,7 +40,7 @@ pub enum Msg {
     /// A `DELETE /sessions/{id}` completed (or failed).
     SessionDeleted(Result<uuid::Uuid, String>),
     /// A provider API key was validated (or rejected).
-    ProviderConnected(Result<ConnectProviderResponse, String>),
+    ProviderConnected(Result<ConnectProviderResponse, String>, u64),
 }
 
 /// Why a `POST /sessions` failed.

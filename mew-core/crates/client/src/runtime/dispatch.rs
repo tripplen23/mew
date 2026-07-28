@@ -121,12 +121,12 @@ pub(crate) fn dispatch(cmd: Cmd, api: &ApiClient, tx: &mpsc::Sender<Msg>) {
             let tx = tx.clone();
             tokio::spawn(run_compact_stream(api, id, tx));
         }
-        Cmd::ConnectProvider(req) => {
+        Cmd::ConnectProvider(req, attempt) => {
             let api = api.clone();
             let tx = tx.clone();
             tokio::spawn(async move {
                 let result = api.connect_provider(&req).await.map_err(|e| e.to_string());
-                let _ = tx.send(Msg::ProviderConnected(result)).await;
+                let _ = tx.send(Msg::ProviderConnected(result, attempt)).await;
             });
         }
         Cmd::PlayNotificationSound => {

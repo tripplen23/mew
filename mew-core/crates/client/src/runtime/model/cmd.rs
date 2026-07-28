@@ -44,7 +44,7 @@ pub enum Cmd {
     /// Trigger manual context compaction for the current session.
     Compact(uuid::Uuid),
     /// Validate and store a provider API key.
-    ConnectProvider(ConnectProviderRequest),
+    ConnectProvider(ConnectProviderRequest, u64),
     /// Run multiple commands.
     Batch(Vec<Cmd>),
 }
