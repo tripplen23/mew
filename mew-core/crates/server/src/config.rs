@@ -1,7 +1,7 @@
 //! Server configuration.
 
-use figment::providers::{Env, Format, Toml};
 use figment::Figment;
+use figment::providers::{Env, Format, Toml};
 use mewcode_protocol::env::{CONFIG_FILE, OPENCODE_GO_API_KEY};
 use serde::Deserialize;
 
