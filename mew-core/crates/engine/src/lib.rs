@@ -15,7 +15,6 @@ pub mod harness;
 pub mod observability;
 pub mod skills;
 pub mod tools;
-pub mod wc;
 
 pub use agent::{Agent, Provider, build_system_prompt};
 pub use compaction::{CompactionResult, compact_history};

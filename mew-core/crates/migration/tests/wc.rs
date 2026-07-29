@@ -1,4 +1,4 @@
-use mewcode_engine::wc::wc;
+use mewcode_migration::wc::wc;
 
 fn assert_matches_python(input: &str, expected: (usize, usize, usize, usize)) {
     assert_eq!(wc(input), expected, "mismatch for input: {input:?}");

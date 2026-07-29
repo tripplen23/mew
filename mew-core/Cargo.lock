@@ -1908,6 +1908,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mewcode-migration"
+version = "0.3.5"
+dependencies = [
+ "mewcode-protocol",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "mewcode-protocol"
 version = "0.3.5"
 dependencies = [
