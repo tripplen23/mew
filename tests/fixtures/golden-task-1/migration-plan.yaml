@@ -1,4 +1,4 @@
-run_id: golden-task-1-wc-20260728-120000-abc1234
+run_id: golden-task-1-wc-20260728-85b451e
 scope_mode: language_port
 units:
   - id: inspect-baseline
@@ -7,35 +7,35 @@ units:
     depends_on: []
     target_paths:
       - tests/fixtures/wc.py
-    verification: "python3 -c 'import wc; wc.wc(\"test\")' exits 0"
+    verification: "python3 -c 'import sys; sys.path.insert(0,\"tests/fixtures\"); from wc import wc; assert wc(\"test\") == {\"words\":1,\"lines\":1,\"chars\":4,\"bytes\":4}'"
 
   - id: write-rust-lib
     order: 2
-    description: "Implement wc() in mew-core/crates/engine/src/wc.rs with identical behavior"
+    description: "Implement wc() in mew-core/crates/migration/src/wc.rs with identical behavior"
     depends_on: [inspect-baseline]
     target_paths:
-      - mew-core/crates/engine/src/wc.rs
-    verification: "cargo check -p mewcode-engine"
-
-  - id: add-tests
-    order: 3
-    description: "Add Rust tests matching every Python baseline case"
-    depends_on: [write-rust-lib]
-    target_paths:
-      - mew-core/crates/engine/src/wc.rs
-    verification: "cargo test -p mewcode-engine wc::"
+      - mew-core/crates/migration/src/wc.rs
+    verification: "cargo check -p mewcode-migration"
 
   - id: register-module
-    order: 4
-    description: "Register wc module in engine/src/lib.rs"
+    order: 3
+    description: "Register wc module in migration/src/lib.rs"
     depends_on: [write-rust-lib]
     target_paths:
-      - mew-core/crates/engine/src/lib.rs
-    verification: "cargo doc --workspace --no-deps -D warnings"
+      - mew-core/crates/migration/src/lib.rs
+    verification: "cargo check -p mewcode-migration"
+
+  - id: add-tests
+    order: 4
+    description: "Add integration tests matching every Python baseline case"
+    depends_on: [write-rust-lib, register-module]
+    target_paths:
+      - mew-core/crates/migration/tests/wc.rs
+    verification: "cargo test -p mewcode-migration --test wc"
 
   - id: parity-verification
     order: 5
     description: "Run all wc tests and produce parity-report.json"
-    depends_on: [add-tests, register-module]
-    verification: "python3 scripts/validate_run.py tests/fixtures/golden-task-1/"
+    depends_on: [add-tests]
+    verification: "cargo test -p mewcode-migration && cargo doc --workspace --no-deps -D warnings"
     target_paths: []
