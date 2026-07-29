@@ -11,31 +11,31 @@ units:
 
   - id: write-rust-lib
     order: 2
-    description: "Implement wc() in mew-core/crates/migration/src/wc.rs with identical behavior"
+    description: "Implement wc() in mew-core/crates/engine/src/migration/wc.rs"
     depends_on: [inspect-baseline]
     target_paths:
-      - mew-core/crates/migration/src/wc.rs
-    verification: "cargo check -p mewcode-migration"
+      - mew-core/crates/engine/src/migration/wc.rs
+    verification: "cargo check -p mewcode-engine"
 
   - id: register-module
     order: 3
-    description: "Register wc module in migration/src/lib.rs"
+    description: "Register migration module in engine/src/lib.rs"
     depends_on: [write-rust-lib]
     target_paths:
-      - mew-core/crates/migration/src/lib.rs
-    verification: "cargo check -p mewcode-migration"
+      - mew-core/crates/engine/src/lib.rs
+    verification: "cargo check -p mewcode-engine"
 
   - id: add-tests
     order: 4
     description: "Add integration tests matching every Python baseline case"
     depends_on: [write-rust-lib, register-module]
     target_paths:
-      - mew-core/crates/migration/tests/wc.rs
-    verification: "cargo test -p mewcode-migration --test wc"
+      - mew-core/crates/engine/tests/wc.rs
+    verification: "cargo test -p mewcode-engine --test wc"
 
   - id: parity-verification
     order: 5
     description: "Run all wc tests and produce parity-report.json"
     depends_on: [add-tests]
-    verification: "cargo test -p mewcode-migration && cargo doc --workspace --no-deps -D warnings"
+    verification: "cargo test -p mewcode-engine --test wc && cargo doc --workspace --no-deps -D warnings"
     target_paths: []
