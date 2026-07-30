@@ -1,4 +1,4 @@
-"""Reference wc implementation for golden task 1.
+"""Reference wc implementation.
 
 Deterministic library: count words, lines, characters, and bytes in a string.
 This is the baseline that the Rust port must match byte-for-byte.

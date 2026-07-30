@@ -1,6 +1,6 @@
 //! Migration schemas — machine-readable types for golden task runs.
 //!
-//! Part of M0: these are the contract between the skill-driven workflow
+//! These are the contract between the skill-driven workflow
 //! and future Rust automation. Every migration run produces these artifacts
 //! as JSON files for reproducibility and audit.
 

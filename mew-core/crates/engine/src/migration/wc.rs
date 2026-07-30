@@ -1,4 +1,4 @@
-//! Word/line/character/byte counter — golden task 1 reference implementation.
+//! Word/line/character/byte counter.
 //!
 //! Ported from `tests/fixtures/wc.py`. All behavior must match the Python
 //! baseline byte-for-byte for every valid UTF-8 input, including edge cases

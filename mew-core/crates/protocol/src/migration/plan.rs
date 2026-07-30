@@ -9,8 +9,7 @@ use serde::{Deserialize, Serialize};
 pub struct MigrationPlan {
     /// Run manifest this plan belongs to.
     pub run_id: String,
-    /// Ordered steps. The agent should execute these in sequence,
-    /// respecting dependencies.
+    /// Steps to execute in dependency order.
     pub steps: Vec<MigrationStep>,
     /// Estimated total tokens for this run.
     pub estimated_tokens: u64,

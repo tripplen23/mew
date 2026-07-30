@@ -1,6 +1,6 @@
 //! Migration run manifest — describes what is being migrated.
 //!
-//! Part of M0: the single source of truth for a migration run, machine-readable
+//! The single source of truth for a migration run, machine-readable
 //! so skills produce consistent JSON and future Rust automation can ingest it.
 
 use serde::{Deserialize, Serialize};
