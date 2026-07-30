@@ -1,0 +1,18 @@
+{
+  "id": "golden-task-2-20260730-e447e6b",
+  "created_at": "2026-07-30T18:00:00Z",
+  "golden_task": "golden-task-2",
+  "source": {
+    "repo_url": "https://github.com/tripplen23/mew",
+    "commit": "e447e6b",
+    "language": "python",
+    "entry_point": "tests/fixtures/golden-task-2/baseline/app.py",
+    "dependencies": ["flask"]
+  },
+  "target": {
+    "language": "rust",
+    "framework": "axum",
+    "constraints": ["no unsafe", "must pass clippy"],
+    "deterministic": true
+  }
+}

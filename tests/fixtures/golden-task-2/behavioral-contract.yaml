@@ -1,0 +1,67 @@
+run_id: golden-task-2-20260730-e447e6b
+baseline_version: e447e6b
+candidate_version: HEAD
+properties:
+  - id: api-health
+    description: "GET /health returns 200 with {status: ok}"
+    action: preserve
+    oracle:
+      kind: executable-baseline
+      command: "python3.11 -c 'from app import app; r=app.test_client().get(\"/health\"); assert r.status_code==200; assert r.get_json()=={\"status\":\"ok\"}'"
+      expected: '{"status":"ok"}'
+    tolerance: exact
+
+  - id: api-list-empty
+    description: "GET /tasks returns empty array when no tasks exist"
+    action: preserve
+    oracle:
+      kind: executable-baseline
+      command: "python3.11 -c 'from app import app; r=app.test_client().get(\"/tasks\"); assert r.status_code==200; assert r.get_json()==[]'"
+      expected: "[]"
+    tolerance: exact
+
+  - id: api-create
+    description: "POST /tasks with title returns 201 with id, title, done"
+    action: preserve
+    oracle:
+      kind: executable-baseline
+      command: "python3.11 -c 'from app import app; r=app.test_client().post(\"/tasks\",json={\"title\":\"test\"}); j=r.get_json(); assert r.status_code==201; assert j[\"title\"]==\"test\" and j[\"done\"]==False and \"id\" in j'"
+      expected: '{"id":1,"title":"test","done":false}'
+    tolerance: exact
+
+  - id: api-get
+    description: "GET /tasks/:id returns 200 with task or 404"
+    action: preserve
+    oracle:
+      kind: executable-baseline
+      command: "python3.11 -c 'from app import app; c=app.test_client(); c.post(\"/tasks\",json={\"title\":\"x\"}); assert c.get(\"/tasks/1\").status_code==200; assert c.get(\"/tasks/99\").status_code==404'"
+      expected: "200 for existing, 404 for missing"
+    tolerance: exact
+
+  - id: api-delete
+    description: "DELETE /tasks/:id returns 204 or 404"
+    action: preserve
+    oracle:
+      kind: executable-baseline
+      command: "python3.11 -c 'from app import app; c=app.test_client(); c.post(\"/tasks\",json={\"title\":\"x\"}); assert c.delete(\"/tasks/1\").status_code==204; assert c.delete(\"/tasks/99\").status_code==404'"
+      expected: "204 for existing, 404 for missing"
+    tolerance: exact
+
+  - id: api-error
+    description: "POST /tasks without title returns 400 with error message"
+    action: preserve
+    oracle:
+      kind: executable-baseline
+      command: "python3.11 -c 'from app import app; r=app.test_client().post(\"/tasks\",json={}); assert r.status_code==400; assert \"error\" in r.get_json()'"
+      expected: '{"error":"title is required"}'
+    tolerance: exact
+
+  - id: api-axum-framework
+    description: "Candidate uses Axum framework with Tokio runtime"
+    action: introduce
+    oracle:
+      kind: contract-spec
+      assertion: "Cargo.toml depends on axum + tokio, cargo check passes"
+
+verification_route: differential
+unknowns: []

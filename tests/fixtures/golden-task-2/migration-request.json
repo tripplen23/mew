@@ -1,0 +1,19 @@
+{
+  "run_id": "golden-task-2-20260730-e447e6b",
+  "target_repository": "https://github.com/tripplen23/mew",
+  "desired_evolution": "Migrate the Task Manager API (Flask, in-memory store) to Rust Axum. Preserve all 5 endpoints, status codes, JSON response shapes, and error behavior.",
+  "source": {
+    "repo_url": "https://github.com/tripplen23/mew",
+    "commit": "e447e6b",
+    "language": "python",
+    "entry_point": "tests/fixtures/golden-task-2/baseline/app.py"
+  },
+  "target": {
+    "language": "rust",
+    "framework": "axum",
+    "constraints": ["must pass cargo check", "must pass cargo test", "no unsafe", "preserve OpenAPI contract"],
+    "deterministic": true
+  },
+  "scope_mode": "framework_migration",
+  "contract_source": "tests/fixtures/golden-task-2/baseline/openapi.yaml"
+}

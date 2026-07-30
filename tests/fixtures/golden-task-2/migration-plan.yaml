@@ -1,0 +1,42 @@
+run_id: golden-task-2-20260730-e447e6b
+scope_mode: framework_migration
+units:
+  - id: inspect-baseline
+    order: 1
+    description: "Read Flask baseline (app.py) and OpenAPI spec (openapi.yaml)"
+    depends_on: []
+    target_paths:
+      - tests/fixtures/golden-task-2/baseline/app.py
+      - tests/fixtures/golden-task-2/baseline/openapi.yaml
+    verification: "python3.11 -m pytest tests/fixtures/golden-task-2/baseline/ -x"
+
+  - id: create-axum-crate
+    order: 2
+    description: "Create axum-task-manager Rust crate with Axum + Tokio"
+    depends_on: [inspect-baseline]
+    target_paths:
+      - mew-core/crates/axum-task-manager/
+    verification: "cargo check -p axum-task-manager"
+
+  - id: implement-endpoints
+    order: 3
+    description: "Implement 5 endpoints matching OpenAPI contract"
+    depends_on: [create-axum-crate]
+    target_paths:
+      - mew-core/crates/axum-task-manager/src/
+    verification: "cargo check -p axum-task-manager"
+
+  - id: add-tests
+    order: 4
+    description: "Add integration tests using reqwest against running server"
+    depends_on: [implement-endpoints]
+    target_paths:
+      - mew-core/crates/axum-task-manager/tests/
+    verification: "cargo test -p axum-task-manager"
+
+  - id: parity-verification
+    order: 5
+    description: "Compare Flask baseline vs Axum candidate responses"
+    depends_on: [add-tests]
+    verification: "python3.11 tests/fixtures/golden-task-2/verify.py"
+    target_paths: []

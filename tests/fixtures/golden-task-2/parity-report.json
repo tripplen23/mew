@@ -1,0 +1,104 @@
+{
+  "run_id": "golden-task-2-20260730-e447e6b",
+  "baseline_version": "e447e6b",
+  "candidate_version": "HEAD",
+  "assertions": [
+    {
+      "id": "api-health",
+      "description": "GET /health returns 200 with {status: ok}",
+      "passed": false,
+      "category": "functional",
+      "baseline_behavior": "Flask: 200 + {\"status\":\"ok\"}",
+      "candidate_behavior": "Axum: NOT YET IMPLEMENTED",
+      "suggestion": "Implement health endpoint in axum-task-manager"
+    },
+    {
+      "id": "api-list-empty",
+      "description": "GET /tasks returns empty array when no tasks exist",
+      "passed": false,
+      "category": "functional",
+      "baseline_behavior": "Flask: 200 + []",
+      "candidate_behavior": "NOT YET IMPLEMENTED",
+      "suggestion": "Implement GET /tasks endpoint"
+    },
+    {
+      "id": "api-create",
+      "description": "POST /tasks with title returns 201 with task object",
+      "passed": false,
+      "category": "functional",
+      "baseline_behavior": "Flask: 201 + {\"id\":N,\"title\":\"...\",\"done\":false}",
+      "candidate_behavior": "NOT YET IMPLEMENTED",
+      "suggestion": "Implement POST /tasks endpoint with JSON body validation"
+    },
+    {
+      "id": "api-get",
+      "description": "GET /tasks/:id returns 200 or 404",
+      "passed": false,
+      "category": "functional",
+      "baseline_behavior": "Flask: 200 (found) / 404 (missing)",
+      "candidate_behavior": "NOT YET IMPLEMENTED",
+      "suggestion": "Implement GET /tasks/:id with path parameter"
+    },
+    {
+      "id": "api-delete",
+      "description": "DELETE /tasks/:id returns 204 or 404",
+      "passed": false,
+      "category": "functional",
+      "baseline_behavior": "Flask: 204 (deleted) / 404 (missing)",
+      "candidate_behavior": "NOT YET IMPLEMENTED",
+      "suggestion": "Implement DELETE /tasks/:id"
+    },
+    {
+      "id": "api-error",
+      "description": "POST /tasks without title returns 400",
+      "passed": false,
+      "category": "functional",
+      "baseline_behavior": "Flask: 400 + {\"error\":\"title is required\"}",
+      "candidate_behavior": "NOT YET IMPLEMENTED",
+      "suggestion": "Implement input validation returning 400 on missing title"
+    },
+    {
+      "id": "api-axum-framework",
+      "description": "Candidate uses Axum framework",
+      "passed": false,
+      "category": "functional",
+      "baseline_behavior": "N/A",
+      "candidate_behavior": "NOT YET CREATED",
+      "suggestion": "Create axum-task-manager crate"
+    }
+  ],
+  "deviations": [],
+  "skill_gaps": [
+    {
+      "skill": "repo-cartographer",
+      "gap": "OpenAPI spec detection — assumes source-code-only repos",
+      "severity": "major",
+      "proposal": "Teach repo-cartographer to recognize openapi.yaml/swagger.json as primary structural evidence"
+    },
+    {
+      "skill": "behavior-contract",
+      "gap": "HTTP oracle classification — only knows function-call oracles",
+      "severity": "major",
+      "proposal": "Add HTTP driver oracle kind: replayable HTTP requests with status + body assertions"
+    },
+    {
+      "skill": "differential-migration",
+      "gap": "Cross-process comparison — assumes same-process function calls",
+      "severity": "major",
+      "proposal": "Add HTTP differential mode: start both servers, replay requests, diff responses"
+    },
+    {
+      "skill": "mew-migration",
+      "gap": "framework_migration scope mode has no explicit defaults",
+      "severity": "minor",
+      "proposal": "Add concrete pilot defaults and framework-replacement guidance per language pair"
+    }
+  ],
+  "token_usage": {
+    "prompt_tokens": 800,
+    "completion_tokens": 400,
+    "total_tokens": 1200
+  },
+  "verdict": "failed",
+  "verdict_note": "Golden task 2 is a minimal proof run — candidate not yet implemented. Its primary value is identifying skill gaps for M1 HTTP driver work. Full implementation deferred to when HTTP differential infrastructure exists."
+}
