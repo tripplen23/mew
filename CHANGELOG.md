@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/tripplen23/mew/compare/mew-core-v0.4.0...mew-core-v0.5.0) (2026-07-30)
+
+
+### Features
+
+* migration protocol schemas (M0) ([#157](https://github.com/tripplen23/mew/issues/157)) ([ceb1dcc](https://github.com/tripplen23/mew/commit/ceb1dcc94218dc81ca6f25ad2ebacb1260763103))
+
 ## [0.4.0](https://github.com/tripplen23/mew/compare/mew-core-v0.3.6...mew-core-v0.4.0) (2026-07-28)
 
 
