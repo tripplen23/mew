@@ -89,10 +89,11 @@ fn middle_event() -> impl Strategy<Value = StreamMsg> {
 }
 
 proptest! {
-    /// Any in-flight sequence ending in `Finished` commits exactly one
-    /// assistant message and clears the streaming state.
+    /// Any in-flight sequence ending in `Finished` clears the streaming state
+    /// and commits at most one assistant message: nothing before `Finished`,
+    /// and a turn that produced no content commits nothing.
     #[test]
-    fn finish_commits_exactly_one_assistant(events in prop::collection::vec(middle_event(), 0..12)) {
+    fn finish_commits_at_most_one_assistant(events in prop::collection::vec(middle_event(), 0..12)) {
         let mut app = session_app();
         start_turn(&mut app);
         let base_total = message_count(&app);
@@ -108,8 +109,9 @@ proptest! {
 
         let s = session_state(&app);
         prop_assert!(s.streaming.is_none());
-        prop_assert_eq!(assistant_count(&app), base_assistant + 1);
-        prop_assert_eq!(message_count(&app), base_total + 1);
+        let added = assistant_count(&app) - base_assistant;
+        prop_assert!(added <= 1, "a turn commits at most one assistant message, got {added}");
+        prop_assert_eq!(message_count(&app), base_total + added);
     }
 
     /// A `Failed` terminal event discards the partial buffer, commits no

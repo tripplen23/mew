@@ -197,22 +197,30 @@ fn measure_real_transcript_wrapped_height() {
 }
 
 fn rss_kb() -> u64 {
+    // /proc/self/status is Linux-only and the VmRSS value is best-effort;
+    // degrade to 0 instead of panicking the perf harness on other platforms.
     std::fs::read_to_string("/proc/self/status")
-        .unwrap()
-        .lines()
-        .find(|line| line.starts_with("VmRSS:"))
-        .and_then(|line| line.split_whitespace().nth(1))
-        .map(|v| v.parse().unwrap())
+        .ok()
+        .and_then(|contents| {
+            contents
+                .lines()
+                .find(|line| line.starts_with("VmRSS:"))
+                .and_then(|line| line.split_whitespace().nth(1))
+                .and_then(|v| v.parse::<u64>().ok())
+        })
         .unwrap_or(0)
 }
 
 /// Does multi-width churn actually cost memory? Each width change re-renders
-/// every message (cache miss) and leaves the old-width entries behind, so the
-/// map grows `messages × widths`. RSS delta shows whether that is measurable.
+/// every message (cache miss). The cache is keyed by message id, so a width
+/// change replaces the old-width block in place rather than accumulating it;
+/// the RSS delta shows whether the re-render churn itself is measurable.
+const MESSAGES: usize = 800;
+
 #[test]
 fn measure_cache_growth_across_widths() {
-    println!("\n=== cache entries + RSS as widths accumulate (800 messages) ===");
-    let mut app = app_with(800);
+    println!("\n=== cache entries + RSS as widths accumulate ({MESSAGES} messages) ===");
+    let mut app = app_with(MESSAGES);
     let mut term = terminal();
     draw_once(&mut term, &mut app);
     let mut base_rss = rss_kb();
@@ -221,12 +229,15 @@ fn measure_cache_growth_across_widths() {
         draw_once(&mut term, &mut app);
         let Screen::Session(s) = &app.screen;
         let entries = s.transcript_cache.message_cache_len();
+        assert_eq!(
+            entries, MESSAGES,
+            "cache must hold exactly one entry per message across width changes"
+        );
         let rss = rss_kb();
         println!(
-            "  width {:>3}: {:>4} cache entries / {} messages, RSS {:>6} kB  (+{} kB)",
+            "  width {:>3}: {:>4} cache entries / {MESSAGES} messages, RSS {:>6} kB  (+{} kB)",
             w,
             entries,
-            800,
             rss,
             rss.saturating_sub(base_rss)
         );

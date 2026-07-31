@@ -125,11 +125,12 @@ pub(crate) fn apply_stream_event(s: &mut SessionState, ev: StreamMsg) -> Option<
                 if let Some(session) = s.session.as_mut() {
                     let (msg, views) = commit_turn(st, session.model);
                     // A compaction entry anchors to the message count before its
-                    // reply is committed, so it renders above that reply. A
-                    // manual /compact streams no reply, so its empty message is
-                    // dropped and the entry lands at the end of the transcript.
+                    // reply is committed, so it renders above that reply. A turn
+                    // that produced no content (e.g. a manual /compact, which
+                    // streams no reply) commits no message, so its entry lands
+                    // at the end of the transcript.
                     let anchor = session.messages.len();
-                    if !(manual && msg.parts.is_empty()) {
+                    if !msg.parts.is_empty() {
                         session.messages.push(msg);
                     }
                     for view in views {
