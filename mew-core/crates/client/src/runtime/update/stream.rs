@@ -1,6 +1,10 @@
+//! Applies streaming SSE events (`StreamMsg`) to the session state: folding
+//! text and tool-call deltas into the in-flight turn, then committing the
+//! finished assistant message.
+
 use mewcode_protocol::{Message, MessagePart, ModelId, ToolCall, ToolResult};
 
-use super::super::model::{
+use crate::runtime::model::{
     CompactionEntry, CompactionView, SessionState, StreamMsg, StreamingState, Toast, ToolCallView,
     TurnItem,
 };
@@ -57,8 +61,8 @@ pub(super) fn apply_stream_event(s: &mut SessionState, ev: StreamMsg) -> Option<
             None
         }
         StreamMsg::ChoiceRequest(request) => {
-            s.pending_choice = Some(super::super::model::ChoicePromptState::new(request));
-            s.overlay = super::super::model::Overlay::Choice;
+            s.pending_choice = Some(crate::runtime::model::ChoicePromptState::new(request));
+            s.overlay = crate::runtime::model::Overlay::Choice;
             None
         }
         StreamMsg::CompactionStarted => {

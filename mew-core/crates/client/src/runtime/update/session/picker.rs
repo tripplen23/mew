@@ -11,20 +11,14 @@ use mewcode_protocol::ModelId;
 
 use crate::net::SessionPatch;
 
-use super::super::model::{Cmd, Overlay, PickerState, SessionState};
-use super::key_to_input;
+use crate::runtime::model::{Cmd, Overlay, PickerState, SessionState};
+use crate::runtime::update::key_to_input;
 
 /// Handle navigation and selection inside the model picker overlay.
 pub(super) fn on_model_picker_key(s: &mut SessionState, key: KeyEvent) -> Cmd {
     match key.code {
-        KeyCode::Up => {
-            cursor_move(s, -1);
-            Cmd::None
-        }
-        KeyCode::Down => {
-            cursor_move(s, 1);
-            Cmd::None
-        }
+        KeyCode::Up => cursor_move(s, -1),
+        KeyCode::Down => cursor_move(s, 1),
         KeyCode::Enter => pick_model(s),
         _ => Cmd::None,
     }
@@ -33,14 +27,8 @@ pub(super) fn on_model_picker_key(s: &mut SessionState, key: KeyEvent) -> Cmd {
 /// Handle navigation, open, and delete inside the session list overlay.
 pub(super) fn on_session_list_key(s: &mut SessionState, key: KeyEvent) -> Cmd {
     match key.code {
-        KeyCode::Up => {
-            cursor_move(s, -1);
-            Cmd::None
-        }
-        KeyCode::Down => {
-            cursor_move(s, 1);
-            Cmd::None
-        }
+        KeyCode::Up => cursor_move(s, -1),
+        KeyCode::Down => cursor_move(s, 1),
         KeyCode::Enter => s
             .session_list
             .summaries
@@ -59,14 +47,8 @@ pub(super) fn on_session_list_key(s: &mut SessionState, key: KeyEvent) -> Cmd {
 
 pub(super) fn on_file_picker_key(s: &mut SessionState, key: KeyEvent) -> Cmd {
     match key.code {
-        KeyCode::Up => {
-            file_cursor_move(s, -1);
-            Cmd::None
-        }
-        KeyCode::Down => {
-            file_cursor_move(s, 1);
-            Cmd::None
-        }
+        KeyCode::Up => cursor_move(s, -1),
+        KeyCode::Down => cursor_move(s, 1),
         KeyCode::Enter => {
             pick_file(s);
             Cmd::None
@@ -142,11 +124,11 @@ fn pick_model(s: &mut SessionState) -> Cmd {
     Cmd::None
 }
 
-fn cursor_move(s: &mut SessionState, delta: i32) {
+fn cursor_move(s: &mut SessionState, delta: i32) -> Cmd {
     match s.overlay {
         Overlay::ModelPicker => {
             let Some(models) = s.model_picker.models.as_ref() else {
-                return;
+                return Cmd::None;
             };
             move_picker_cursor(&mut s.model_picker.picker, models.len(), delta);
             let cursor_row = model_cursor_row(models, s.model_picker.picker.cursor);
@@ -170,6 +152,7 @@ fn cursor_move(s: &mut SessionState, delta: i32) {
                     .viewport
                     .max(s.model_picker.picker.viewport_max) as usize,
             );
+            Cmd::None
         }
         Overlay::SessionList => {
             move_picker_cursor(
@@ -186,9 +169,13 @@ fn cursor_move(s: &mut SessionState, delta: i32) {
                     .viewport
                     .max(s.session_list.picker.viewport_max) as usize,
             );
+            Cmd::None
         }
-        Overlay::FilePicker => file_cursor_move(s, delta),
-        _ => {}
+        Overlay::FilePicker => {
+            file_cursor_move(s, delta);
+            Cmd::None
+        }
+        _ => Cmd::None,
     }
 }
 
@@ -213,7 +200,7 @@ fn clamp_picker_scroll(scroll: usize, cursor: usize, len: usize, visible_rows: u
 }
 
 /// Re-clamp model picker scroll after async model data changes.
-pub(super) fn clamp_model_picker_scroll(s: &mut SessionState) {
+pub(crate) fn clamp_model_picker_scroll(s: &mut SessionState) {
     let (len, cursor) = s
         .model_picker
         .models
@@ -302,7 +289,7 @@ fn model_visual_len(models: &[crate::net::ModelEntry]) -> usize {
 }
 
 /// Re-clamp session list scroll after async list data changes.
-pub(super) fn clamp_session_list_scroll(s: &mut SessionState) {
+pub(crate) fn clamp_session_list_scroll(s: &mut SessionState) {
     let viewport = s
         .session_list
         .picker
@@ -316,7 +303,7 @@ pub(super) fn clamp_session_list_scroll(s: &mut SessionState) {
     );
 }
 
-pub(super) fn clamp_file_picker_scroll(s: &mut SessionState) {
+pub(crate) fn clamp_file_picker_scroll(s: &mut SessionState) {
     let viewport = s
         .file_picker
         .picker

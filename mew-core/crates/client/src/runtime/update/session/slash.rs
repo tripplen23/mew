@@ -7,8 +7,8 @@
 use crossterm::event::{KeyCode, KeyEvent};
 use tui_textarea::TextArea;
 
-use super::super::model::{Cmd, Overlay, SLASH_COMMANDS, SessionState};
-use super::key_to_input;
+use crate::runtime::model::{Cmd, Overlay, SLASH_COMMANDS, SessionState};
+use crate::runtime::update::key_to_input;
 
 /// Result of handling a slash-picker key.
 pub(super) enum SlashPickerResult {

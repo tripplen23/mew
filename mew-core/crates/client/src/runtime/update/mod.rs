@@ -19,12 +19,12 @@ use super::model::{
     App, Cmd, ConnectStep, CreateError, Msg, Overlay, Screen, StreamMsg, StreamingState, Toast,
 };
 
-mod picker;
 mod session;
-mod slash;
 mod stream;
 
-use picker::{clamp_file_picker_scroll, clamp_model_picker_scroll, clamp_session_list_scroll};
+use session::picker::{
+    clamp_file_picker_scroll, clamp_model_picker_scroll, clamp_session_list_scroll,
+};
 use session::{on_session_key, on_session_paste, submit_choice_response};
 use stream::apply_stream_event;
 

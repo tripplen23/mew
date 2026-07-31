@@ -1,3 +1,7 @@
+//! Session screen state: hydrated session, composer, overlays, streaming,
+//! compaction, and the transcript render cache. Picker-derived queries live
+//! in the `file_picker` submodule.
+
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::Instant;

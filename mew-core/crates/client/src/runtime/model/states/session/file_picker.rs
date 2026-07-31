@@ -1,3 +1,7 @@
+//! File-picker derived state: filtering and scoring the current `@`-mention
+//! query against the fetched file list. Shared by the view and the update
+//! loop so both agree on what the picker shows.
+
 use super::{FileEntry, SessionState};
 
 const FILE_MENTION_PREFIX: char = '@';
@@ -47,7 +51,9 @@ impl SessionState {
         let token = prefix
             .rsplit_once(char::is_whitespace)
             .map_or(prefix.as_str(), |(_, token)| token);
-        token.strip_prefix(FILE_MENTION_PREFIX).map(ToOwned::to_owned)
+        token
+            .strip_prefix(FILE_MENTION_PREFIX)
+            .map(ToOwned::to_owned)
     }
 
     pub fn file_mention_token(path: &str, is_dir: bool) -> String {
