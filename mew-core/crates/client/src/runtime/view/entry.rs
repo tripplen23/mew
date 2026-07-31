@@ -22,7 +22,7 @@ const MEW_LOGO: [&str; 6] = [
     "╚═╝     ╚═╝╚══════╝ ╚══╝╚══╝ ",
 ];
 
-pub(super) fn render_entry_lines(
+pub(crate) fn render_entry_lines(
     s: &SessionState,
     theme: Theme,
     inner: Rect,

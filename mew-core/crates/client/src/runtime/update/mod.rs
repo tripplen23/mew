@@ -8,7 +8,7 @@
 //! > quiet and the function is trivially unit-testable.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use tui_textarea::{Input, Key, TextArea};
+use tui_textarea::{Input, Key};
 use uuid::Uuid;
 
 use mewcode_protocol::event::ChatRequest;
@@ -101,8 +101,7 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
                     s.streaming = Some(StreamingState::new(Uuid::nil()));
                     // The composer is cleared now that the first turn
                     // has been committed.
-                    s.input = TextArea::default();
-                    s.pasted.clear();
+                    s.clear_composer();
                     // The local `session` is the pre-push server clone —
                     // read from the model, which has the user message.
                     let live = s.session.as_ref().unwrap();
@@ -270,8 +269,7 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
                     s.session = Some(session);
                     s.overlay = Overlay::None;
                     if from_rename {
-                        s.input = TextArea::default();
-                        s.pasted.clear();
+                        s.clear_composer();
                     }
                 }
                 Err(e) => {

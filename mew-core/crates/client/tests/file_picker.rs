@@ -3,6 +3,16 @@
 //!
 //! `file_match_score`'s ranking tiers are asserted through the ordering
 //! contract of `filtered_files` (the only public consumer of the score).
+//!
+//! No-behavior-change contract: these tests pin the file-picker behavior
+//! (filtering, query, mention-token, and ranking) against the
+//! `SessionState` API, so refactors of the state/picker integration must
+//! keep it green without changing user-visible file-picker behavior.
+//!
+//! Verification plan: `current_file_query` tests assert the parsed query
+//! under cursor; the `@`-token tests assert the active file-mention
+//! boundary; `filtered_files` ordering tests assert rank tiers descend
+//! correctly.
 
 use tui_textarea::{CursorMove, TextArea};
 
@@ -20,8 +30,8 @@ fn file(path: &str) -> FileEntry {
 /// A session whose composer holds `text` with the cursor at column `col`.
 fn composer_state(text: &str, col: usize) -> SessionState {
     let mut s = SessionState::empty();
-    s.input = TextArea::from(vec![text.to_string()]);
-    s.input.move_cursor(CursorMove::Jump(0, col as u16));
+    s.composer = TextArea::from(vec![text.to_string()]);
+    s.composer.move_cursor(CursorMove::Jump(0, col as u16));
     s
 }
 
@@ -72,16 +82,13 @@ fn current_file_query_keeps_leading_dot_for_hidden_query() {
 
 #[test]
 fn filtered_files_hides_dotfiles_and_hidden_dirs_by_default() {
-    let mut s = state_with_files(vec![
+    let s = state_with_files(vec![
         file(".env"),
         file("README.md"),
         file("src/.git/config"),
         file("src/main.rs"),
     ]);
-    assert_eq!(
-        paths(&s.filtered_files()),
-        ["README.md", "src/main.rs"]
-    );
+    assert_eq!(paths(&s.filtered_files()), ["README.md", "src/main.rs"]);
 }
 
 #[test]
@@ -92,8 +99,8 @@ fn filtered_files_shows_hidden_for_dot_query() {
         file("src/.git/config"),
         file("src/main.rs"),
     ]);
-    s.input = TextArea::from(vec!["read @.".to_string()]);
-    s.input.move_cursor(CursorMove::Jump(0, 7));
+    s.composer = TextArea::from(vec!["read @.".to_string()]);
+    s.composer.move_cursor(CursorMove::Jump(0, 7));
     assert_eq!(
         paths(&s.filtered_files()),
         [".env", "src/main.rs", "README.md", "src/.git/config"]
@@ -111,8 +118,8 @@ fn filtered_files_orders_by_match_rank() {
         file("src/main/support.txt"), // path contains     (rank 3)
         file("mountain.txt"),         // subsequence       (rank 4)
     ]);
-    s.input = TextArea::from(vec!["read @main".to_string()]);
-    s.input.move_cursor(CursorMove::Jump(0, 10));
+    s.composer = TextArea::from(vec!["read @main".to_string()]);
+    s.composer.move_cursor(CursorMove::Jump(0, 10));
     assert_eq!(
         paths(&s.filtered_files()),
         [
@@ -127,7 +134,7 @@ fn filtered_files_orders_by_match_rank() {
 
 #[test]
 fn filtered_files_empty_query_sorts_alphabetically() {
-    let mut s = state_with_files(vec![file("b.txt"), file("a.txt"), file("c.txt")]);
+    let s = state_with_files(vec![file("b.txt"), file("a.txt"), file("c.txt")]);
     assert_eq!(paths(&s.filtered_files()), ["a.txt", "b.txt", "c.txt"]);
 }
 
@@ -142,7 +149,7 @@ fn filtered_files_no_files_is_empty() {
 #[test]
 fn filtered_files_caps_at_ten_results() {
     let files = (1..=11).map(|i| file(&format!("f{i:02}.txt"))).collect();
-    let mut s = state_with_files(files);
+    let s = state_with_files(files);
     let filtered = s.filtered_files();
     assert_eq!(filtered.len(), 10);
     assert_eq!(filtered.first().unwrap().path, "f01.txt");
@@ -153,7 +160,13 @@ fn filtered_files_caps_at_ten_results() {
 
 #[test]
 fn file_mention_token_builds_mention_strings() {
-    assert_eq!(SessionState::file_mention_token("README.md", false), "@README.md");
-    assert_eq!(SessionState::file_mention_token("a/b/c.rs", false), "@a/b/c.rs");
+    assert_eq!(
+        SessionState::file_mention_token("README.md", false),
+        "@README.md"
+    );
+    assert_eq!(
+        SessionState::file_mention_token("a/b/c.rs", false),
+        "@a/b/c.rs"
+    );
     assert_eq!(SessionState::file_mention_token("src", true), "@src/");
 }

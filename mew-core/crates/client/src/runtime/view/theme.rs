@@ -13,6 +13,7 @@ pub(super) struct Theme {
     pub muted: Color,
     pub text: Color,
     pub chip_fg: Color,
+    pub queue_fg: Color,
 }
 
 pub(super) const COMPOSER_LEFT_PAD: u16 = 1;
@@ -28,6 +29,7 @@ pub(super) const DEFAULT_THEME: Theme = Theme {
     muted: Color::Rgb(158, 137, 168),
     text: Color::Rgb(235, 229, 241),
     chip_fg: Color::Rgb(33, 18, 42),
+    queue_fg: Color::Rgb(255, 165, 0),
 };
 
 pub(super) fn theme_for(id: ThemeId) -> Theme {

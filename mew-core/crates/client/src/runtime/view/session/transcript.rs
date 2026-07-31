@@ -14,23 +14,23 @@ use mewcode_protocol::{MessagePart, Role};
 
 use std::rc::Rc;
 
-use super::super::model::{CachedBlock, CompactionView, SessionState, TranscriptCache, TurnItem};
-use super::entry::render_entry_lines;
-use super::markdown::render_markdown;
-use super::session::render_mentions;
-use super::spinner::spinner_frame;
-use super::theme::Theme;
-use super::tool_card::{
+use crate::runtime::model::{CachedBlock, CompactionView, SessionState, TranscriptCache, TurnItem};
+use crate::runtime::view::entry::render_entry_lines;
+use crate::runtime::view::markdown::render_markdown;
+use crate::runtime::view::session::render_mentions;
+use crate::runtime::view::spinner::spinner_frame;
+use crate::runtime::view::theme::Theme;
+use crate::runtime::view::tool_card::{
     render_diff, render_tool_call_header, render_tool_result_body, render_tool_result_header,
 };
 use mewcode_protocol::{ToolCall, ToolDisplay, ToolResult};
 
-/// Wrapped height, in terminal rows, of `lines` at `width`.
+/// Wrapped height, in rows, of `lines` at `width`.
 ///
-/// Safe to compute per block and sum, because ratatui wraps each [`Line`]
-/// independently — pinned by the `wrapped_line_counts_are_additive` test in
-/// `tests/render_perf.rs`. That additivity is what lets the transcript be
-/// rendered as a window instead of wrapping the whole history every frame.
+/// Safe to sum per block: ratatui wraps each [`Line`] independently (pinned
+/// by `wrapped_line_counts_are_additive` in `tests/render_perf.rs`), which is
+/// what lets the transcript render as a window instead of wrapping the whole
+/// history each frame.
 fn wrapped_height(lines: &[Line<'static>], width: u16) -> u16 {
     if width == 0 {
         return 0;
@@ -69,9 +69,8 @@ pub fn window_bounds(heights: &[u16], scroll: u16, viewport: u16) -> Option<(usi
         return None;
     }
 
-    // First block whose row range contains `scroll`. The comparison is
-    // strict: when `skipped + height == scroll` the viewport starts exactly
-    // at the *next* block's first row, so this block is fully above it.
+    // First block whose rows reach past `scroll` — on equality the viewport
+    // starts at the next block, so this one is fully above it.
     let mut skipped = 0u32;
     let mut first = None;
     for (index, height) in heights.iter().enumerate() {
@@ -86,9 +85,8 @@ pub fn window_bounds(heights: &[u16], scroll: u16, viewport: u16) -> Option<(usi
     // In `[0, height-1]` by the invariant above, so this never truncates.
     let local_scroll = (scroll as u32 - skipped) as u16;
 
-    // Take whole blocks until the viewport is covered. `taken` counts full
-    // block heights, including the `local_scroll` rows that get scrolled
-    // away, so `budget` must include them too.
+    // Take whole blocks until the viewport is covered; `budget` includes the
+    // `local_scroll` rows that `taken` still counts, though they scroll away.
     let budget = local_scroll as u32 + viewport as u32;
     let mut taken = 0u32;
     let mut end = first;
@@ -110,8 +108,7 @@ pub(super) fn render_transcript(
     s: &mut SessionState,
     theme: Theme,
 ) {
-    // Width 0 collapses every height to 0, which clamps scroll and loses the
-    // user's position irrecoverably when the real width returns.
+    // Width 0 zeroes every height and clamps scroll, losing the position.
     if chunk.width == 0 || chunk.height == 0 {
         return;
     }
@@ -125,8 +122,8 @@ pub(super) fn render_transcript(
             .unwrap_or(2),
     );
     if s.session.is_some() {
-        // Disjoint field access: `transcript_cache` is &mut while `session`
-        // and `compaction` are &immut — the borrow checker needs destructuring.
+        // Destructure so `transcript_cache` is &mut while `session`/`compaction`
+        // stay &immut — disjoint fields the borrow checker otherwise splits.
         let SessionState {
             session,
             compaction,
@@ -190,9 +187,8 @@ pub(super) fn render_transcript(
             height,
         });
     }
-    // The in-flight turn is deliberately not cached: it changes on every
-    // delta and every spinner tick, so it is rebuilt each frame. Its cost is
-    // bounded by one turn's output, not by session length.
+    // Not cached: the in-flight turn changes every delta/spinner tick, so it
+    // is rebuilt per frame — cost bounded by one turn, not session length.
     if let Some(st) = &s.streaming {
         let mut lines: Vec<Line<'static>> = Vec::new();
         lines.push(Line::from(Span::styled(
@@ -243,9 +239,8 @@ pub(super) fn render_transcript(
         });
     }
 
-    // `scroll`/`max_scroll` are `u16` → clamps at 65_535 rows
-    // (~8k messages). Past that, `follow` pins to bottom and streaming
-    // scrolls out of view. Pre-existing; upgrade: widen to `u32`.
+    // `u16` caps scroll at 65_535 rows (~8k messages); past that `follow`
+    // pins bottom and streaming scrolls out of view. Upgrade: widen to `u32`.
     let total: u32 = blocks
         .iter()
         .fold(0u32, |acc, block| acc.saturating_add(block.height as u32));
@@ -317,9 +312,8 @@ fn render_message(msg: &mewcode_protocol::Message, theme: Theme) -> Vec<Line<'st
                 if !paired {
                     out.push(render_tool_result_header(res));
                 }
-                // A tool that supplied render-only display data (a diff) shows
-                // a colored inline diff instead of the generic JSON summary;
-                // every other tool keeps the existing body.
+                // Render-only data (a diff) replaces the JSON summary; other
+                // tools keep the existing body.
                 match &res.display {
                     Some(ToolDisplay::Diff(diff)) => out.extend(render_diff(diff)),
                     None => out.extend(render_tool_result_body(res)),

@@ -138,7 +138,7 @@ pub enum Overlay {
     ModelPicker,
     /// The session list: lists every saved session
     SessionList,
-    /// Rename the active session; the input bar takes the new title.
+    /// Rename the active session; the composer bar takes the new title.
     RenameSession,
     /// The slash-command picker shown when the composer starts with `/`.
     SlashPicker,
@@ -316,10 +316,8 @@ impl TranscriptCache {
 pub struct ConnectProviderState {
     /// Which step in the wizard: picking provider, entering key, or awaiting validation.
     pub step: ConnectStep,
-    /// Which provider the user selected (set after step 1).
+    /// Which provider the user selected.
     pub selected_provider: Option<ProviderId>,
-    /// The API key the user typed.
-    pub api_key: String,
     /// Error message from validation, if any.
     pub error: Option<String>,
     /// Inline text input for the key entry step (masked in UI).
@@ -333,7 +331,6 @@ impl std::fmt::Debug for ConnectProviderState {
         f.debug_struct("ConnectProviderState")
             .field("step", &self.step)
             .field("selected_provider", &self.selected_provider)
-            .field("api_key", &"***")
             .field("error", &self.error)
             .finish()
     }
@@ -359,7 +356,7 @@ pub struct SessionState {
     /// The hydrated session, including history.
     pub session: Option<Session>,
     /// The message composer.
-    pub input: TextArea<'static>,
+    pub composer: TextArea<'static>,
     /// Full pasted bodies hidden behind short composer markers.
     pub pasted: Vec<PastedText>,
     /// Session-creation-in-progress state (`pending_chat`, `creating`, ...).
@@ -413,7 +410,7 @@ impl SessionState {
     pub fn empty() -> Self {
         Self {
             session: None,
-            input: TextArea::default(),
+            composer: TextArea::default(),
             pasted: Vec::new(),
             creation: CreationState::default(),
             scroll: 0,
@@ -445,6 +442,17 @@ impl SessionState {
             session: Some(session),
             ..Self::empty()
         }
+    }
+
+    /// The composer's visible text, joined as it renders.
+    pub fn composer_text(&self) -> String {
+        self.composer.lines().join("\n")
+    }
+
+    /// Clear the composer and any pending pasted-text markers.
+    pub fn clear_composer(&mut self) {
+        self.composer = TextArea::default();
+        self.pasted.clear();
     }
 }
 
@@ -488,6 +496,9 @@ pub struct PastedText {
     /// Original pasted text submitted when the marker is present.
     pub text: String,
 }
+
+/// Shared prefix of pasted-text markers.
+pub const PASTED_MARKER_PREFIX: &str = "[Pasted ~";
 
 /// State for the model picker overlay.
 #[derive(Debug, Default)]

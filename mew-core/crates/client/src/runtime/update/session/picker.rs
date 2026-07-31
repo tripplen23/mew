@@ -54,7 +54,7 @@ pub(super) fn on_file_picker_key(s: &mut SessionState, key: KeyEvent) -> Cmd {
             Cmd::None
         }
         _ => {
-            s.input.input(key_to_input(key));
+            s.composer.input(key_to_input(key));
             refresh_file_picker(s)
         }
     }
@@ -335,8 +335,8 @@ fn pick_file(s: &mut SessionState) {
 }
 
 fn replace_current_file_token(s: &mut SessionState, replacement: &str) {
-    let (row, col) = s.input.cursor();
-    let mut lines = s.input.lines().to_vec();
+    let (row, col) = s.composer.cursor();
+    let mut lines = s.composer.lines().to_vec();
     let Some(line) = lines.get_mut(row) else {
         return;
     };
@@ -347,8 +347,8 @@ fn replace_current_file_token(s: &mut SessionState, replacement: &str) {
         .map_or(0, |i| i + 1);
     chars.splice(start..col, replacement.chars());
     *line = chars.into_iter().collect();
-    s.input = TextArea::new(lines);
-    s.input.move_cursor(CursorMove::Jump(
+    s.composer = TextArea::new(lines);
+    s.composer.move_cursor(CursorMove::Jump(
         row as u16,
         (start + replacement.chars().count()) as u16,
     ));

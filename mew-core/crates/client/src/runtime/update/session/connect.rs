@@ -47,17 +47,10 @@ pub(super) fn on_connect_provider_key(s: &mut SessionState, key: KeyEvent) -> Cm
                     return Cmd::None;
                 }
                 let provider = state.selected_provider.unwrap_or(ProviderId::OpenCodeGo);
-                state.api_key = api_key;
                 state.error = None;
                 state.step = Validating;
                 state.attempt = state.attempt.wrapping_add(1);
-                Cmd::ConnectProvider(
-                    ConnectProviderRequest {
-                        provider,
-                        api_key: state.api_key.clone(),
-                    },
-                    state.attempt,
-                )
+                Cmd::ConnectProvider(ConnectProviderRequest { provider, api_key }, state.attempt)
             }
             _ => {
                 state.key_input.input(key_to_input(key));
@@ -68,7 +61,6 @@ pub(super) fn on_connect_provider_key(s: &mut SessionState, key: KeyEvent) -> Cm
         Done => {
             if key.code == KeyCode::Enter || key.code == KeyCode::Esc {
                 s.overlay = Overlay::None;
-                state.api_key.clear();
                 state.key_input = TextArea::default();
             }
             Cmd::None
@@ -77,11 +69,10 @@ pub(super) fn on_connect_provider_key(s: &mut SessionState, key: KeyEvent) -> Cm
 }
 
 fn promote_composer_draft_to_connect_key(s: &mut SessionState) {
-    let draft = s.input.lines().join("\n");
+    let draft = s.composer_text();
     if draft.is_empty() {
         return;
     }
     s.connect_provider.key_input.insert_str(&draft);
-    s.input = TextArea::default();
-    s.pasted.clear();
+    s.clear_composer();
 }

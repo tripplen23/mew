@@ -473,7 +473,7 @@ fn compact_command_then_message_is_queued_not_dropped() {
         "the message typed during compaction must be queued, not dropped"
     );
     assert_eq!(
-        s.input.lines().join("\n"),
+        s.composer.lines().join("\n"),
         "",
         "composer must be cleared once the message is queued"
     );
@@ -570,7 +570,7 @@ fn message_after_compact_fully_finishes_is_sent_normally() {
     );
     let s = session_state(&app);
     assert_eq!(
-        s.input.lines().join("\n"),
+        s.composer.lines().join("\n"),
         "",
         "composer must be cleared once the message is sent"
     );

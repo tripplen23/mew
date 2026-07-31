@@ -27,28 +27,28 @@ use super::model::{App, Screen};
 
 mod entry;
 mod markdown;
-mod overlay;
+mod panel;
 mod session;
 mod spinner;
 mod theme;
 mod toast;
 mod tool_card;
-mod transcript;
 
 /// Re-exported for integration tests so they can assert on the row
 /// builder directly (e.g. "every model fits on one line"). The overlay
 /// module itself stays private; only these two line builders are part
 /// of the test surface.
-pub use overlay::{model_picker_lines, session_list_lines};
+pub use session::overlay::{model_picker_lines, session_list_lines};
 
 pub use markdown::highlight_code_block;
+pub use panel::scroll_start_for_cursor;
+pub use session::transcript::window_bounds;
 pub use spinner::spinner_frame;
 pub use toast::toast_alpha;
 pub use tool_card::{
     render_diff, render_tool_call_header, render_tool_result_body, render_tool_result_header,
     summarise_json, truncate_one_line,
 };
-pub use transcript::window_bounds;
 
 use session::render_session;
 use theme::{COMPOSER_HORIZONTAL_PAD, COMPOSER_LEFT_PAD, theme_for};

@@ -1,9 +1,8 @@
 //! Session screen update: routes keys and overlay events to the
-//! per-feature handlers in the sibling modules (`input`, `commands`,
+//! per-feature handlers in the sibling modules (`composer`, `commands`,
 //! `choice`, `connect`, `picker`, `slash`).
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use tui_textarea::TextArea;
 
 use mewcode_protocol::event::ChoiceCancelReason;
 
@@ -14,8 +13,8 @@ use crate::runtime::update::key_to_input;
 
 use choice::on_choice_key;
 use commands::switch_mode;
+use composer::on_session_submit;
 use connect::on_connect_provider_key;
-use input::on_session_submit;
 use picker::{
     on_file_picker_key, on_model_picker_key, on_session_list_key, open_file_picker,
     refresh_file_picker,
@@ -24,15 +23,15 @@ use slash::{SlashPickerResult, on_slash_picker_key, open_slash_picker, slash_def
 
 mod choice;
 mod commands;
+mod composer;
 mod connect;
-mod input;
 pub(super) mod picker;
 pub(super) mod slash;
 
 pub(super) use choice::submit_choice_response;
-pub(super) use input::on_session_paste;
+pub(super) use composer::on_session_paste;
 
-/// Session screen: input editing, submit, slash commands.
+/// Session screen: composer editing, submit, slash commands.
 pub(super) fn on_session_key(
     s: &mut SessionState,
     toast: &mut Option<Toast>,
@@ -55,20 +54,18 @@ pub(super) fn on_session_key(
                 s.overlay = Overlay::None;
                 return Cmd::None;
             }
-            // `Overlay::RenameSession` seeds `s.input` with the current
+            // `Overlay::RenameSession` seeds `s.composer` with the current
             // session title so the user can edit it in place.
             let was_rename = s.overlay == Overlay::RenameSession;
             let was_slash = s.overlay == Overlay::SlashPicker;
             let was_connect = s.overlay == Overlay::ConnectProvider;
             s.overlay = Overlay::None;
             if was_rename {
-                s.input = TextArea::default();
-                s.pasted.clear();
+                s.clear_composer();
             }
             if was_slash {
                 // The picker only opens when the composer starts with `/`,
-                s.input = TextArea::default();
-                s.pasted.clear();
+                s.clear_composer();
             }
             if was_connect {
                 let prev_attempt = s.connect_provider.attempt;
@@ -97,7 +94,7 @@ pub(super) fn on_session_key(
         Overlay::RenameSession => {
             if key.code == KeyCode::Enter {
                 if let Some(session) = s.session.as_ref() {
-                    let title = s.input.lines().join("\n").trim().to_string();
+                    let title = s.composer_text().trim().to_string();
                     if title.is_empty() {
                         *toast = Some(Toast::error("title cannot be empty"));
                     } else {
@@ -123,20 +120,20 @@ pub(super) fn on_session_key(
         KeyCode::Tab => switch_mode(s, None),
 
         KeyCode::Char('@') => {
-            s.input.input(key_to_input(key));
+            s.composer.input(key_to_input(key));
             open_file_picker(s)
         }
 
         KeyCode::Char('/') => {
-            s.input.input(key_to_input(key));
-            if slash_default_cursor(&s.input.lines().join("\n")).is_some() {
+            s.composer.input(key_to_input(key));
+            if slash_default_cursor(&s.composer_text()).is_some() {
                 open_slash_picker(s);
             }
             Cmd::None
         }
 
         KeyCode::Enter if key.modifiers.contains(KeyModifiers::ALT) => {
-            s.input.insert_newline();
+            s.composer.insert_newline();
             Cmd::None
         }
 
@@ -162,7 +159,7 @@ pub(super) fn on_session_key(
             Cmd::None
         }
         _ => {
-            s.input.input(key_to_input(key));
+            s.composer.input(key_to_input(key));
             if s.overlay == Overlay::None {
                 return refresh_file_picker(s);
             }

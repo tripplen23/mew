@@ -124,9 +124,9 @@ pub(super) fn on_session_command(
                 *toast = Some(Toast::error("/session rename needs an active session"));
                 return Cmd::None;
             };
-            // Pre-fill with the current title; Enter in `Overlay::RenameSession`
-            // reads the new one from `s.input`.
-            s.input = TextArea::new(vec![session.title.clone()]);
+            // Pre-fill with current title; Enter in RenameSession reads the
+            // new one from `s.composer`.
+            s.composer = TextArea::new(vec![session.title.clone()]);
             s.overlay = Overlay::RenameSession;
             Cmd::None
         }
@@ -143,11 +143,11 @@ pub(super) fn on_session_command(
                     *toast = Some(Toast::error("a session is already being created"));
                     return Cmd::None;
                 }
-                // Mirror the chat-first flow: `Msg::SessionCreated` routes
-                // the new session into the session view.
+                // Chat-first flow: `Msg::SessionCreated` routes the new
+                // session into the session view.
                 s.creation.creating = true;
                 s.creation.creation_started_at = Some(std::time::Instant::now());
-                s.input = TextArea::default();
+                s.clear_composer();
                 return Cmd::CreateSession(CreateSessionRequest {
                     title,
                     model: s.creation.pending_model,
@@ -155,19 +155,22 @@ pub(super) fn on_session_command(
                 });
             }
 
-            // Bare `/session new` — no title. Reset to the entry view with
-            // no session; the session is created on the first message, which
-            // derives a title — mirroring the very first session's flow.
+            // Bare `/session new` — back to entry view; the first message
+            // creates the session and derives a title, like the very first one.
             let carried_model = s.session.as_ref().map(|sess| sess.model);
             let carried_mode = s.session.as_ref().map(|sess| sess.mode);
+            let carried_sound = s.sound_enabled;
+            let carried_pwd = s.pwd.clone();
             *s = SessionState::empty();
             s.creation.pending_model = carried_model;
             s.creation.pending_mode = carried_mode;
+            s.sound_enabled = carried_sound;
+            s.pwd = carried_pwd;
             Cmd::None
         }
         Some(other) => {
             *toast = Some(Toast::error(format!(
-                "/session: unknown subcommand `/{}`",
+                "/session: unknown subcommand `{}`",
                 other
             )));
             Cmd::None
@@ -188,7 +191,6 @@ pub(super) fn on_connect_command(s: &mut SessionState) -> Cmd {
         attempt: next,
         ..Default::default()
     };
-    s.input = TextArea::default();
-    s.pasted.clear();
+    s.clear_composer();
     Cmd::None
 }

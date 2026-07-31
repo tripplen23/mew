@@ -12,9 +12,9 @@ mod session;
 pub use session::{
     CachedBlock, ChoicePromptState, CompactionEntry, CompactionUiState, CompactionView,
     ConnectProviderState, ConnectStep, CreationState, FileEntry, FilePickerState, ModelPickerState,
-    Overlay, PastedText, PickerState, SLASH_COMMANDS, SessionListState, SessionState, SlashCommand,
-    SlashCommandKind, StreamingState, ToolCallView, TranscriptCache, TurnItem,
-    slash_command_by_token,
+    Overlay, PASTED_MARKER_PREFIX, PastedText, PickerState, SLASH_COMMANDS, SessionListState,
+    SessionState, SlashCommand, SlashCommandKind, StreamingState, ToolCallView, TranscriptCache,
+    TurnItem, slash_command_by_token,
 };
 
 /// Active TUI theme. More variants can be added without changing render call sites.

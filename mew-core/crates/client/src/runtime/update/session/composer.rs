@@ -1,7 +1,6 @@
 //! Composer editing: paste handling, Enter/submit, slash-command dispatch,
 //! and session creation from the first message.
 
-use tui_textarea::TextArea;
 use uuid::Uuid;
 
 use mewcode_protocol::event::ChatRequest;
@@ -9,13 +8,13 @@ use mewcode_protocol::{Message, MessagePart};
 
 use crate::net::CreateSessionRequest;
 
-use crate::runtime::model::{
-    Cmd, ConnectStep, Overlay, PastedText, QUIT_COMMAND, SessionState, SlashCommandKind,
-    StreamingState, Toast, slash_command_by_token,
-};
 use super::commands::{
     on_compact_command, on_connect_command, on_mode_command, on_model_command, on_session_command,
     on_skills_command, on_sound_command,
+};
+use crate::runtime::model::{
+    Cmd, ConnectStep, Overlay, PASTED_MARKER_PREFIX, PastedText, QUIT_COMMAND, SessionState,
+    SlashCommandKind, StreamingState, Toast, slash_command_by_token,
 };
 
 const COMPACT_PASTE_CHARS: usize = 120;
@@ -34,25 +33,25 @@ pub(crate) fn on_session_paste(s: &mut SessionState, text: String) -> Cmd {
     let char_count = text.chars().count();
     let line_count = text.lines().count().max(1);
     if line_count == 1 && char_count <= COMPACT_PASTE_CHARS {
-        s.input.insert_str(text);
+        s.composer.insert_str(text);
         return Cmd::None;
     }
 
     let marker = if line_count > 1 {
-        format!("[Pasted ~{line_count} lines]")
+        format!("{PASTED_MARKER_PREFIX}{line_count} lines]")
     } else {
-        format!("[Pasted ~{char_count} chars]")
+        format!("{PASTED_MARKER_PREFIX}{char_count} chars]")
     };
-    s.input.insert_str(&marker);
+    s.composer.insert_str(&marker);
     s.pasted.push(PastedText { marker, text });
     Cmd::None
 }
 
-/// Handle `Enter` in the Session input bar: the `quit` text command,
+/// Handle `Enter` in the Session composer bar: the `quit` text command,
 /// slash commands, or — if no session exists yet — create one with the
 /// typed text as the seed, or send the chat into the existing session.
 pub(super) fn on_session_submit(s: &mut SessionState, toast: &mut Option<Toast>) -> Cmd {
-    let visible_text = s.input.lines().join("\n");
+    let visible_text = s.composer_text();
     let visible_trimmed = visible_text.trim();
 
     if visible_trimmed.is_empty() {
@@ -61,16 +60,15 @@ pub(super) fn on_session_submit(s: &mut SessionState, toast: &mut Option<Toast>)
 
     // Text-based quit.
     if visible_trimmed.eq_ignore_ascii_case(QUIT_COMMAND) {
-        s.input = TextArea::default();
-        s.pasted.clear();
+        s.clear_composer();
         return Cmd::Quit;
     }
 
     // Queue message when turn in-flight. Auto-sent in order when finished.
     if s.streaming.is_some() || s.compaction.active {
-        s.message_queue.push(visible_trimmed.to_string());
-        s.input = TextArea::default();
-        s.pasted.clear();
+        let expanded = expand_pastes(s, &visible_text);
+        s.message_queue.push(expanded.trim().to_string());
+        s.clear_composer();
         return Cmd::None;
     }
 
@@ -81,8 +79,7 @@ pub(super) fn on_session_submit(s: &mut SessionState, toast: &mut Option<Toast>)
         let Some(command) = slash_command_by_token(cmd) else {
             return submit_chat_text(s, &visible_text);
         };
-        s.input = TextArea::default();
-        s.pasted.clear();
+        s.clear_composer();
         return match command.kind {
             SlashCommandKind::Tools => {
                 s.overlay = Overlay::Tools;
@@ -120,15 +117,18 @@ fn submit_chat_text(s: &mut SessionState, visible_text: &str) -> Cmd {
         s.follow = true;
         // `Uuid::nil()` placeholder; the real id arrives with SSE `Started`.
         s.streaming = Some(StreamingState::new(Uuid::nil()));
+        let session_id = session.id;
+        let model = session.model;
+        let mode = session.mode;
+        let messages = session.messages.clone();
         // Clear the composer now that the message is committed to history.
-        s.input = TextArea::default();
-        s.pasted.clear();
+        s.clear_composer();
         Cmd::StartChat(ChatRequest {
-            session_id: session.id,
-            model: session.model,
+            session_id,
+            model,
             provider: None,
-            mode: session.mode,
-            messages: session.messages.clone(),
+            mode,
+            messages,
         })
     } else {
         // No session yet — buffer the text so the user can retry on a
@@ -147,7 +147,12 @@ fn submit_chat_text(s: &mut SessionState, visible_text: &str) -> Cmd {
 fn expand_pastes(s: &SessionState, text: &str) -> String {
     let mut expanded = text.to_string();
     for paste in &s.pasted {
-        expanded = expanded.replace(&paste.marker, &paste.text);
+        // Replace the first remaining occurrence so identical markers
+        // expand to their own text.
+        // Assumes markers appear in paste order; breaks if re-ordered.
+        if let Some(pos) = expanded.find(&paste.marker) {
+            expanded.replace_range(pos..pos + paste.marker.len(), &paste.text);
+        }
     }
     expanded
 }

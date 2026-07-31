@@ -45,8 +45,8 @@ impl SessionState {
     }
 
     pub fn current_file_query(&self) -> Option<String> {
-        let (row, col) = self.input.cursor();
-        let line = self.input.lines().get(row)?;
+        let (row, col) = self.composer.cursor();
+        let line = self.composer.lines().get(row)?;
         let prefix: String = line.chars().take(col).collect();
         let token = prefix
             .rsplit_once(char::is_whitespace)
