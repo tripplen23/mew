@@ -378,15 +378,22 @@ pub(crate) async fn start_chat_stream(
 ///   1. Credential store (YAML, from /connect TUI)
 ///   2. ServerConfig fields (from mewcode.toml or env)
 ///   3. Raw environment variables
-pub(crate) async fn build_engine_config(state: &AppState) -> mewcode_engine::EngineConfig {
+pub async fn build_engine_config(state: &AppState) -> mewcode_engine::EngineConfig {
     let store = state.credentials.lock().await;
+    // Read the stored credential directly (not via `api_key()`, which already
+    // falls back to env) so the documented priority holds: store -> config ->
+    // env. Otherwise an env key would silently beat a mewcode.toml key.
     let api_key = store
-        .api_key(mewcode_protocol::ProviderId::OpenCodeGo)
+        .credentials
+        .get(&mewcode_protocol::ProviderId::OpenCodeGo)
+        .map(|credential| credential.api_key.clone())
         .or_else(|| state.config.opencode_go_api_key.clone())
         .or_else(|| std::env::var("OPENCODE_GO_API_KEY").ok())
         .unwrap_or_default();
     let openai_api_key = store
-        .api_key(mewcode_protocol::ProviderId::OpenAi)
+        .credentials
+        .get(&mewcode_protocol::ProviderId::OpenAi)
+        .map(|credential| credential.api_key.clone())
         .or_else(|| state.config.openai_api_key.clone())
         .or_else(|| std::env::var("OPENAI_API_KEY").ok());
 
