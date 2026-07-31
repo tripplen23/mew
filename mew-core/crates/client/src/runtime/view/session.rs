@@ -440,7 +440,7 @@ fn render_active_overlay(frame: &mut Frame, area: Rect, s: &mut SessionState) {
                 "Files",
                 "Enter insert, Esc close",
                 body,
-                super::super::update::picker::filtered_files(s).len(),
+                s.filtered_files().len(),
                 s.file_picker.picker.scroll,
                 s.file_picker.picker.cursor,
                 &mut s.file_picker.picker.viewport,

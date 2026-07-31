@@ -10,7 +10,6 @@ use mewcode_protocol::ProviderId;
 use mewcode_protocol::tool::allowed_tools_for_mode;
 
 use super::super::model::{SLASH_COMMANDS, SessionState, ThemeId};
-use super::super::update::picker::filtered_files;
 use super::text_cursor_glyph;
 
 /// The `/tools` overlay body: the tools allowed in the active mode plus
@@ -186,7 +185,7 @@ pub(super) fn file_picker_lines(s: &SessionState, max_width: usize) -> Vec<Line<
             Style::default().fg(Color::DarkGray),
         ))];
     }
-    let files = filtered_files(s);
+    let files = s.filtered_files();
     if files.is_empty() {
         return vec![Line::from(Span::styled(
             "No matching files.",

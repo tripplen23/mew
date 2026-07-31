@@ -19,7 +19,7 @@ use super::model::{
     App, Cmd, ConnectStep, CreateError, Msg, Overlay, Screen, StreamMsg, StreamingState, Toast,
 };
 
-pub(crate) mod picker;
+mod picker;
 mod session;
 mod slash;
 mod stream;
@@ -245,7 +245,7 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
             match result {
                 Ok(files) => {
                     s.file_picker.files = Some(files);
-                    let len = picker::filtered_files(s).len();
+                    let len = s.filtered_files().len();
                     if s.file_picker.picker.cursor >= len {
                         s.file_picker.picker.cursor = len.saturating_sub(1);
                     }

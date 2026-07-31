@@ -10,6 +10,8 @@ use crate::net::{ModelEntry, Session, SessionSummary, SkillEntry};
 use mewcode_protocol::event::{ChoiceCancelReason, ChoiceRequest, ChoiceResponse};
 use mewcode_protocol::{Mode, ModelId, ProviderId};
 
+mod file_picker;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileEntry {
     pub path: String,
