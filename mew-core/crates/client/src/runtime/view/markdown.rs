@@ -13,7 +13,7 @@ use syntect::util::LinesWithEndings;
 /// code blocks are highlighted with
 /// [`syntect`](https://docs.rs/syntect/latest/syntect/). The fence scanner
 /// splits the text so each ```` ``` ```` block is highlighted on its own.
-pub(super) fn render_markdown(text: &str) -> Vec<Line<'static>> {
+pub(crate) fn render_markdown(text: &str) -> Vec<Line<'static>> {
     let mut out: Vec<Line<'static>> = Vec::new();
     let mut prose = String::new();
     let mut code = String::new();

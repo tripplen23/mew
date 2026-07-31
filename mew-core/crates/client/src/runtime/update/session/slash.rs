@@ -7,8 +7,8 @@
 use crossterm::event::{KeyCode, KeyEvent};
 use tui_textarea::TextArea;
 
-use super::super::model::{Cmd, Overlay, SLASH_COMMANDS, SessionState};
-use super::key_to_input;
+use crate::runtime::model::{Cmd, Overlay, SLASH_COMMANDS, SessionState};
+use crate::runtime::update::key_to_input;
 
 /// Result of handling a slash-picker key.
 pub(super) enum SlashPickerResult {
@@ -36,17 +36,18 @@ pub(super) fn on_slash_picker_key(s: &mut SessionState, key: KeyEvent) -> SlashP
                 .unwrap_or("/model")
                 .to_string();
             if cmd_text == "quit" {
-                s.input = TextArea::default();
+                s.clear_composer();
                 s.overlay = Overlay::None;
                 return SlashPickerResult::Cmd(Cmd::Quit);
             }
-            s.input = TextArea::new(vec![format!("{cmd_text} ")]);
+            s.pasted.clear();
+            s.composer = TextArea::new(vec![format!("{cmd_text} ")]);
             s.overlay = Overlay::None;
             SlashPickerResult::Submit
         }
         _ => {
-            s.input.input(key_to_input(key));
-            if let Some(next) = slash_default_cursor(&s.input.lines().join("\n")) {
+            s.composer.input(key_to_input(key));
+            if let Some(next) = slash_default_cursor(&s.composer_text()) {
                 s.slash_cursor = next;
             } else {
                 s.overlay = Overlay::None;
@@ -59,7 +60,7 @@ pub(super) fn on_slash_picker_key(s: &mut SessionState, key: KeyEvent) -> SlashP
 /// Open the picker and highlight the best match for the current composer text.
 pub(super) fn open_slash_picker(s: &mut SessionState) {
     s.overlay = Overlay::SlashPicker;
-    s.slash_cursor = slash_default_cursor(&s.input.lines().join("\n")).unwrap_or(0);
+    s.slash_cursor = slash_default_cursor(&s.composer_text()).unwrap_or(0);
 }
 
 /// Return the first slash-command row matching a composer prefix.

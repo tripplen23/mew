@@ -28,7 +28,9 @@ fn credentials_path() -> PathBuf {
 /// In-memory view of stored credentials.
 #[derive(Debug, Clone, Default)]
 pub struct CredentialStore {
-    pub(crate) credentials: HashMap<ProviderId, ProviderCredential>,
+    /// Stored per-provider credentials. Public so the app can inspect or (in
+    /// tests) control the store; the resolution chain is `build_engine_config`.
+    pub credentials: HashMap<ProviderId, ProviderCredential>,
 }
 
 impl CredentialStore {

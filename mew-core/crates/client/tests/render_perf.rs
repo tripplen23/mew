@@ -29,7 +29,6 @@ use mewcode_protocol::{Message, MessagePart, Mode, ModelId};
 
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
-use ratatui::layout::Rect;
 use ratatui::text::{Line, Text};
 use ratatui::widgets::{Paragraph, Wrap};
 
@@ -178,48 +177,6 @@ fn measure_cold_versus_warm_frame() {
     }
 }
 
-/// How much of the warm frame is ratatui wrapping the whole transcript
-/// twice (`line_count` to measure, then `render` to draw)? Measured on a
-/// plain `Paragraph` of pre-built lines, so mewcode's own code is excluded
-/// and only ratatui's wrap/draw cost is counted.
-#[test]
-fn measure_ratatui_wrap_share_of_a_frame() {
-    println!("\n=== ratatui wrap cost on pre-built lines (no markdown work) ===");
-    for &total_lines in &[500usize, 2_500, 10_000] {
-        let lines: Vec<Line> = (0..total_lines)
-            .map(|i| {
-                Line::from(format!(
-                    "line {i} of transcript content long enough to wrap at width {VIEWPORT_W}, \
-                     with extra words to push past a single row"
-                ))
-            })
-            .collect();
-
-        let mut count_samples = Vec::new();
-        let mut draw_samples = Vec::new();
-        for _ in 0..20 {
-            let para = Paragraph::new(Text::from(lines.clone())).wrap(Wrap { trim: false });
-
-            let start = Instant::now();
-            let wrapped = para.line_count(VIEWPORT_W);
-            count_samples.push(start.elapsed());
-
-            let area = Rect::new(0, 0, VIEWPORT_W, VIEWPORT_H);
-            let mut buffer = ratatui::buffer::Buffer::empty(area);
-            let scroll = (wrapped as u16).saturating_sub(VIEWPORT_H);
-            let start = Instant::now();
-            ratatui::widgets::Widget::render(para.scroll((scroll, 0)), area, &mut buffer);
-            draw_samples.push(start.elapsed());
-        }
-        println!(
-            "  {total_lines:>6} lines: line_count {:>9.3?}   render {:>9.3?}   (both wrap \
-             everything)",
-            median(count_samples),
-            median(draw_samples),
-        );
-    }
-}
-
 /// Report the real wrapped height of each test transcript, so the synthetic
 /// line-count benchmarks above can be related to actual sessions.
 /// `max_scroll + viewport` is exactly the total wrapped line count.
@@ -239,88 +196,52 @@ fn measure_real_transcript_wrapped_height() {
     }
 }
 
-/// The decisive comparison for virtualization: on identical content, how
-/// much cheaper is wrapping only a viewport-sized window than wrapping the
-/// whole transcript twice?
-///
-/// - `full`  = today's path: `line_count` over everything, then `render`
-///   with a scroll offset (ratatui wraps everything both times).
-/// - `windowed` = virtualized path: sum precomputed per-item heights
-///   (integer adds) to get `max_scroll`, then wrap/render only the slice
-///   that intersects the viewport.
+fn rss_kb() -> u64 {
+    // /proc/self/status is Linux-only and the VmRSS value is best-effort;
+    // degrade to 0 instead of panicking the perf harness on other platforms.
+    std::fs::read_to_string("/proc/self/status")
+        .ok()
+        .and_then(|contents| {
+            contents
+                .lines()
+                .find(|line| line.starts_with("VmRSS:"))
+                .and_then(|line| line.split_whitespace().nth(1))
+                .and_then(|v| v.parse::<u64>().ok())
+        })
+        .unwrap_or(0)
+}
+
+/// Does multi-width churn actually cost memory? Each width change re-renders
+/// every message (cache miss). The cache is keyed by message id, so a width
+/// change replaces the old-width block in place rather than accumulating it;
+/// the RSS delta shows whether the re-render churn itself is measurable.
+const MESSAGES: usize = 800;
+
 #[test]
-fn measure_full_wrap_versus_windowed_wrap() {
-    println!("\n=== full-transcript wrap vs viewport-windowed wrap (same content) ===");
-    for &total_lines in &[500usize, 2_500, 10_000] {
-        let lines: Vec<Line> = (0..total_lines)
-            .map(|i| {
-                Line::from(format!(
-                    "line {i} of transcript content long enough to wrap at width {VIEWPORT_W}, \
-                     with extra words to push past a single row"
-                ))
-            })
-            .collect();
-        let area = Rect::new(0, 0, VIEWPORT_W, VIEWPORT_H);
-
-        // Precomputed per-line heights, as a virtualized renderer would keep
-        // in its cache alongside the rendered lines.
-        let heights: Vec<u16> = lines
-            .iter()
-            .map(|line| {
-                Paragraph::new(Text::from(line.clone()))
-                    .wrap(Wrap { trim: false })
-                    .line_count(VIEWPORT_W) as u16
-            })
-            .collect();
-
-        let mut full_samples = Vec::new();
-        let mut windowed_samples = Vec::new();
-        for _ in 0..20 {
-            // --- today's path: clone everything, wrap everything twice ---
-            let start = Instant::now();
-            let para = Paragraph::new(Text::from(lines.clone())).wrap(Wrap { trim: false });
-            let wrapped = para.line_count(VIEWPORT_W);
-            let scroll = (wrapped as u16).saturating_sub(VIEWPORT_H);
-            let mut buffer = ratatui::buffer::Buffer::empty(area);
-            ratatui::widgets::Widget::render(para.scroll((scroll, 0)), area, &mut buffer);
-            full_samples.push(start.elapsed());
-
-            // --- virtualized path: integer sum, then window ---
-            let start = Instant::now();
-            let total: u32 = heights.iter().map(|h| *h as u32).sum();
-            let target = total.saturating_sub(VIEWPORT_H as u32);
-            // Walk cumulative heights to find the first item on screen.
-            let mut acc = 0u32;
-            let mut first = 0usize;
-            for (i, h) in heights.iter().enumerate() {
-                if acc + *h as u32 > target {
-                    first = i;
-                    break;
-                }
-                acc += *h as u32;
-            }
-            let local_scroll = (target - acc) as u16;
-            // Take just enough items to fill the viewport from `first`.
-            let mut taken = 0u32;
-            let mut last = first;
-            while last < lines.len() && taken < (VIEWPORT_H as u32 + local_scroll as u32) {
-                taken += heights[last] as u32;
-                last += 1;
-            }
-            let window: Vec<Line> = lines[first..last].to_vec();
-            let para = Paragraph::new(Text::from(window)).wrap(Wrap { trim: false });
-            let mut buffer = ratatui::buffer::Buffer::empty(area);
-            ratatui::widgets::Widget::render(para.scroll((local_scroll, 0)), area, &mut buffer);
-            windowed_samples.push(start.elapsed());
-        }
-        let full = median(full_samples);
-        let windowed = median(windowed_samples);
-        println!(
-            "  {total_lines:>6} lines: full {:>9.3?}   windowed {:>9.3?}   speedup {:>5.1}x",
-            full,
-            windowed,
-            full.as_secs_f64() / windowed.as_secs_f64().max(f64::EPSILON),
+fn measure_cache_growth_across_widths() {
+    println!("\n=== cache entries + RSS as widths accumulate ({MESSAGES} messages) ===");
+    let mut app = app_with(MESSAGES);
+    let mut term = terminal();
+    draw_once(&mut term, &mut app);
+    let mut base_rss = rss_kb();
+    for &w in &[100u16, 90, 80, 70, 60, 50] {
+        term.backend_mut().resize(w, VIEWPORT_H);
+        draw_once(&mut term, &mut app);
+        let Screen::Session(s) = &app.screen;
+        let entries = s.transcript_cache.message_cache_len();
+        assert_eq!(
+            entries, MESSAGES,
+            "cache must hold exactly one entry per message across width changes"
         );
+        let rss = rss_kb();
+        println!(
+            "  width {:>3}: {:>4} cache entries / {MESSAGES} messages, RSS {:>6} kB  (+{} kB)",
+            w,
+            entries,
+            rss,
+            rss.saturating_sub(base_rss)
+        );
+        base_rss = base_rss.max(rss);
     }
 }
 

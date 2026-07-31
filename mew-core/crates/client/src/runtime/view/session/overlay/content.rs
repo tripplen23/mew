@@ -1,5 +1,5 @@
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Clear, Paragraph, Wrap};
@@ -9,9 +9,9 @@ use mewcode_protocol::ModelId;
 use mewcode_protocol::ProviderId;
 use mewcode_protocol::tool::allowed_tools_for_mode;
 
-use super::super::model::{SLASH_COMMANDS, SessionState, ThemeId};
-use super::super::update::picker::filtered_files;
-use super::text_cursor_glyph;
+use crate::runtime::model::{SLASH_COMMANDS, SessionState, ThemeId};
+use crate::runtime::view::panel::scroll_start_for_cursor;
+use crate::runtime::view::text_cursor_glyph;
 
 /// The `/tools` overlay body: the tools allowed in the active mode plus
 /// the total count. Engine may also expose denied tools to the model so it can
@@ -159,9 +159,13 @@ pub(super) fn render_slash_picker(frame: &mut Frame, area: Rect, s: &SessionStat
         .map(|c| c.command.chars().count())
         .max()
         .unwrap_or(0);
+    let visible = inner.height as usize;
+    let start = scroll_start_for_cursor(s.slash_cursor, visible, SLASH_COMMANDS.len());
     let lines: Vec<Line> = SLASH_COMMANDS
         .iter()
         .enumerate()
+        .skip(start)
+        .take(visible)
         .map(|(i, c)| {
             let style = if i == s.slash_cursor {
                 Style::default().fg(Color::Black).bg(Color::Cyan)
@@ -186,7 +190,7 @@ pub(super) fn file_picker_lines(s: &SessionState, max_width: usize) -> Vec<Line<
             Style::default().fg(Color::DarkGray),
         ))];
     }
-    let files = filtered_files(s);
+    let files = s.filtered_files();
     if files.is_empty() {
         return vec![Line::from(Span::styled(
             "No matching files.",
@@ -228,20 +232,13 @@ fn fallback(value: u16, default: u16) -> u16 {
     if value == 0 { default } else { value }
 }
 
-/// Body of the `/model` overlay: every provider model entry, grouped
-/// by provider, with the active session's current model tagged and the
-/// cursor row highlighted. `None` `s.model_picker.models` is the "fetch
-/// in flight" / "fetch failed" state.
+/// Body of the `/model` overlay: provider-grouped model rows, the active
+/// model tagged and cursor row highlighted. `None` models = fetch in-flight
+/// or failed.
 ///
-/// The helper returns the **visible window** of rows (after applying
-/// `s.model_picker.picker.scroll`) so the list scrolls cleanly when there are
-/// more models than the overlay can fit on screen. The cursor highlight
-/// still reflects the full-list index, so the caller doesn't need to
-/// translate between window-local and global rows.
-///
-/// `max_width` is the inner width of the overlay panel; each row is
-/// truncated to fit so the picker never wraps a model onto two visual
-/// lines.
+/// Returns the visible window after scroll; the cursor highlight still uses
+/// the full-list index, so callers need no window→global translation. Rows
+/// are truncated to `max_width` so the picker never wraps.
 pub fn model_picker_lines(s: &SessionState, max_width: usize) -> Vec<Line<'static>> {
     let Some(entries) = s.model_picker.models.as_ref() else {
         return vec![Line::from(Span::styled(
@@ -261,8 +258,7 @@ pub fn model_picker_lines(s: &SessionState, max_width: usize) -> Vec<Line<'stati
         .map(|sess| sess.model)
         .or(s.creation.pending_model);
 
-    // Build flat rows with an offset map so the cursor still indexes into
-    // entries while we insert group headers.
+    // Offset map so the cursor still indexes into `entries` despite headers.
     let mut rows: Vec<Row> = Vec::with_capacity(entries.len() + 4);
     let mut prev_provider: Option<ProviderId> = None;
     for (i, m) in entries.iter().enumerate() {
@@ -341,8 +337,8 @@ fn cursor_to_row(rows: &[Row], cursor: usize) -> usize {
 /// "current model" indicator stays aligned.
 fn format_model_row(marker: &str, display_name: &str, id: &str, max_width: usize) -> String {
     const ELLIPSIS: &str = "…";
-    // 2 = marker char + the space after it. Leave 1 cell of slack so
-    // wide CJK glyphs don't accidentally push past the panel.
+    // Space after the marker + 1 slack cell, so wide CJK glyphs don't push
+    // past the panel.
     let overhead = marker.chars().count() + 1 + 1;
     if max_width <= overhead {
         return marker.to_string();
@@ -382,13 +378,9 @@ fn truncate_with_ellipsis(s: &str, max_width: usize, ellipsis: &str) -> String {
     format!("{head}{ellipsis}")
 }
 
-/// Body of the `/session` overlay: every saved session as a one-line
-/// summary, newest-first, with the cursor row highlighted. Sliced by
-/// `s.session_list.picker.scroll` so long lists stay usable.
-///
-/// `max_width` is the inner width of the overlay panel; each row is
-/// truncated to fit so titles never wrap onto two visual lines (see
-/// [`model_picker_lines`] for the same rationale).
+/// Body of the `/session` overlay: saved-session one-liners, newest-first,
+/// sliced by `s.session_list.picker.scroll`, cursor row highlighted. Rows
+/// truncated to `max_width` so titles never wrap (see [`model_picker_lines`]).
 pub fn session_list_lines(s: &SessionState, max_width: usize) -> Vec<Line<'static>> {
     if s.session_list.summaries.is_empty() {
         return vec![Line::from(Span::styled(
@@ -420,8 +412,8 @@ pub fn session_list_lines(s: &SessionState, max_width: usize) -> Vec<Line<'stati
 
 fn format_session_row(title: &str, model: &str, max_width: usize) -> String {
     const ELLIPSIS: &str = "…";
-    // Leading + trailing two-space padding, plus the ` (model)` tail.
-    // When the model doesn't fit, fall back to the title alone.
+    // Two-space leading/trailing padding + ` (model)` tail; falls back to
+    // the title alone when the model won't fit.
     let tail = format!(" ({model})");
     let tail_w = tail.chars().count();
     let prefix = 2usize; // leading "  "
@@ -439,15 +431,15 @@ fn format_session_row(title: &str, model: &str, max_width: usize) -> String {
     format!("  {t}  ")
 }
 
-/// Body of the rename overlay: a hint pointing to the input bar where the
+/// Body of the rename overlay: a hint pointing to the composer bar where the
 /// user is editing the new title. The actual title text is shown live in
-/// the input bar — the overlay just frames the action.
+/// the composer bar — the overlay just frames the action.
 pub(super) fn rename_session_lines(s: &SessionState) -> Vec<Line<'static>> {
-    let current = s.input.lines().join("\n");
+    let current = s.composer_text();
     let trimmed = current.trim();
     if trimmed.is_empty() {
         vec![Line::from(Span::styled(
-            "(type a new title in the input bar, then press Enter)",
+            "(type a new title in the composer bar, then press Enter)",
             Style::default().fg(Color::DarkGray),
         ))]
     } else {
@@ -464,107 +456,8 @@ pub(super) fn rename_session_lines(s: &SessionState) -> Vec<Line<'static>> {
     }
 }
 
-/// Draw a centred, bordered overlay with a `Clear` underneath it.
-pub(super) fn render_overlay(frame: &mut Frame, area: Rect, title: &str, body: Vec<Line<'static>>) {
-    let rect = centered_rect(area, 60, 60);
-    frame.render_widget(Clear, rect);
-    let block = Block::bordered()
-        .title(format!(" {title}  (Esc to close) "))
-        .border_style(Style::default().fg(Color::Cyan));
-    frame.render_widget(
-        Paragraph::new(Text::from(body))
-            .wrap(Wrap { trim: false })
-            .block(block),
-        rect,
-    );
-}
-
-/// Centred overlay rect, matching the size used by [`render_overlay`].
-/// Exposed so callers that build their own body lines (e.g. to truncate
-/// to the inner width) can render into the same rect.
-pub(super) fn centered_rect(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
-    let vertical = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(area);
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(vertical[1])[1]
-}
-
-/// Like [`render_overlay`] but for a list that may exceed the panel
-/// height. `body` is the slice of rows starting at `scroll`; the
-/// function truncates it to fit the panel, pads to the footer row, and
-/// renders.
-///
-/// `viewport_out` is set to the **number of rows actually available for
-/// list items** (panel inner height minus the footer row). The update
-/// loop reads this back to clamp the scroll offset when the cursor
-/// moves — if the value is wrong (e.g. the raw inner height without
-/// subtracting the footer), the cursor can scroll off the bottom in a
-/// small terminal even though the user is still pressing Down.
-#[allow(clippy::too_many_arguments)]
-pub(super) fn render_scrolled_overlay(
-    frame: &mut Frame,
-    area: Rect,
-    title: &str,
-    hint: &str,
-    body: Vec<Line<'static>>,
-    total_rows: usize,
-    _scroll: usize,
-    cursor: usize,
-    viewport_out: &mut u16,
-) {
-    let rect = centered_rect(area, 60, 60);
-    frame.render_widget(Clear, rect);
-    let inner_height = rect.height.saturating_sub(2);
-    // One row is reserved for the footer; the rest is the list viewport.
-    let visible = inner_height.saturating_sub(1) as usize;
-
-    // Truncate the body to the visible window so the footer row stays
-    // clear and so the model's `viewport` matches what we actually drew.
-    let mut lines: Vec<Line> = body.into_iter().take(visible).collect();
-    // Pad with blank lines so the footer stays anchored at the bottom
-    // even when the list is short.
-    while lines.len() < visible {
-        lines.push(Line::from(""));
-    }
-    // Footer: "<cursor+1>/<total>" so the user can see where the
-    // cursor is, even when the cursor row is scrolled off the top or
-    // bottom.
-    let footer_text = if total_rows == 0 {
-        " — ".to_string()
-    } else {
-        format!(" {}/{} ", cursor + 1, total_rows)
-    };
-    lines.push(Line::from(Span::styled(
-        footer_text,
-        Style::default().fg(Color::DarkGray),
-    )));
-
-    let block = Block::bordered()
-        .title(format!(" {title}  ({hint}) "))
-        .border_style(Style::default().fg(Color::Cyan));
-    // Rows are pre-truncated to the inner width by the caller, so wrap
-    // is unnecessary and would risk re-wrapping a truncated tail onto a
-    // second line.
-    frame.render_widget(Paragraph::new(Text::from(lines)).block(block), rect);
-
-    // Report the *list* viewport, not the raw inner height — the footer
-    // row is not part of the list.
-    *viewport_out = visible as u16;
-}
-
-/// Lines for the provider connect dialog.
+/// Body of the `/connect` overlay: provider list and API-key prompt,
+/// depending on `s.connect_provider.step`.
 pub(super) fn connect_provider_lines(s: &SessionState) -> Vec<Line<'static>> {
     use crate::runtime::model::ConnectStep;
     let state = &s.connect_provider;
@@ -652,6 +545,6 @@ pub(super) fn connect_provider_lines(s: &SessionState) -> Vec<Line<'static>> {
 
 pub(super) fn connect_provider_key_text(s: &SessionState) -> String {
     let mut text = s.connect_provider.key_input.lines().join("");
-    text.push_str(&s.input.lines().join(""));
+    text.push_str(&s.composer.lines().join(""));
     text
 }

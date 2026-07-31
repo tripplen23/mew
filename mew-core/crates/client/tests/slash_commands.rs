@@ -37,7 +37,7 @@ fn session() -> mewcode_client::net::Session {
 
 fn type_text(s: &mut SessionState, text: &str) {
     // Replace the input with the given text via the public insert API.
-    s.input = TextArea::new(vec![text.to_string()]);
+    s.composer = TextArea::new(vec![text.to_string()]);
 }
 
 fn press_enter() -> Msg {
@@ -78,7 +78,7 @@ fn slash_model_opens_picker_and_fetches_when_uncached() {
     assert_eq!(s.overlay, Overlay::ModelPicker);
     assert_eq!(s.model_picker.picker.cursor, 0);
     assert!(
-        s.input.lines().join("\n").is_empty(),
+        s.composer.lines().join("\n").is_empty(),
         "input should be cleared after dispatch"
     );
 }
@@ -183,7 +183,7 @@ fn slash_session_rename_seeds_input_with_current_title() {
     let s = active_state(&mut app);
     assert_eq!(s.overlay, Overlay::RenameSession);
     assert_eq!(
-        s.input.lines().join("\n"),
+        s.composer.lines().join("\n"),
         "demo",
         "input should be seeded with current title"
     );
@@ -627,7 +627,7 @@ fn connect_overlay_keys_go_to_api_key_not_composer() {
 
     let s = active_state(&mut app);
     assert_eq!(s.connect_provider.key_input.lines(), &vec!["h".to_string()]);
-    assert_eq!(s.input.lines(), &vec!["".to_string()]);
+    assert_eq!(s.composer.lines(), &vec!["".to_string()]);
 }
 
 #[test]
@@ -639,7 +639,7 @@ fn connect_command_opens_with_empty_composer() {
 
     let s = active_state(&mut app);
     assert_eq!(s.overlay, Overlay::ConnectProvider);
-    assert_eq!(s.input.lines(), &vec!["".to_string()]);
+    assert_eq!(s.composer.lines(), &vec!["".to_string()]);
 }
 
 #[test]
@@ -663,7 +663,7 @@ fn connect_overlay_key_handler_promotes_stray_composer_text() {
         s.connect_provider.key_input.lines(),
         &vec!["abcd".to_string()]
     );
-    assert_eq!(s.input.lines(), &vec!["".to_string()]);
+    assert_eq!(s.composer.lines(), &vec!["".to_string()]);
 }
 
 #[test]
@@ -701,9 +701,9 @@ fn esc_on_rename_clears_composer_draft() {
         type_text(s, "/session rename");
     }
     let _ = update(&mut app, press_enter());
-    // The rename overlay seeds `s.input` with the current title.
+    // The rename overlay seeds `s.composer` with the current title.
     assert_eq!(active_state(&mut app).overlay, Overlay::RenameSession);
-    assert!(!active_state(&mut app).input.lines().is_empty());
+    assert_eq!(active_state(&mut app).composer.lines().join("\n"), "demo");
 
     // Type some new characters into the composer to make it a draft.
     {
@@ -715,7 +715,7 @@ fn esc_on_rename_clears_composer_draft() {
     let _ = update(&mut app, press_esc());
     let s = active_state(&mut app);
     assert_eq!(s.overlay, Overlay::None);
-    let draft = s.input.lines().join("\n");
+    let draft = s.composer.lines().join("\n");
     assert!(
         draft.trim().is_empty(),
         "Esc should discard the rename draft, not leave it in the composer (got {draft:?})"
@@ -853,7 +853,7 @@ fn session_patched_after_overlay_closed_does_not_clear_composer() {
     // The session adopts the patch (it's still the active session), but
     // the composer draft is preserved.
     assert_eq!(s.session.as_ref().unwrap().title, "renamed");
-    let draft = s.input.lines().join("\n");
+    let draft = s.composer.lines().join("\n");
     assert_eq!(draft, "hi there", "stale PATCH must not clear the draft");
 }
 
@@ -874,7 +874,7 @@ fn session_patched_from_rename_clears_draft_even_if_overlay_already_closed() {
     }
     let _ = update(&mut app, press_enter());
     assert_eq!(active_state(&mut app).overlay, Overlay::RenameSession);
-    assert!(!active_state(&mut app).input.lines().is_empty());
+    assert_eq!(active_state(&mut app).composer.lines().join("\n"), "demo");
 
     // User Esc's out (this is also the moment we need to fix: Esc
     // already cleared the draft in the previous fix).
@@ -907,7 +907,7 @@ fn session_patched_from_rename_clears_draft_even_if_overlay_already_closed() {
     let s = active_state(&mut app);
     assert_eq!(s.session.as_ref().unwrap().title, "renamed");
     // Rename PATCH clears the composer so the rename is the final word.
-    let draft = s.input.lines().join("\n");
+    let draft = s.composer.lines().join("\n");
     assert!(draft.is_empty(), "rename PATCH must clear the draft");
 }
 
@@ -948,7 +948,7 @@ fn session_opened_after_overlay_closed_does_not_adopt_session() {
         original_id,
         "stale SessionOpened must not replace the active session"
     );
-    let draft = s.input.lines().join("\n");
+    let draft = s.composer.lines().join("\n");
     assert_eq!(draft, "draft", "stale SessionOpened must not clobber input");
 }
 
@@ -968,7 +968,7 @@ fn typing_slash_opens_picker() {
     let _ = update(&mut app, type_char('/'));
     let s = active_state(&mut app);
     assert_eq!(s.overlay, Overlay::SlashPicker);
-    assert_eq!(s.input.lines().join("\n"), "/");
+    assert_eq!(s.composer.lines().join("\n"), "/");
     assert_eq!(s.slash_cursor, 0, "bare / should highlight the first row");
 }
 
@@ -997,7 +997,7 @@ fn picker_closes_when_prefix_drops_slash() {
     );
     let s = active_state(&mut app);
     assert_eq!(s.overlay, Overlay::None);
-    assert_eq!(s.input.lines().join("\n"), "");
+    assert_eq!(s.composer.lines().join("\n"), "");
 }
 
 #[test]
@@ -1026,7 +1026,7 @@ fn picker_enter_dispatches_highlighted_command() {
     );
     assert!(matches!(cmd, Cmd::FetchModels));
     // The composer is cleared by the slash submit path.
-    assert!(s.input.lines().join("\n").is_empty());
+    assert!(s.composer.lines().join("\n").is_empty());
 }
 
 #[test]
@@ -1049,7 +1049,52 @@ fn picker_esc_clears_composer_and_closes() {
     let _ = update(&mut app, press_esc());
     let s = active_state(&mut app);
     assert_eq!(s.overlay, Overlay::None);
-    assert!(s.input.lines().join("\n").is_empty());
+    assert!(s.composer.lines().join("\n").is_empty());
+}
+
+#[test]
+fn picker_quit_and_seeded_command_clear_pasted_text() {
+    let mut app = test_app();
+    seed_active_session(active_state(&mut app));
+    {
+        let s = active_state(&mut app);
+        // Simulate a stale pasted marker from an earlier paste.
+        s.pasted.push(mewcode_client::runtime::model::PastedText {
+            marker: "[Pasted ~2 lines]".into(),
+            text: "a\nb".into(),
+        });
+    }
+    // Fresh composer, picker opens on `/`.
+    let _ = update(&mut app, type_char('/'));
+    assert_eq!(active_state(&mut app).overlay, Overlay::SlashPicker);
+
+    // Selecting /quit (index 11 in SLASH_COMMANDS) must clear the composer
+    // AND the pending pasted text.
+    for _ in 0..11 {
+        let _ = update(&mut app, press_arrow(KeyCode::Down));
+    }
+    let cmd = update(&mut app, press_enter());
+    assert!(matches!(cmd, Cmd::Quit));
+    let s = active_state(&mut app);
+    assert!(s.composer.lines().join("\n").is_empty());
+    assert!(s.pasted.is_empty());
+
+    // Seeding any other command draft must also drop pending pasted text.
+    let mut app = test_app();
+    seed_active_session(active_state(&mut app));
+    {
+        let s = active_state(&mut app);
+        s.pasted.push(mewcode_client::runtime::model::PastedText {
+            marker: "[Pasted ~2 lines]".into(),
+            text: "a\nb".into(),
+        });
+    }
+    let _ = update(&mut app, type_char('/'));
+    let _ = update(&mut app, press_enter()); // /model at index 0
+    let s = active_state(&mut app);
+    assert_eq!(s.overlay, Overlay::ModelPicker);
+    assert!(s.composer.lines().join("\n").is_empty());
+    assert!(s.pasted.is_empty());
 }
 
 // --- model / session picker scroll -------------------------------------
@@ -1171,7 +1216,7 @@ fn message_sent_during_manual_compact_is_queued_not_stuck_in_composer() {
     assert!(matches!(cmd, Cmd::None));
     let s = active_state(&mut app);
     assert_eq!(
-        s.input.lines().join("\n"),
+        s.composer.lines().join("\n"),
         "",
         "the composer must be cleared, not left holding the typed text"
     );

@@ -97,7 +97,7 @@ fn empty_session_first_message_kicks_off_create() {
     assert_eq!(s.creation.pending_chat.as_deref(), Some("hello world"));
     // The composer keeps the text so the user can retry if the create
     // fails. It is cleared in the `SessionCreated(Ok)` success path.
-    assert_eq!(s.input.lines().join("\n"), "hello world");
+    assert_eq!(s.composer.lines().join("\n"), "hello world");
 }
 
 #[test]
@@ -204,7 +204,7 @@ fn session_created_failure_drops_creating_and_toasts() {
 
 /// Regression for the data-loss path: when `POST /sessions` fails, the
 /// user's typed text must stay in the composer so they can retry. The
-/// previous flow cleared `s.input` on submit and then dropped
+/// previous flow cleared `s.composer` on submit and then dropped
 /// `pending_chat` on failure, leaving the user staring at an empty box.
 #[test]
 fn session_created_failure_preserves_input_for_retry() {
@@ -224,7 +224,7 @@ fn session_created_failure_preserves_input_for_retry() {
     let s = sess(&app);
     assert!(s.session.is_none());
     assert!(!s.creation.creating);
-    assert_eq!(s.input.lines().join("\n"), "retry me");
+    assert_eq!(s.composer.lines().join("\n"), "retry me");
     assert!(
         s.creation.creation_started_at.is_none(),
         "spinner should stop"
@@ -239,7 +239,7 @@ fn creating_state_ignores_keypresses() {
     }
     update(&mut app, key(KeyCode::Enter));
     let before_pending = sess(&app).creation.pending_chat.clone();
-    let before_input = sess(&app).input.lines().join("\n");
+    let before_input = sess(&app).composer.lines().join("\n");
 
     // All keypresses while creating should be ignored — pending_chat,
     // input, and the creating flag itself stay put.
@@ -248,7 +248,7 @@ fn creating_state_ignores_keypresses() {
     }
     let s = sess(&app);
     assert_eq!(s.creation.pending_chat, before_pending);
-    assert_eq!(s.input.lines().join("\n"), before_input);
+    assert_eq!(s.composer.lines().join("\n"), before_input);
     assert!(s.creation.creating);
 }
 
@@ -297,7 +297,7 @@ fn at_file_picker_inserts_selected_path() {
 
     let s = sess(&app);
     assert_eq!(s.overlay, Overlay::None);
-    assert_eq!(s.input.lines().join("\n"), "read @src/main.rs");
+    assert_eq!(s.composer.lines().join("\n"), "read @src/main.rs");
 }
 
 #[test]
@@ -326,7 +326,7 @@ fn at_file_picker_prefers_basename_prefix_matches() {
     type_chars(&mut app, "rea");
     update(&mut app, key(KeyCode::Enter));
 
-    assert_eq!(sess(&app).input.lines().join("\n"), "read @README.md");
+    assert_eq!(sess(&app).composer.lines().join("\n"), "read @README.md");
 }
 
 #[test]
@@ -369,7 +369,7 @@ fn at_file_picker_hides_dotfiles_by_default() {
     );
     update(&mut app, key(KeyCode::Enter));
 
-    assert_eq!(sess(&app).input.lines().join("\n"), "@README.md");
+    assert_eq!(sess(&app).composer.lines().join("\n"), "@README.md");
 }
 
 #[test]
@@ -393,7 +393,7 @@ fn at_file_picker_shows_dotfiles_for_dot_query() {
     type_chars(&mut app, ".");
     update(&mut app, key(KeyCode::Enter));
 
-    assert_eq!(sess(&app).input.lines().join("\n"), "@.env");
+    assert_eq!(sess(&app).composer.lines().join("\n"), "@.env");
 }
 
 /// The text command `quit` (case-insensitive, exact match) is the new
@@ -425,7 +425,7 @@ fn multiline_paste_is_compacted_in_composer() {
 
     update(&mut app, Msg::Paste("one\ntwo\nthree".to_string()));
 
-    assert_eq!(sess(&app).input.lines().join("\n"), "[Pasted ~3 lines]");
+    assert_eq!(sess(&app).composer.lines().join("\n"), "[Pasted ~3 lines]");
 }
 
 #[test]
@@ -434,7 +434,22 @@ fn long_single_line_paste_is_compacted_in_composer() {
 
     update(&mut app, Msg::Paste("x".repeat(121)));
 
-    assert_eq!(sess(&app).input.lines().join("\n"), "[Pasted ~121 chars]");
+    assert_eq!(
+        sess(&app).composer.lines().join("\n"),
+        "[Pasted ~121 chars]"
+    );
+}
+
+#[test]
+fn single_line_paste_with_trailing_newline_is_marked() {
+    let mut app = on_session();
+
+    update(&mut app, Msg::Paste("foo\n".to_string()));
+    assert_eq!(sess(&app).composer.lines().join("\n"), "[Pasted ~2 lines]");
+
+    let mut app = on_session();
+    update(&mut app, Msg::Paste("foo\r\n".to_string()));
+    assert_eq!(sess(&app).composer.lines().join("\n"), "[Pasted ~2 lines]");
 }
 
 #[test]
@@ -586,7 +601,7 @@ fn submit_while_streaming_is_queued_not_dropped() {
     assert_eq!(s.session.as_ref().unwrap().messages.len(), before);
     // The composer is cleared — the message moved into the queue, not
     // left stuck in the input for the user to notice nothing happened.
-    assert_eq!(s.input.lines().join("\n"), "");
+    assert_eq!(s.composer.lines().join("\n"), "");
     assert_eq!(s.message_queue.as_slice(), ["second"]);
 }
 

@@ -1,3 +1,6 @@
+//! Events that drive the app through `update`: input, timer ticks, and the
+//! results of the async work each [`Cmd`](super::Cmd) kicked off.
+
 use uuid::Uuid;
 
 use crossterm::event::KeyEvent;

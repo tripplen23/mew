@@ -8,7 +8,7 @@
 //! > quiet and the function is trivially unit-testable.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use tui_textarea::{Input, Key, TextArea};
+use tui_textarea::{Input, Key};
 use uuid::Uuid;
 
 use mewcode_protocol::event::ChatRequest;
@@ -19,14 +19,12 @@ use super::model::{
     App, Cmd, ConnectStep, CreateError, Msg, Overlay, Screen, StreamMsg, StreamingState, Toast,
 };
 
-pub(crate) mod picker;
 mod session;
-mod slash;
-mod stream;
 
-use picker::{clamp_file_picker_scroll, clamp_model_picker_scroll, clamp_session_list_scroll};
-use session::{on_session_key, on_session_paste, submit_choice_response};
-use stream::apply_stream_event;
+use session::picker::{
+    clamp_file_picker_scroll, clamp_model_picker_scroll, clamp_session_list_scroll,
+};
+use session::{apply_stream_event, on_session_key, on_session_paste, submit_choice_response};
 
 /// Apply a [`Msg`] to the model, returning the side effect to run next.
 ///
@@ -101,8 +99,7 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
                     s.streaming = Some(StreamingState::new(Uuid::nil()));
                     // The composer is cleared now that the first turn
                     // has been committed.
-                    s.input = TextArea::default();
-                    s.pasted.clear();
+                    s.clear_composer();
                     // The local `session` is the pre-push server clone —
                     // read from the model, which has the user message.
                     let live = s.session.as_ref().unwrap();
@@ -245,7 +242,7 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
             match result {
                 Ok(files) => {
                     s.file_picker.files = Some(files);
-                    let len = picker::filtered_files(s).len();
+                    let len = s.filtered_files().len();
                     if s.file_picker.picker.cursor >= len {
                         s.file_picker.picker.cursor = len.saturating_sub(1);
                     }
@@ -270,8 +267,7 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
                     s.session = Some(session);
                     s.overlay = Overlay::None;
                     if from_rename {
-                        s.input = TextArea::default();
-                        s.pasted.clear();
+                        s.clear_composer();
                     }
                 }
                 Err(e) => {

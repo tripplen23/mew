@@ -1,3 +1,5 @@
+//! Side effects the runtime loop should perform after an `update` returns.
+
 use crate::net::{CreateSessionRequest, SessionPatch};
 use mewcode_protocol::credential::ConnectProviderRequest;
 use mewcode_protocol::event::{ChatRequest, ChoiceResponseRequest};

@@ -11,36 +11,14 @@ use mewcode_protocol::ModelId;
 
 use crate::net::SessionPatch;
 
-use super::super::model::{Cmd, FileEntry, Overlay, PickerState, SessionState};
-use super::key_to_input;
-
-const FILE_MENTION_PREFIX: char = '@';
-const MAX_FILTERED_FILES: usize = 10;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct FileMatchScore {
-    rank: usize,
-    offset: usize,
-    len: usize,
-}
-
-impl FileMatchScore {
-    fn new(rank: usize, offset: usize, len: usize) -> Self {
-        Self { rank, offset, len }
-    }
-}
+use crate::runtime::model::{Cmd, Overlay, PickerState, SessionState};
+use crate::runtime::update::key_to_input;
 
 /// Handle navigation and selection inside the model picker overlay.
 pub(super) fn on_model_picker_key(s: &mut SessionState, key: KeyEvent) -> Cmd {
     match key.code {
-        KeyCode::Up => {
-            cursor_move(s, -1);
-            Cmd::None
-        }
-        KeyCode::Down => {
-            cursor_move(s, 1);
-            Cmd::None
-        }
+        KeyCode::Up => cursor_move(s, -1),
+        KeyCode::Down => cursor_move(s, 1),
         KeyCode::Enter => pick_model(s),
         _ => Cmd::None,
     }
@@ -49,14 +27,8 @@ pub(super) fn on_model_picker_key(s: &mut SessionState, key: KeyEvent) -> Cmd {
 /// Handle navigation, open, and delete inside the session list overlay.
 pub(super) fn on_session_list_key(s: &mut SessionState, key: KeyEvent) -> Cmd {
     match key.code {
-        KeyCode::Up => {
-            cursor_move(s, -1);
-            Cmd::None
-        }
-        KeyCode::Down => {
-            cursor_move(s, 1);
-            Cmd::None
-        }
+        KeyCode::Up => cursor_move(s, -1),
+        KeyCode::Down => cursor_move(s, 1),
         KeyCode::Enter => s
             .session_list
             .summaries
@@ -75,20 +47,14 @@ pub(super) fn on_session_list_key(s: &mut SessionState, key: KeyEvent) -> Cmd {
 
 pub(super) fn on_file_picker_key(s: &mut SessionState, key: KeyEvent) -> Cmd {
     match key.code {
-        KeyCode::Up => {
-            file_cursor_move(s, -1);
-            Cmd::None
-        }
-        KeyCode::Down => {
-            file_cursor_move(s, 1);
-            Cmd::None
-        }
+        KeyCode::Up => cursor_move(s, -1),
+        KeyCode::Down => cursor_move(s, 1),
         KeyCode::Enter => {
             pick_file(s);
             Cmd::None
         }
         _ => {
-            s.input.input(key_to_input(key));
+            s.composer.input(key_to_input(key));
             refresh_file_picker(s)
         }
     }
@@ -105,7 +71,7 @@ pub(super) fn open_file_picker(s: &mut SessionState) -> Cmd {
 }
 
 pub(super) fn refresh_file_picker(s: &mut SessionState) -> Cmd {
-    if current_file_query(s).is_none() {
+    if s.current_file_query().is_none() {
         s.overlay = Overlay::None;
         return Cmd::None;
     }
@@ -113,7 +79,7 @@ pub(super) fn refresh_file_picker(s: &mut SessionState) -> Cmd {
     if s.file_picker.files.is_none() {
         return Cmd::FetchFiles;
     }
-    let len = filtered_files(s).len();
+    let len = s.filtered_files().len();
     clamp_picker_cursor(&mut s.file_picker.picker, len);
     clamp_file_picker_scroll(s);
     Cmd::None
@@ -158,11 +124,11 @@ fn pick_model(s: &mut SessionState) -> Cmd {
     Cmd::None
 }
 
-fn cursor_move(s: &mut SessionState, delta: i32) {
+fn cursor_move(s: &mut SessionState, delta: i32) -> Cmd {
     match s.overlay {
         Overlay::ModelPicker => {
             let Some(models) = s.model_picker.models.as_ref() else {
-                return;
+                return Cmd::None;
             };
             move_picker_cursor(&mut s.model_picker.picker, models.len(), delta);
             let cursor_row = model_cursor_row(models, s.model_picker.picker.cursor);
@@ -186,6 +152,7 @@ fn cursor_move(s: &mut SessionState, delta: i32) {
                     .viewport
                     .max(s.model_picker.picker.viewport_max) as usize,
             );
+            Cmd::None
         }
         Overlay::SessionList => {
             move_picker_cursor(
@@ -202,14 +169,18 @@ fn cursor_move(s: &mut SessionState, delta: i32) {
                     .viewport
                     .max(s.session_list.picker.viewport_max) as usize,
             );
+            Cmd::None
         }
-        Overlay::FilePicker => file_cursor_move(s, delta),
-        _ => {}
+        Overlay::FilePicker => {
+            file_cursor_move(s, delta);
+            Cmd::None
+        }
+        _ => Cmd::None,
     }
 }
 
 fn file_cursor_move(s: &mut SessionState, delta: i32) {
-    let len = filtered_files(s).len();
+    let len = s.filtered_files().len();
     move_picker_cursor(&mut s.file_picker.picker, len, delta);
     clamp_file_picker_scroll(s);
 }
@@ -229,7 +200,7 @@ fn clamp_picker_scroll(scroll: usize, cursor: usize, len: usize, visible_rows: u
 }
 
 /// Re-clamp model picker scroll after async model data changes.
-pub(super) fn clamp_model_picker_scroll(s: &mut SessionState) {
+pub(crate) fn clamp_model_picker_scroll(s: &mut SessionState) {
     let (len, cursor) = s
         .model_picker
         .models
@@ -318,7 +289,7 @@ fn model_visual_len(models: &[crate::net::ModelEntry]) -> usize {
 }
 
 /// Re-clamp session list scroll after async list data changes.
-pub(super) fn clamp_session_list_scroll(s: &mut SessionState) {
+pub(crate) fn clamp_session_list_scroll(s: &mut SessionState) {
     let viewport = s
         .session_list
         .picker
@@ -332,7 +303,7 @@ pub(super) fn clamp_session_list_scroll(s: &mut SessionState) {
     );
 }
 
-pub(super) fn clamp_file_picker_scroll(s: &mut SessionState) {
+pub(crate) fn clamp_file_picker_scroll(s: &mut SessionState) {
     let viewport = s
         .file_picker
         .picker
@@ -341,107 +312,20 @@ pub(super) fn clamp_file_picker_scroll(s: &mut SessionState) {
     s.file_picker.picker.scroll = clamp_picker_scroll(
         s.file_picker.picker.scroll,
         s.file_picker.picker.cursor,
-        filtered_files(s).len(),
+        s.filtered_files().len(),
         viewport,
     );
 }
 
-pub(crate) fn filtered_files(s: &SessionState) -> Vec<&FileEntry> {
-    let Some(files) = s.file_picker.files.as_ref() else {
-        return Vec::new();
-    };
-    let query = current_file_query(s).unwrap_or_default();
-    let show_hidden = query.starts_with('.');
-    let mut matches = files
-        .iter()
-        .filter(|file| show_hidden || !is_hidden_path(&file.path))
-        .filter_map(|file| file_match_score(&file.path, &query).map(|score| (score, file)))
-        .collect::<Vec<_>>();
-    matches.sort_by(|(a_score, a_file), (b_score, b_file)| {
-        a_score
-            .cmp(b_score)
-            .then_with(|| a_file.path.cmp(&b_file.path))
-    });
-    matches
-        .into_iter()
-        .map(|(_, file)| file)
-        .take(MAX_FILTERED_FILES)
-        .collect()
-}
-
-fn is_hidden_path(path: &str) -> bool {
-    path.split('/').any(|part| part.starts_with('.'))
-}
-
-fn file_match_score(path: &str, query: &str) -> Option<FileMatchScore> {
-    if query.is_empty() {
-        return Some(FileMatchScore::new(
-            0,
-            path.matches('/').count(),
-            path.len(),
-        ));
-    }
-    let path = path.to_ascii_lowercase();
-    let query = query.to_ascii_lowercase();
-    let basename = path.rsplit('/').next().unwrap_or(&path);
-    if basename.starts_with(&query) {
-        return Some(FileMatchScore::new(0, basename.len(), path.len()));
-    }
-    if path.starts_with(&query) {
-        return Some(FileMatchScore::new(1, path.len(), path.len()));
-    }
-    if let Some(idx) = basename.find(&query) {
-        return Some(FileMatchScore::new(2, idx, path.len()));
-    }
-    if let Some(idx) = path.find(&query) {
-        return Some(FileMatchScore::new(3, idx, path.len()));
-    }
-    if is_subsequence(&query, &path) {
-        return Some(FileMatchScore::new(4, path.len(), path.len()));
-    }
-    None
-}
-
-fn is_subsequence(needle: &str, haystack: &str) -> bool {
-    let mut chars = needle.chars();
-    let Some(mut wanted) = chars.next() else {
-        return true;
-    };
-    for c in haystack.chars() {
-        if c == wanted {
-            let Some(next) = chars.next() else {
-                return true;
-            };
-            wanted = next;
-        }
-    }
-    false
-}
-
-pub(super) fn current_file_query(s: &SessionState) -> Option<String> {
-    let (row, col) = s.input.cursor();
-    let line = s.input.lines().get(row)?;
-    let prefix: String = line.chars().take(col).collect();
-    let token = prefix
-        .rsplit_once(char::is_whitespace)
-        .map_or(prefix.as_str(), |(_, token)| token);
-    token
-        .strip_prefix(FILE_MENTION_PREFIX)
-        .map(ToOwned::to_owned)
-}
-
 fn pick_file(s: &mut SessionState) {
-    let Some((path, is_dir)) = filtered_files(s)
+    let Some((path, is_dir)) = s
+        .filtered_files()
         .get(s.file_picker.picker.cursor)
         .map(|file| (file.path.clone(), file.is_dir))
     else {
         return;
     };
-    let token = if is_dir {
-        format!("{FILE_MENTION_PREFIX}{path}/")
-    } else {
-        format!("{FILE_MENTION_PREFIX}{path}")
-    };
+    let token = SessionState::file_mention_token(&path, is_dir);
     replace_current_file_token(s, &token);
     if is_dir {
         refresh_file_picker(s);
@@ -451,8 +335,8 @@ fn pick_file(s: &mut SessionState) {
 }
 
 fn replace_current_file_token(s: &mut SessionState, replacement: &str) {
-    let (row, col) = s.input.cursor();
-    let mut lines = s.input.lines().to_vec();
+    let (row, col) = s.composer.cursor();
+    let mut lines = s.composer.lines().to_vec();
     let Some(line) = lines.get_mut(row) else {
         return;
     };
@@ -463,8 +347,8 @@ fn replace_current_file_token(s: &mut SessionState, replacement: &str) {
         .map_or(0, |i| i + 1);
     chars.splice(start..col, replacement.chars());
     *line = chars.into_iter().collect();
-    s.input = TextArea::new(lines);
-    s.input.move_cursor(CursorMove::Jump(
+    s.composer = TextArea::new(lines);
+    s.composer.move_cursor(CursorMove::Jump(
         row as u16,
         (start + replacement.chars().count()) as u16,
     ));

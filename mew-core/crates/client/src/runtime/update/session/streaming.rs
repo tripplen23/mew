@@ -1,6 +1,10 @@
+//! Applies streaming SSE events (`StreamMsg`) to the session state: folding
+//! text and tool-call deltas into the in-flight turn, then committing the
+//! finished assistant message.
+
 use mewcode_protocol::{Message, MessagePart, ModelId, ToolCall, ToolResult};
 
-use super::super::model::{
+use crate::runtime::model::{
     CompactionEntry, CompactionView, SessionState, StreamMsg, StreamingState, Toast, ToolCallView,
     TurnItem,
 };
@@ -11,7 +15,7 @@ use super::super::model::{
 /// that arrive with no [`StreamingState`] are ignored. On `Finished` exactly
 /// one assistant message is committed and `streaming` returns to `None`; on
 /// `Failed` the partial buffer is discarded and history is kept.
-pub(super) fn apply_stream_event(s: &mut SessionState, ev: StreamMsg) -> Option<Toast> {
+pub(crate) fn apply_stream_event(s: &mut SessionState, ev: StreamMsg) -> Option<Toast> {
     match ev {
         StreamMsg::Started { id, pwd } => {
             if let Some(st) = &mut s.streaming {
@@ -57,8 +61,8 @@ pub(super) fn apply_stream_event(s: &mut SessionState, ev: StreamMsg) -> Option<
             None
         }
         StreamMsg::ChoiceRequest(request) => {
-            s.pending_choice = Some(super::super::model::ChoicePromptState::new(request));
-            s.overlay = super::super::model::Overlay::Choice;
+            s.pending_choice = Some(crate::runtime::model::ChoicePromptState::new(request));
+            s.overlay = crate::runtime::model::Overlay::Choice;
             None
         }
         StreamMsg::CompactionStarted => {
@@ -93,10 +97,8 @@ pub(super) fn apply_stream_event(s: &mut SessionState, ev: StreamMsg) -> Option<
             summary,
             thought_duration_ms,
         } => {
-            // Fill in metadata on the summary already streamed in via
-            // `CompactionSummaryDelta` — will be committed to
-            // s.compaction.committed in the Finished handler to preserve
-            // correct ordering.
+            // Fill in metadata on the streamed summary; the Finished handler
+            // commits it to `s.compaction.committed` to preserve ordering.
             if let Some(st) = &mut s.streaming {
                 st.finish_compaction(tokens_before, context_limit, &summary, thought_duration_ms);
             }
@@ -107,73 +109,10 @@ pub(super) fn apply_stream_event(s: &mut SessionState, ev: StreamMsg) -> Option<
             session_tokens,
             context_limit,
         } => {
-            // If we were compacting, commit the streaming state and extract
-            // any compaction entry to preserve correct ordering.
-            if s.compaction.active {
+            let manual = s.compaction.active;
+            if manual {
                 s.compaction.active = false;
                 s.compaction.started_at = None;
-                if let Some(tokens) = session_tokens {
-                    s.session_tokens = tokens;
-                }
-                if let Some(limit) = context_limit {
-                    s.context_limit = limit;
-                }
-                // Commit streaming state: extract compaction view first,
-                // then commit assistant message (text only).
-                if let Some(st) = s.streaming.take() {
-                    // Extract compaction view from items (if any).
-                    let compaction_view = st.items.iter().find_map(|item| {
-                        if let TurnItem::Compaction(view) = item {
-                            Some(view.clone())
-                        } else {
-                            None
-                        }
-                    });
-                    // Commit assistant message (text/tool only).
-                    if let Some(session) = s.session.as_mut() {
-                        let model = session.model;
-                        let msg = commit_assistant_message(st, model);
-                        if !msg.parts.is_empty() {
-                            session.messages.push(msg);
-                        }
-                        // Push compaction entry AFTER assistant message
-                        // so it renders in correct order in transcript.
-                        if let Some(view) = compaction_view {
-                            let msg_count = session.messages.len();
-                            s.compaction.committed.push(CompactionEntry {
-                                after_message_count: msg_count,
-                                view,
-                            });
-                        }
-                    }
-                }
-                return Some(Toast::info("context compacted"));
-            }
-            // Auto-compaction can fire mid-chat. Extract Compaction entries
-            // before commit — otherwise they render live then silently vanish.
-            if let Some(st) = s.streaming.take() {
-                let compaction_views: Vec<CompactionView> = st
-                    .items
-                    .iter()
-                    .filter_map(|item| match item {
-                        TurnItem::Compaction(view) => Some(view.clone()),
-                        _ => None,
-                    })
-                    .collect();
-                if let Some(session) = s.session.as_mut() {
-                    let model = session.model;
-                    // Compaction runs before reply — record above it in
-                    // causal order. Assistant message always committed here
-                    // (unlike manual-compaction branch above).
-                    let before_count = session.messages.len();
-                    session.messages.push(commit_assistant_message(st, model));
-                    for view in compaction_views {
-                        s.compaction.committed.push(CompactionEntry {
-                            after_message_count: before_count,
-                            view,
-                        });
-                    }
-                }
             }
             if let Some(tokens) = session_tokens {
                 s.session_tokens = tokens;
@@ -181,7 +120,33 @@ pub(super) fn apply_stream_event(s: &mut SessionState, ev: StreamMsg) -> Option<
             if let Some(limit) = context_limit {
                 s.context_limit = limit;
             }
-            None
+
+            if let Some(st) = s.streaming.take() {
+                if let Some(session) = s.session.as_mut() {
+                    let (msg, views) = commit_turn(st, session.model);
+                    // A compaction entry anchors to the message count before its
+                    // reply is committed, so it renders above that reply. A turn
+                    // that produced no content (e.g. a manual /compact, which
+                    // streams no reply) commits no message, so its entry lands
+                    // at the end of the transcript.
+                    let anchor = session.messages.len();
+                    if !msg.parts.is_empty() {
+                        session.messages.push(msg);
+                    }
+                    for view in views {
+                        s.compaction.committed.push(CompactionEntry {
+                            after_message_count: anchor,
+                            view,
+                        });
+                    }
+                }
+            }
+
+            if manual {
+                Some(Toast::info("context compacted"))
+            } else {
+                None
+            }
         }
         StreamMsg::Failed(e) => {
             // Clear compacting flag on failure to prevent user from being stuck.
@@ -199,12 +164,12 @@ pub(super) fn apply_stream_event(s: &mut SessionState, ev: StreamMsg) -> Option<
     }
 }
 
-/// Assemble the committed assistant message from the turn's ordered items, so
-/// text and tool parts land in the transcript in the exact order the runtime
-/// streamed them (`text -> tool -> text -> ...`), each tool call immediately
-/// followed by its result.
-fn commit_assistant_message(st: StreamingState, model: ModelId) -> Message {
+/// Commit a finished turn in a single pass: split its ordered items into the
+/// committed assistant message (text and tool parts, in stream order) and any
+/// inline compaction views.
+fn commit_turn(st: StreamingState, model: ModelId) -> (Message, Vec<CompactionView>) {
     let mut parts: Vec<MessagePart> = Vec::new();
+    let mut views: Vec<CompactionView> = Vec::new();
     for item in st.items {
         match item {
             TurnItem::Text(text) => {
@@ -234,8 +199,9 @@ fn commit_assistant_message(st: StreamingState, model: ModelId) -> Message {
                     }));
                 }
             }
-            TurnItem::Compaction(_) | TurnItem::Progress(_) => {}
+            TurnItem::Compaction(view) => views.push(view),
+            TurnItem::Progress(_) => {}
         }
     }
-    Message::assistant(parts, model.as_str())
+    (Message::assistant(parts, model.as_str()), views)
 }

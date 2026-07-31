@@ -26,7 +26,12 @@ impl Provider {
     /// Build a provider for the given model, reading credentials from config.
     pub fn for_model(model: ModelId, cfg: &EngineConfig) -> Result<Self, EngineError> {
         let (api_key, base_url) = match model.provider() {
-            ProviderId::OpenCodeGo => (cfg.api_key.as_str(), cfg.base_url.as_str()),
+            ProviderId::OpenCodeGo => {
+                if cfg.api_key.trim().is_empty() {
+                    return Err(EngineError::MissingApiKey);
+                }
+                (cfg.api_key.as_str(), cfg.base_url.as_str())
+            }
             ProviderId::OpenAi => {
                 let key = cfg
                     .openai_api_key
@@ -91,5 +96,40 @@ impl OpenAiProvider {
     /// Borrow the underlying rig client.
     pub fn client(&self) -> &rig_core::providers::openai::CompletionsClient {
         &self.client
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use mewcode_protocol::ModelId;
+
+    use super::*;
+
+    fn cfg_with(api_key: &str) -> EngineConfig {
+        EngineConfig {
+            api_key: api_key.to_string(),
+            openai_api_key: None,
+            openai_base_url: None,
+            default_model: ModelId::DEFAULT,
+            base_url: "http://localhost".into(),
+        }
+    }
+
+    #[test]
+    fn opencodego_rejects_missing_or_blank_key() {
+        for key in ["", "   ", "\n"] {
+            assert!(
+                matches!(
+                    Provider::for_model(ModelId::DEFAULT, &cfg_with(key)),
+                    Err(EngineError::MissingApiKey)
+                ),
+                "blank key {key:?} must surface as MissingApiKey"
+            );
+        }
+    }
+
+    #[test]
+    fn opencodego_present_key_builds_provider() {
+        assert!(Provider::for_model(ModelId::DEFAULT, &cfg_with("k")).is_ok());
     }
 }
