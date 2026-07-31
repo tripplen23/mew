@@ -6,6 +6,7 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
+use unicode_width::UnicodeWidthStr;
 
 use crate::runtime::model::SessionState;
 use crate::runtime::view::theme::Theme;
@@ -38,7 +39,7 @@ pub(super) fn render_status(frame: &mut Frame, chunk: Rect, s: &SessionState, th
 
     let padding = chunk
         .width
-        .saturating_sub(left.chars().count() as u16 + right.chars().count() as u16);
+        .saturating_sub(left.width() as u16 + right.width() as u16);
     if padding > 0 {
         spans.push(Span::raw(" ".repeat(padding as usize)));
     }

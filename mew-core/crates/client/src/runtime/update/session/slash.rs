@@ -36,10 +36,11 @@ pub(super) fn on_slash_picker_key(s: &mut SessionState, key: KeyEvent) -> SlashP
                 .unwrap_or("/model")
                 .to_string();
             if cmd_text == "quit" {
-                s.composer = TextArea::default();
+                s.clear_composer();
                 s.overlay = Overlay::None;
                 return SlashPickerResult::Cmd(Cmd::Quit);
             }
+            s.pasted.clear();
             s.composer = TextArea::new(vec![format!("{cmd_text} ")]);
             s.overlay = Overlay::None;
             SlashPickerResult::Submit

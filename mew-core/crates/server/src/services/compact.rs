@@ -2,8 +2,8 @@
 
 use std::collections::HashMap;
 
+use mewcode_engine::compact_history;
 use mewcode_engine::compaction::{CHARS_PER_TOKEN, prune_messages, split_for_compaction};
-use mewcode_engine::{EngineConfig, compact_history};
 use mewcode_protocol::event::CompactionPhase;
 use mewcode_protocol::{Message, ModelId, StreamEvent};
 use tokio::sync::{RwLock, mpsc};
@@ -172,18 +172,7 @@ pub(crate) async fn start_compaction(
                 })
                 .await;
 
-            let cfg = match EngineConfig::from_env() {
-                Ok(config) => config,
-                Err(error) => {
-                    tracing::error!(%error, session_id = %id, "failed to load compaction configuration");
-                    let _ = tx
-                        .send(StreamEvent::Error {
-                            message: GENERIC_COMPACTION_ERROR.into(),
-                        })
-                        .await;
-                    return;
-                }
-            };
+            let cfg = super::chat::build_engine_config(&state).await;
 
             let _ = tx
                 .send(StreamEvent::CompactionProgress {

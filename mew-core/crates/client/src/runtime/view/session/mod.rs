@@ -39,7 +39,7 @@ pub(super) fn render_session(frame: &mut Frame, area: Rect, s: &mut SessionState
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Min(1),                  // transcript
-            Constraint::Length(queue_height),    // queued-message list (0 when empty)
+            Constraint::Length(queue_height),    // queue list, at least the dashed header row
             Constraint::Length(composer_height), // composer bar (grows with text)
             Constraint::Length(1),               // status bar
         ])

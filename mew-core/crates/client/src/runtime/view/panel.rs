@@ -73,13 +73,17 @@ pub(super) fn render_scrolled_panel(
     area: Rect,
     title: &str,
     hint: &str,
+    percent_x: u16,
+    percent_y: u16,
     body: Vec<Line<'static>>,
     total_rows: usize,
     _scroll: usize,
     cursor: usize,
     viewport_out: &mut u16,
 ) {
-    let rect = centered_rect(area, 60, 60);
+    // Same rect callers used to truncate `body` to the inner width, so the
+    // drawn panel and the pre-truncated lines always match.
+    let rect = centered_rect(area, percent_x, percent_y);
     frame.render_widget(Clear, rect);
     let inner_height = rect.height.saturating_sub(2);
     // One row is reserved for the footer; the rest is the list viewport.

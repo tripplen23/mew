@@ -441,6 +441,18 @@ fn long_single_line_paste_is_compacted_in_composer() {
 }
 
 #[test]
+fn single_line_paste_with_trailing_newline_is_marked() {
+    let mut app = on_session();
+
+    update(&mut app, Msg::Paste("foo\n".to_string()));
+    assert_eq!(sess(&app).composer.lines().join("\n"), "[Pasted ~2 lines]");
+
+    let mut app = on_session();
+    update(&mut app, Msg::Paste("foo\r\n".to_string()));
+    assert_eq!(sess(&app).composer.lines().join("\n"), "[Pasted ~2 lines]");
+}
+
+#[test]
 fn compacted_paste_submits_full_text() {
     let mut app = on_session();
 

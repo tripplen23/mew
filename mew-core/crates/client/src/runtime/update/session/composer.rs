@@ -31,8 +31,10 @@ pub(crate) fn on_session_paste(s: &mut SessionState, text: String) -> Cmd {
     }
 
     let char_count = text.chars().count();
-    let line_count = text.lines().count().max(1);
-    if line_count == 1 && char_count <= COMPACT_PASTE_CHARS {
+    // split('\n') counts a trailing empty line, so "foo\n" isn't compacted.
+    let line_count = text.split('\n').count();
+    let has_trailing_terminator = text.ends_with('\n') || text.ends_with('\r');
+    if !has_trailing_terminator && line_count == 1 && char_count <= COMPACT_PASTE_CHARS {
         s.composer.insert_str(text);
         return Cmd::None;
     }

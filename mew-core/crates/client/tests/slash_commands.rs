@@ -703,7 +703,7 @@ fn esc_on_rename_clears_composer_draft() {
     let _ = update(&mut app, press_enter());
     // The rename overlay seeds `s.composer` with the current title.
     assert_eq!(active_state(&mut app).overlay, Overlay::RenameSession);
-    assert!(!active_state(&mut app).composer.lines().is_empty());
+    assert_eq!(active_state(&mut app).composer.lines().join("\n"), "demo");
 
     // Type some new characters into the composer to make it a draft.
     {
@@ -874,7 +874,7 @@ fn session_patched_from_rename_clears_draft_even_if_overlay_already_closed() {
     }
     let _ = update(&mut app, press_enter());
     assert_eq!(active_state(&mut app).overlay, Overlay::RenameSession);
-    assert!(!active_state(&mut app).composer.lines().is_empty());
+    assert_eq!(active_state(&mut app).composer.lines().join("\n"), "demo");
 
     // User Esc's out (this is also the moment we need to fix: Esc
     // already cleared the draft in the previous fix).
@@ -1050,6 +1050,51 @@ fn picker_esc_clears_composer_and_closes() {
     let s = active_state(&mut app);
     assert_eq!(s.overlay, Overlay::None);
     assert!(s.composer.lines().join("\n").is_empty());
+}
+
+#[test]
+fn picker_quit_and_seeded_command_clear_pasted_text() {
+    let mut app = test_app();
+    seed_active_session(active_state(&mut app));
+    {
+        let s = active_state(&mut app);
+        // Simulate a stale pasted marker from an earlier paste.
+        s.pasted.push(mewcode_client::runtime::model::PastedText {
+            marker: "[Pasted ~2 lines]".into(),
+            text: "a\nb".into(),
+        });
+    }
+    // Fresh composer, picker opens on `/`.
+    let _ = update(&mut app, type_char('/'));
+    assert_eq!(active_state(&mut app).overlay, Overlay::SlashPicker);
+
+    // Selecting /quit (index 11 in SLASH_COMMANDS) must clear the composer
+    // AND the pending pasted text.
+    for _ in 0..11 {
+        let _ = update(&mut app, press_arrow(KeyCode::Down));
+    }
+    let cmd = update(&mut app, press_enter());
+    assert!(matches!(cmd, Cmd::Quit));
+    let s = active_state(&mut app);
+    assert!(s.composer.lines().join("\n").is_empty());
+    assert!(s.pasted.is_empty());
+
+    // Seeding any other command draft must also drop pending pasted text.
+    let mut app = test_app();
+    seed_active_session(active_state(&mut app));
+    {
+        let s = active_state(&mut app);
+        s.pasted.push(mewcode_client::runtime::model::PastedText {
+            marker: "[Pasted ~2 lines]".into(),
+            text: "a\nb".into(),
+        });
+    }
+    let _ = update(&mut app, type_char('/'));
+    let _ = update(&mut app, press_enter()); // /model at index 0
+    let s = active_state(&mut app);
+    assert_eq!(s.overlay, Overlay::ModelPicker);
+    assert!(s.composer.lines().join("\n").is_empty());
+    assert!(s.pasted.is_empty());
 }
 
 // --- model / session picker scroll -------------------------------------

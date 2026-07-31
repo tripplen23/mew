@@ -378,7 +378,7 @@ pub(crate) async fn start_chat_stream(
 ///   1. Credential store (YAML, from /connect TUI)
 ///   2. ServerConfig fields (from mewcode.toml or env)
 ///   3. Raw environment variables
-async fn build_engine_config(state: &AppState) -> mewcode_engine::EngineConfig {
+pub(crate) async fn build_engine_config(state: &AppState) -> mewcode_engine::EngineConfig {
     let store = state.credentials.lock().await;
     let api_key = store
         .api_key(mewcode_protocol::ProviderId::OpenCodeGo)

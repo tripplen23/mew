@@ -20,13 +20,11 @@ use super::model::{
 };
 
 mod session;
-mod stream;
 
 use session::picker::{
     clamp_file_picker_scroll, clamp_model_picker_scroll, clamp_session_list_scroll,
 };
-use session::{on_session_key, on_session_paste, submit_choice_response};
-use stream::apply_stream_event;
+use session::{apply_stream_event, on_session_key, on_session_paste, submit_choice_response};
 
 /// Apply a [`Msg`] to the model, returning the side effect to run next.
 ///

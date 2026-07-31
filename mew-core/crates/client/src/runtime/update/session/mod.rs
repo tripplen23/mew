@@ -1,6 +1,6 @@
 //! Session screen update: routes keys and overlay events to the
 //! per-feature handlers in the sibling modules (`composer`, `commands`,
-//! `choice`, `connect`, `picker`, `slash`).
+//! `choice`, `connect`, `picker`, `slash`, `streaming`).
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
@@ -27,9 +27,11 @@ mod composer;
 mod connect;
 pub(super) mod picker;
 pub(super) mod slash;
+pub(super) mod streaming;
 
 pub(super) use choice::submit_choice_response;
 pub(super) use composer::on_session_paste;
+pub(super) use streaming::apply_stream_event;
 
 /// Session screen: composer editing, submit, slash commands.
 pub(super) fn on_session_key(
