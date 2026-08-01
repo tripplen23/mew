@@ -92,6 +92,27 @@ does not become Mew- or Rust-specific overfitting.
 - At least one task rotates to a fresh worker and completes from structured artifacts without injecting the prior transcript.
 - Any context optimization reports total token cost and task outcome against an uncompressed baseline; prompt-size reduction alone is not a pass.
 
+### M0 progress (2026-08-01)
+
+Tracked in issues #99-#106 (evidence in each closing comment).
+
+| Deliverable | Issue | Status |
+| --- | --- | --- |
+| Golden task 1 — deterministic library/CLI migration | #99 | ✅ |
+| Golden task 2 — framework migration with public contract (people-api Python → Rust) | #100 | ✅ 2 clean runs, 11/11 parity each |
+| Golden task 3 — website reconstruction | #101 | ✅ PoC; full build deferred to M8 |
+| Hermes laboratory profile with minimal tools and safety policy | #102 | ✅ |
+| Pinned holdout corpus + evaluation runner (Django/Express/Go CLI) | #103 | ✅ |
+| Per-task measurements harness (tokens, cost, wall clock) | #104 | ✅ |
+| Run-retro decisions record (approvals, failed assumptions, repeated mechanics, missing primitives) | #105 | ✅ |
+| Regression fixture registry + runner + pruning rules | #106 | 🔶 in review (mew-skills PR #14) |
+
+**Remaining before M0 closes** (acceptance criteria not yet met):
+
+1. **Fresh-worker rotation** — one task must complete from structured artifacts without the prior transcript (not yet exercised).
+2. **Builder evaluation** — manual, supervised, and delegated builders against the same contract (depends on M5 builder interfaces).
+3. **Context optimization baseline** — no optimization claimed yet, so this is pending rather than failed; #104 supplies the harness to evaluate one.
+
 ## M1: durable migration runs
 
 **Goal:** make a migration run a first-class durable object independent from chat history.
