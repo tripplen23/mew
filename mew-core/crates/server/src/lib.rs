@@ -162,7 +162,7 @@ async fn jsonify_errors(request: Request, next: Next) -> Response {
     if already_json {
         return response;
     }
-    let (parts, body) = response.into_parts();
+    let (mut parts, body) = response.into_parts();
     let bytes = body.collect().await.unwrap_or_default().to_bytes();
     let message = String::from_utf8_lossy(&bytes).trim().to_string();
     let message = if message.is_empty() {
@@ -170,7 +170,14 @@ async fn jsonify_errors(request: Request, next: Next) -> Response {
     } else {
         message
     };
-    (parts.status, Json(json!({ "error": message }))).into_response()
+    // Preserve original headers (`Allow` on 405, `WWW-Authenticate` on 401,
+    // ...); only the body format is normalized. Content-Type/Length belong to
+    // the new JSON body.
+    parts.headers.remove(header::CONTENT_TYPE);
+    parts.headers.remove(header::CONTENT_LENGTH);
+    let mut response = (parts.status, Json(json!({ "error": message }))).into_response();
+    response.headers_mut().extend(parts.headers);
+    response
 }
 
 /// Fallback for unmatched routes. Registered via `.fallback()` (which axum

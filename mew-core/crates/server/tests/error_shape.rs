@@ -114,3 +114,30 @@ async fn app_error_is_unchanged_json() {
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert_eq!(body["error"], "not found");
 }
+
+#[tokio::test]
+async fn method_not_allowed_keeps_allow_header() {
+    let app = app();
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(SESSIONS)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::METHOD_NOT_ALLOWED);
+    assert!(
+        resp.headers().get(axum::http::header::ALLOW).is_some(),
+        "Allow header dropped by jsonify_errors rewrite"
+    );
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let value: Value = serde_json::from_slice(&bytes).unwrap();
+    assert!(
+        value.get("error").is_some(),
+        "expected {{\"error\": ...}}, got {value}"
+    );
+}

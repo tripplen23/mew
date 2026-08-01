@@ -10,6 +10,11 @@ use crate::net::ApiClient;
 
 use super::model::{Msg, StreamMsg};
 
+/// HTTP statuses treated as transient upstream faults worth a retry hint.
+/// Mirrors `retryable_status` in `mewcode-engine` (server-side policy);
+/// kept local so the client stays independent of the engine crate.
+const RETRYABLE_HTTP_STATUSES: &[u16] = &[408, 409, 425, 429, 500, 502, 503, 504, 529];
+
 /// Map a network-boundary failure into the structured fields carried by
 /// [`StreamMsg::Failed`]. Connection/transport/stream breaks are transient;
 /// decode failures are client-side and not worth a retry hint.
@@ -21,7 +26,7 @@ fn net_error_parts(error: &crate::net::NetError) -> (String, ErrorCode, bool) {
         crate::net::NetError::Status(status) => (
             error.to_string(),
             ErrorCode::Upstream,
-            status.as_u16() >= 500,
+            RETRYABLE_HTTP_STATUSES.contains(&status.as_u16()),
         ),
         crate::net::NetError::Decode(_) => (error.to_string(), ErrorCode::Internal, false),
     }
