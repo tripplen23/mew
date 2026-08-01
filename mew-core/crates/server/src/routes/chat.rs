@@ -16,7 +16,7 @@ use crate::sse::from_channel;
 /// `POST /chat` — stream a chat turn. The response is `text/event-stream`;
 /// each `data:` line is a JSON [`StreamEvent`]. The HTTP status is always
 /// `200`: turn failures are delivered in-band as a single terminal
-/// [`StreamEvent::Error`] carrying a stable [`ErrorCode`] and a retryable flag.
+/// [`StreamEvent::Error`] carrying a stable [`mewcode_protocol::event::ErrorCode`] and a retryable flag.
 #[utoipa::path(
     post,
     path = "/chat",

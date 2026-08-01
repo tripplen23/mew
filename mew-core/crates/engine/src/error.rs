@@ -79,14 +79,14 @@ fn contains_context_overflow(msg: &str) -> bool {
         || lower.contains("context length exceeded")
 }
 
-/// Split an engine error into its streamed [`StreamEvent::Error`] fields.
+/// Split an engine error into its streamed [`mewcode_protocol::event::StreamEvent::Error`] fields.
 ///
 /// `message` is a sanitised, user-actionable summary — the caller logs the
 /// raw error, which may carry provider bodies or keys. `retryable` is true
 /// only for transient conditions (upstream 5xx/429/network), so the client
 /// can offer a retry without reimplementing engine semantics.
 /// `EngineError::Aborted` never reaches here: callers intercept it and emit
-/// [`StreamEvent::Aborted`]; if it slips through it degrades to `Internal`.
+/// [`mewcode_protocol::event::StreamEvent::Aborted`]; if it slips through it degrades to `Internal`.
 pub fn engine_error_parts(error: &EngineError) -> (ErrorCode, String, bool) {
     match error {
         EngineError::MissingApiKey => (
