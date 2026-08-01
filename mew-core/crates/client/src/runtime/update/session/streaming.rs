@@ -2,6 +2,7 @@
 //! text and tool-call deltas into the in-flight turn, then committing the
 //! finished assistant message.
 
+use mewcode_protocol::event::ErrorCode;
 use mewcode_protocol::{Message, MessagePart, ModelId, ToolCall, ToolResult};
 
 use crate::runtime::model::{
@@ -9,12 +10,64 @@ use crate::runtime::model::{
     TurnItem,
 };
 
+/// The client-owned recovery suggestion for a failed stream, derived from the
+/// server's structured error code. The client decides the *presentation*
+/// policy; the server's `retryable` flag only gates the generic retry hint.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum NextAction {
+    /// No recovery hint beyond the error message.
+    None,
+    /// The user must supply an API key.
+    ConnectProvider,
+    /// Retrying the same request may succeed (chat turn: resubmit the message).
+    Retry,
+    /// A compaction failed; the user must re-run `/compact` — resubmitting a
+    /// message would not re-trigger compaction.
+    RetryCompact,
+    /// The model context is full; compact before retrying.
+    SuggestCompact,
+}
+
+/// Map a structured stream error onto the user-facing recovery action.
+pub(crate) fn next_action(code: ErrorCode, retryable: bool) -> NextAction {
+    match code {
+        ErrorCode::MissingApiKey => NextAction::ConnectProvider,
+        ErrorCode::Upstream => {
+            if retryable {
+                NextAction::Retry
+            } else {
+                NextAction::None
+            }
+        }
+        ErrorCode::ContextOverflow => NextAction::SuggestCompact,
+        ErrorCode::CompactionFailed => NextAction::RetryCompact,
+        ErrorCode::SessionNotFound
+        | ErrorCode::BadRequest
+        | ErrorCode::ToolFailed
+        | ErrorCode::Internal => NextAction::None,
+    }
+}
+
+/// Build the failure toast: the sanitised server message plus a hint derived
+/// from the recovery action, if any.
+pub(crate) fn failure_toast(message: &str, code: ErrorCode, retryable: bool) -> Toast {
+    let hint = match next_action(code, retryable) {
+        NextAction::None => String::new(),
+        NextAction::ConnectProvider => " — run /connect to add a key".into(),
+        NextAction::Retry => " — resubmit the message to retry".into(),
+        NextAction::RetryCompact => " — run /compact to retry".into(),
+        NextAction::SuggestCompact => " — run /compact to free context".into(),
+    };
+    Toast::error(format!("{message}{hint}"))
+}
+
 /// Fold one SSE sub-message into the in-flight turn.
 ///
 /// Returns `Some(Toast)` to raise on terminal failure, otherwise `None`. Events
 /// that arrive with no [`StreamingState`] are ignored. On `Finished` exactly
 /// one assistant message is committed and `streaming` returns to `None`; on
-/// `Failed` the partial buffer is discarded and history is kept.
+/// `Failed` the partial buffer is discarded and history is kept. `Aborted` is
+/// terminal but not an error: the buffer is discarded without a toast.
 pub(crate) fn apply_stream_event(s: &mut SessionState, ev: StreamMsg) -> Option<Toast> {
     match ev {
         StreamMsg::Started { id, pwd } => {
@@ -148,7 +201,11 @@ pub(crate) fn apply_stream_event(s: &mut SessionState, ev: StreamMsg) -> Option<
                 None
             }
         }
-        StreamMsg::Failed(e) => {
+        StreamMsg::Failed {
+            message,
+            code,
+            retryable,
+        } => {
             // Clear compacting flag on failure to prevent user from being stuck.
             if s.compaction.active {
                 s.compaction.active = false;
@@ -156,10 +213,20 @@ pub(crate) fn apply_stream_event(s: &mut SessionState, ev: StreamMsg) -> Option<
             }
             // Only react to a failure for a turn we are actually tracking.
             if s.streaming.take().is_some() {
-                Some(Toast::error(format!("stream failed: {e}")))
+                Some(failure_toast(&message, code, retryable))
             } else {
                 None
             }
+        }
+        StreamMsg::Aborted => {
+            if s.compaction.active {
+                s.compaction.active = false;
+                s.compaction.started_at = None;
+            }
+            // Abort is a terminal, expected outcome: drop the partial buffer
+            // silently instead of surfacing an error toast.
+            s.streaming.take();
+            None
         }
     }
 }

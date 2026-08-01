@@ -136,7 +136,8 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
 
         Msg::Stream(ev) => {
             let is_finished = matches!(ev, StreamMsg::Finished { .. });
-            let is_terminal = is_finished || matches!(ev, StreamMsg::Failed(_));
+            let is_terminal =
+                is_finished || matches!(ev, StreamMsg::Failed { .. } | StreamMsg::Aborted);
             if let Some(t) = apply_stream_event(s, ev) {
                 *toast = Some(t);
             }

@@ -4,48 +4,56 @@ use std::collections::HashMap;
 
 use mewcode_engine::compact_history;
 use mewcode_engine::compaction::{CHARS_PER_TOKEN, prune_messages, split_for_compaction};
-use mewcode_protocol::event::CompactionPhase;
+use mewcode_engine::error::engine_error_parts;
+use mewcode_protocol::event::{CompactionPhase, ErrorCode};
 use mewcode_protocol::{Message, ModelId, StreamEvent};
 use tokio::sync::{RwLock, mpsc};
 
 use crate::AppState;
 use crate::store::{SessionPatch, SessionStore, StoreError};
 
+use super::SESSION_NOT_FOUND;
 use super::runtime::{project_memory, project_root};
 
-#[doc(hidden)]
-pub const GENERIC_COMPACTION_ERROR: &str = "compaction failed";
+/// Client-facing message for unexpected compaction failures; the specific
+/// cause goes to the server logs, not the client.
+const GENERIC_COMPACTION_ERROR: &str = "compaction failed";
 
-#[doc(hidden)]
-pub fn client_store_error_message(error: &StoreError) -> &'static str {
-    match error {
-        StoreError::NotFound => "session not found",
-        StoreError::Invalid(_) | StoreError::Io(_) | StoreError::Serde(_) => {
-            GENERIC_COMPACTION_ERROR
-        }
-    }
-}
-
+/// Relay one event from the compaction worker to the client, dropping the
+/// client on a full channel. Errors pass through unchanged: the worker emits
+/// only caller-built, already-sanitised [`StreamEvent::Error`]s.
 #[doc(hidden)]
 pub fn forward_compaction_event(
     client: &mut Option<mpsc::Sender<StreamEvent>>,
     event: StreamEvent,
 ) {
-    let event = match event {
-        StreamEvent::Error { message } => {
-            tracing::error!(%message, "compaction stream error");
-            StreamEvent::Error {
-                message: GENERIC_COMPACTION_ERROR.into(),
-            }
-        }
-        event => event,
-    };
     let Some(sender) = client else {
         return;
     };
     if sender.try_send(event).is_err() {
         *client = None;
     }
+}
+
+/// Send a structured compaction error with `session_id` already filled in.
+///
+/// `retryable` is always `false`: compaction failures are acted on via the
+/// [`ErrorCode`] (CompactionFailed → re-run `/compact`, MissingApiKey →
+/// `/connect`), not via the transient-retry flag.
+async fn send_compaction_error(
+    tx: &mpsc::Sender<StreamEvent>,
+    session_id: uuid::Uuid,
+    code: ErrorCode,
+    message: impl Into<String>,
+) {
+    let _ = tx
+        .send(StreamEvent::Error {
+            code,
+            message: message.into(),
+            retryable: false,
+            session_id: Some(session_id),
+        })
+        .await;
 }
 
 #[doc(hidden)]
@@ -98,11 +106,12 @@ pub(crate) async fn start_compaction(
                     if !matches!(error, StoreError::NotFound) {
                         tracing::error!(%error, session_id = %id, "failed to load compaction session lock");
                     }
-                    let _ = tx
-                        .send(StreamEvent::Error {
-                            message: client_store_error_message(&error).into(),
-                        })
-                        .await;
+                    let (code, message) = if matches!(error, StoreError::NotFound) {
+                        (ErrorCode::SessionNotFound, SESSION_NOT_FOUND)
+                    } else {
+                        (ErrorCode::CompactionFailed, GENERIC_COMPACTION_ERROR)
+                    };
+                    send_compaction_error(&tx, id, code, message).await;
                     return;
                 }
             };
@@ -114,11 +123,12 @@ pub(crate) async fn start_compaction(
                     if !matches!(error, StoreError::NotFound) {
                         tracing::error!(%error, session_id = %id, "failed to reload compaction session");
                     }
-                    let _ = tx
-                        .send(StreamEvent::Error {
-                            message: client_store_error_message(&error).into(),
-                        })
-                        .await;
+                    let (code, message) = if matches!(error, StoreError::NotFound) {
+                        (ErrorCode::SessionNotFound, SESSION_NOT_FOUND)
+                    } else {
+                        (ErrorCode::CompactionFailed, GENERIC_COMPACTION_ERROR)
+                    };
+                    send_compaction_error(&tx, id, code, message).await;
                     return;
                 }
             };
@@ -153,11 +163,13 @@ pub(crate) async fn start_compaction(
             let (head, tail) = prepare_compaction(uncovered);
 
             if head.is_empty() {
-                let _ = tx
-                    .send(StreamEvent::Error {
-                        message: "not enough history to compact (need at least 2 turns)".into(),
-                    })
-                    .await;
+                send_compaction_error(
+                    &tx,
+                    id,
+                    ErrorCode::BadRequest,
+                    "not enough history to compact (need at least 2 turns)",
+                )
+                .await;
                 return;
             }
 
@@ -195,33 +207,37 @@ pub(crate) async fn start_compaction(
                 Ok(result) => result,
                 Err(error) => {
                     tracing::error!(%error, session_id = %id, "compaction worker failed");
-                    let _ = tx
-                        .send(StreamEvent::Error {
-                            message: GENERIC_COMPACTION_ERROR.into(),
-                        })
-                        .await;
+                    let (code, message, _) = engine_error_parts(&error);
+                    // Compaction failures surface as CompactionFailed so the
+                    // client suggests re-running /compact; codes with their own
+                    // action (missing key → /connect) pass through unchanged.
+                    let code =
+                        if matches!(code, ErrorCode::MissingApiKey | ErrorCode::SessionNotFound) {
+                            code
+                        } else {
+                            ErrorCode::CompactionFailed
+                        };
+                    send_compaction_error(&tx, id, code, message).await;
                     return;
                 }
             };
             let summary = match validated_summary(result.summary) {
                 Ok(summary) => summary,
                 Err(message) => {
-                    let _ = tx
-                        .send(StreamEvent::Error {
-                            message: message.into(),
-                        })
-                        .await;
+                    send_compaction_error(&tx, id, ErrorCode::BadRequest, message).await;
                     return;
                 }
             };
 
             let new_boundary = already_covered + head.len();
             let Some(compacted_up_to_message_id) = head.last().map(|message| message.id) else {
-                let _ = tx
-                    .send(StreamEvent::Error {
-                        message: "compaction produced an empty history prefix".into(),
-                    })
-                    .await;
+                send_compaction_error(
+                    &tx,
+                    id,
+                    ErrorCode::BadRequest,
+                    "compaction produced an empty history prefix",
+                )
+                .await;
                 return;
             };
             let patch = SessionPatch {
@@ -251,11 +267,13 @@ pub(crate) async fn start_compaction(
             .await
             {
                 tracing::error!(%error, "failed to persist compaction summary");
-                let _ = tx
-                    .send(StreamEvent::Error {
-                        message: "failed to persist compaction state".into(),
-                    })
-                    .await;
+                send_compaction_error(
+                    &tx,
+                    id,
+                    ErrorCode::CompactionFailed,
+                    GENERIC_COMPACTION_ERROR,
+                )
+                .await;
                 return;
             }
 
@@ -298,7 +316,10 @@ pub(crate) async fn start_compaction(
             forward_compaction_event(
                 &mut client,
                 StreamEvent::Error {
+                    code: ErrorCode::CompactionFailed,
                     message: GENERIC_COMPACTION_ERROR.into(),
+                    retryable: false,
+                    session_id: Some(id),
                 },
             );
         }

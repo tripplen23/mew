@@ -238,6 +238,10 @@ impl Harness {
         }
 
         let started = std::time::Instant::now();
+        // Validate the credential before Start so boundary failures (missing
+        // key, unsupported model) produce only the caller-owned Error event —
+        // no Start precedes it.
+        let provider = Provider::for_model(self.model, &cfg)?;
         tx.send(StreamEvent::Start {
             message_id: Uuid::new_v4(),
             mode: self.mode,
@@ -252,27 +256,45 @@ impl Harness {
         .map_err(|error| EngineError::Other(error.to_string()))?;
 
         let first = self
-            .run_turn_attempt(&user_text, prior_messages, &cfg, &tx, false, started)
+            .run_turn_attempt(
+                &user_text,
+                prior_messages,
+                &cfg,
+                &provider,
+                &tx,
+                false,
+                started,
+            )
             .instrument(span.clone())
             .await;
         match first {
             Ok(()) => Ok(()),
             Err(attempt) if should_retry_after_compaction(&attempt) => {
                 tracing::warn!("context overflow before agent activity; forcing compaction");
-                self.run_turn_attempt(&user_text, prior_messages, &cfg, &tx, true, started)
-                    .instrument(span)
-                    .await
-                    .map_err(|attempt| attempt.error)
+                self.run_turn_attempt(
+                    &user_text,
+                    prior_messages,
+                    &cfg,
+                    &provider,
+                    &tx,
+                    true,
+                    started,
+                )
+                .instrument(span)
+                .await
+                .map_err(|attempt| attempt.error)
             }
             Err(attempt) => Err(attempt.error),
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn run_turn_attempt(
         &mut self,
         user_text: &str,
         prior_messages: &[Message],
         cfg: &EngineConfig,
+        provider: &Provider,
         tx: &mpsc::Sender<StreamEvent>,
         force_compaction: bool,
         started: std::time::Instant,
@@ -295,8 +317,6 @@ impl Harness {
             self.build_turn_history(prior_messages, cfg, tx).await
         };
         let system_prompt = self.compose_system_prompt();
-        let provider = Provider::for_model(self.model, cfg)
-            .map_err(|error| AttemptError::new(error, false))?;
         langfuse::record_turn_input(&tracing::Span::current(), &system_prompt, user_text);
 
         let approved_tools;
@@ -312,7 +332,7 @@ impl Harness {
             &self.tools
         };
         let tools = crate::tools::adapter::rig_tools(tools_registry);
-        let mut agent = Agent::new(provider, self.model, system_prompt).with_tools(tools);
+        let mut agent = Agent::new(provider.clone(), self.model, system_prompt).with_tools(tools);
         if let Some(sink) = self.display_sink.clone() {
             agent = agent.with_display_sink(sink);
         }

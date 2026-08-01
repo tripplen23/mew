@@ -126,7 +126,11 @@ proptest! {
         for ev in events {
             update(&mut app, Msg::Stream(ev));
         }
-        update(&mut app, Msg::Stream(StreamMsg::Failed("boom".to_string())));
+        update(&mut app, Msg::Stream(StreamMsg::Failed {
+            message: "boom".into(),
+            code: mewcode_protocol::event::ErrorCode::Internal,
+            retryable: false,
+        }));
 
         let s = session_state(&app);
         prop_assert!(s.streaming.is_none());

@@ -21,6 +21,7 @@ pub use self::prompt::build_system_prompt;
 pub use self::provider::Provider;
 pub use self::stream::AgentActivity;
 pub use self::stream::TurnUsage;
+pub use self::stream::map_stream_error;
 use crate::error::EngineError;
 
 pub(crate) const DEFAULT_MAX_TOKENS: u64 = 16384;

@@ -344,6 +344,10 @@ impl ApiClient {
     }
 
     /// `POST /providers/connect` — validate and store an API key.
+    ///
+    /// The server rejects an invalid key with HTTP 401 (and a storage failure
+    /// with 500), but always returns the typed [`ConnectProviderResponse`] in
+    /// the body, so the reason survives on the failure paths too.
     pub async fn connect_provider(
         &self,
         req: &ConnectProviderRequest,
@@ -355,8 +359,15 @@ impl ApiClient {
             .timeout(Duration::from_secs(30))
             .send()
             .await?;
-        let bytes = ensure_success(resp)?.bytes().await?;
-        Ok(serde_json::from_slice(&bytes)?)
+        let status = resp.status();
+        let bytes = resp.bytes().await?;
+        serde_json::from_slice(&bytes).map_err(|error| {
+            if status.is_success() {
+                NetError::Decode(error)
+            } else {
+                NetError::Status(status)
+            }
+        })
     }
 
     /// `GET /providers/status` — check connection status for all providers.

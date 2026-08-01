@@ -19,13 +19,20 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+use axum::Json;
 use axum::Router;
+use axum::extract::Request;
+use axum::http::{StatusCode, header};
+use axum::middleware::{Next, from_fn};
+use axum::response::{IntoResponse, Response};
+use http_body_util::BodyExt;
 use mewcode_engine::context::MemoryStore;
 use mewcode_engine::tools::ApprovalBroker;
 use mewcode_protocol::routes::{
     CHAT, CHOICES, HEALTH, MEMORY_GET, MEMORY_POST, PROVIDER_CONNECT, PROVIDER_STATUS, PROVIDERS,
     SESSION_BY_ID, SESSION_COMPACT, SESSIONS, SKILLS, STORAGE_STATUS,
 };
+use serde_json::json;
 use tokio::sync::{Mutex, RwLock};
 use tower_http::trace::TraceLayer;
 use utoipa::OpenApi;
@@ -136,6 +143,50 @@ impl AppState {
     }
 }
 
+/// Middleware: rewrite non-JSON error responses to the canonical
+/// `{"error": "<message>"}` shape used by [`AppError`]. axum's default
+/// rejections — malformed JSON body, bad path param, unmatched route,
+/// wrong method — produce plain-text bodies; this keeps every error
+/// response consistent without touching success or already-JSON bodies.
+async fn jsonify_errors(request: Request, next: Next) -> Response {
+    let response = next.run(request).await;
+    let status = response.status();
+    if status.is_success() || status.is_informational() {
+        return response;
+    }
+    let already_json = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|ct| ct.starts_with("application/json"));
+    if already_json {
+        return response;
+    }
+    let (mut parts, body) = response.into_parts();
+    let bytes = body.collect().await.unwrap_or_default().to_bytes();
+    let message = String::from_utf8_lossy(&bytes).trim().to_string();
+    let message = if message.is_empty() {
+        status.canonical_reason().unwrap_or("error").to_owned()
+    } else {
+        message
+    };
+    // Preserve original headers (`Allow` on 405, `WWW-Authenticate` on 401,
+    // ...); only the body format is normalized. Content-Type/Length belong to
+    // the new JSON body.
+    parts.headers.remove(header::CONTENT_TYPE);
+    parts.headers.remove(header::CONTENT_LENGTH);
+    let mut response = (parts.status, Json(json!({ "error": message }))).into_response();
+    response.headers_mut().extend(parts.headers);
+    response
+}
+
+/// Fallback for unmatched routes. Registered via `.fallback()` (which axum
+/// wraps in the same middleware layers as ordinary routes), so unknown paths
+/// get the canonical JSON `{"error": ...}` body instead of plain text.
+async fn not_found() -> Response {
+    (StatusCode::NOT_FOUND, Json(json!({ "error": "not found" }))).into_response()
+}
+
 /// Build the axum app.
 pub fn build_app(state: AppState) -> Router {
     Router::new()
@@ -176,7 +227,9 @@ pub fn build_app(state: AppState) -> Router {
             axum::routing::post(routes::memory::post_memory),
         )
         .with_state(state)
+        .fallback(not_found)
         .layer(TraceLayer::new_for_http())
+        .layer(from_fn(jsonify_errors))
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
 }
 

@@ -757,11 +757,100 @@ fn stream_failed_discards_partial_and_toasts() {
     let mut app = streaming_session();
     let before = sess(&app).session.as_ref().unwrap().messages.len();
     stream(&mut app, StreamMsg::Delta("partial".to_string()));
-    stream(&mut app, StreamMsg::Failed("boom".to_string()));
+    stream(
+        &mut app,
+        StreamMsg::Failed {
+            message: "boom".into(),
+            code: mewcode_protocol::event::ErrorCode::Internal,
+            retryable: false,
+        },
+    );
     let s = sess(&app);
     assert!(s.streaming.is_none());
     assert_eq!(s.session.as_ref().unwrap().messages.len(), before);
     assert!(app.toast.is_some());
+}
+
+#[test]
+fn stream_aborted_is_silent() {
+    let mut app = streaming_session();
+    let before = sess(&app).session.as_ref().unwrap().messages.len();
+    stream(&mut app, StreamMsg::Delta("partial".to_string()));
+    stream(&mut app, StreamMsg::Aborted);
+    let s = sess(&app);
+    assert!(s.streaming.is_none());
+    assert_eq!(s.session.as_ref().unwrap().messages.len(), before);
+    assert!(
+        app.toast.is_none(),
+        "abort is terminal but not an error: no toast, got {:?}",
+        app.toast
+    );
+}
+
+#[test]
+fn stream_failed_toasts_recovery_hint_for_actionable_codes() {
+    use mewcode_protocol::event::ErrorCode;
+    for (code, retryable, hint) in [
+        (ErrorCode::MissingApiKey, false, "/connect"),
+        (ErrorCode::Upstream, true, "resubmit"),
+        (ErrorCode::ContextOverflow, false, "/compact"),
+        (ErrorCode::CompactionFailed, false, "/compact"),
+    ] {
+        let mut app = streaming_session();
+        stream(
+            &mut app,
+            StreamMsg::Failed {
+                message: "something broke".into(),
+                code,
+                retryable,
+            },
+        );
+        let toast = app
+            .toast
+            .as_ref()
+            .unwrap_or_else(|| panic!("{code:?} must raise a toast"));
+        assert!(
+            toast.text.contains("something broke"),
+            "{code:?}: server message must be kept, got {:?}",
+            toast.text
+        );
+        assert!(
+            toast.text.contains(hint),
+            "{code:?}: expected hint `{hint}` in toast, got {:?}",
+            toast.text
+        );
+    }
+}
+
+#[test]
+fn stream_failed_has_no_hint_for_non_actionable_codes() {
+    use mewcode_protocol::event::ErrorCode;
+    for code in [
+        ErrorCode::Upstream, // non-retryable
+        ErrorCode::SessionNotFound,
+        ErrorCode::BadRequest,
+        ErrorCode::ToolFailed,
+        ErrorCode::Internal,
+    ] {
+        let mut app = streaming_session();
+        stream(
+            &mut app,
+            StreamMsg::Failed {
+                message: "nope".into(),
+                code,
+                retryable: false,
+            },
+        );
+        let toast = app
+            .toast
+            .as_ref()
+            .unwrap_or_else(|| panic!("{code:?} must raise a toast"));
+        assert_eq!(
+            toast.text, "nope",
+            "{code:?}: no recovery hint expected, got {:?}",
+            toast.text
+        );
+    }
 }
 
 #[test]
