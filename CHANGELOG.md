@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/tripplen23/mew/compare/mew-core-v0.5.0...mew-core-v0.6.0) (2026-08-01)
+
+
+### Features
+
+* **protocol:** structured stream error codes + client next-action recovery ([#166](https://github.com/tripplen23/mew/issues/166)) ([487bf9b](https://github.com/tripplen23/mew/commit/487bf9b058cd03882c5d7f7400d2146cc28e0715))
+
 ## [0.5.0](https://github.com/tripplen23/mew/compare/mew-core-v0.4.0...mew-core-v0.5.0) (2026-07-30)
 
 
