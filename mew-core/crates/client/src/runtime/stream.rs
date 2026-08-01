@@ -4,17 +4,41 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use mewcode_protocol::StreamEvent;
-use mewcode_protocol::event::ChatRequest;
+use mewcode_protocol::event::{ChatRequest, ErrorCode};
 
 use crate::net::ApiClient;
 
 use super::model::{Msg, StreamMsg};
 
+/// Map a network-boundary failure into the structured fields carried by
+/// [`StreamMsg::Failed`]. Connection/transport/stream breaks are transient;
+/// decode failures are client-side and not worth a retry hint.
+fn net_error_parts(error: &crate::net::NetError) -> (String, ErrorCode, bool) {
+    match error {
+        crate::net::NetError::Transport(_) | crate::net::NetError::Stream(_) => {
+            (error.to_string(), ErrorCode::Upstream, true)
+        }
+        crate::net::NetError::Status(status) => (
+            error.to_string(),
+            ErrorCode::Upstream,
+            status.as_u16() >= 500,
+        ),
+        crate::net::NetError::Decode(_) => (error.to_string(), ErrorCode::Internal, false),
+    }
+}
+
 pub(crate) async fn run_chat_stream(api: ApiClient, req: ChatRequest, tx: mpsc::Sender<Msg>) {
     let stream = match api.chat_stream(&req).await {
         Ok(stream) => stream,
         Err(e) => {
-            let _ = tx.send(Msg::Stream(StreamMsg::Failed(e.to_string()))).await;
+            let (message, code, retryable) = net_error_parts(&e);
+            let _ = tx
+                .send(Msg::Stream(StreamMsg::Failed {
+                    message,
+                    code,
+                    retryable,
+                }))
+                .await;
             return;
         }
     };
@@ -27,7 +51,14 @@ pub(crate) async fn run_chat_stream(api: ApiClient, req: ChatRequest, tx: mpsc::
         let msg = match frame {
             Err(e) => {
                 terminated = true;
-                let _ = tx.send(Msg::Stream(StreamMsg::Failed(e.to_string()))).await;
+                let (message, code, retryable) = net_error_parts(&e);
+                let _ = tx
+                    .send(Msg::Stream(StreamMsg::Failed {
+                        message,
+                        code,
+                        retryable,
+                    }))
+                    .await;
                 break;
             }
             Ok(StreamEvent::Start {
@@ -90,14 +121,23 @@ pub(crate) async fn run_chat_stream(api: ApiClient, req: ChatRequest, tx: mpsc::
             }
             Ok(StreamEvent::Aborted) => {
                 terminated = true;
-                let _ = tx
-                    .send(Msg::Stream(StreamMsg::Failed("aborted".into())))
-                    .await;
+                let _ = tx.send(Msg::Stream(StreamMsg::Aborted)).await;
                 break;
             }
-            Ok(StreamEvent::Error { message }) => {
+            Ok(StreamEvent::Error {
+                code,
+                message,
+                retryable,
+                ..
+            }) => {
                 terminated = true;
-                let _ = tx.send(Msg::Stream(StreamMsg::Failed(message))).await;
+                let _ = tx
+                    .send(Msg::Stream(StreamMsg::Failed {
+                        message,
+                        code,
+                        retryable,
+                    }))
+                    .await;
                 break;
             }
             Ok(StreamEvent::CompactionStarted { .. })
@@ -113,9 +153,11 @@ pub(crate) async fn run_chat_stream(api: ApiClient, req: ChatRequest, tx: mpsc::
     // silently blocking all future submits until client restart.
     if !terminated {
         let _ = tx
-            .send(Msg::Stream(StreamMsg::Failed(
-                "chat stream ended unexpectedly".to_string(),
-            )))
+            .send(Msg::Stream(StreamMsg::Failed {
+                message: "chat stream ended unexpectedly".into(),
+                code: ErrorCode::Upstream,
+                retryable: true,
+            }))
             .await;
     }
 }
@@ -124,7 +166,14 @@ pub(crate) async fn run_compact_stream(api: ApiClient, session_id: Uuid, tx: mps
     let stream = match api.compact_session_stream(session_id).await {
         Ok(stream) => stream,
         Err(e) => {
-            let _ = tx.send(Msg::Stream(StreamMsg::Failed(e.to_string()))).await;
+            let (message, code, retryable) = net_error_parts(&e);
+            let _ = tx
+                .send(Msg::Stream(StreamMsg::Failed {
+                    message,
+                    code,
+                    retryable,
+                }))
+                .await;
             return;
         }
     };
@@ -137,7 +186,14 @@ pub(crate) async fn run_compact_stream(api: ApiClient, session_id: Uuid, tx: mps
         let msg = match frame {
             Err(e) => {
                 terminated = true;
-                let _ = tx.send(Msg::Stream(StreamMsg::Failed(e.to_string()))).await;
+                let (message, code, retryable) = net_error_parts(&e);
+                let _ = tx
+                    .send(Msg::Stream(StreamMsg::Failed {
+                        message,
+                        code,
+                        retryable,
+                    }))
+                    .await;
                 break;
             }
             Ok(StreamEvent::CompactionStarted { .. }) => StreamMsg::CompactionStarted,
@@ -174,9 +230,25 @@ pub(crate) async fn run_compact_stream(api: ApiClient, session_id: Uuid, tx: mps
                     .await;
                 break;
             }
-            Ok(StreamEvent::Error { message }) => {
+            Ok(StreamEvent::Aborted) => {
                 terminated = true;
-                let _ = tx.send(Msg::Stream(StreamMsg::Failed(message))).await;
+                let _ = tx.send(Msg::Stream(StreamMsg::Aborted)).await;
+                break;
+            }
+            Ok(StreamEvent::Error {
+                code,
+                message,
+                retryable,
+                ..
+            }) => {
+                terminated = true;
+                let _ = tx
+                    .send(Msg::Stream(StreamMsg::Failed {
+                        message,
+                        code,
+                        retryable,
+                    }))
+                    .await;
                 break;
             }
             _ => continue,
@@ -190,9 +262,11 @@ pub(crate) async fn run_compact_stream(api: ApiClient, session_id: Uuid, tx: mps
     // in-flight, silently blocking all future submits until client restart.
     if !terminated {
         let _ = tx
-            .send(Msg::Stream(StreamMsg::Failed(
-                "compaction stream ended unexpectedly".to_string(),
-            )))
+            .send(Msg::Stream(StreamMsg::Failed {
+                message: "compaction stream ended unexpectedly".into(),
+                code: ErrorCode::Upstream,
+                retryable: true,
+            }))
             .await;
     }
 }

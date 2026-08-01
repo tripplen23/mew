@@ -8,17 +8,18 @@
 //! The `Error` event has a single owner. `Harness::run_turn` signals failure by
 //! returning `Err(EngineError)` and emits *nothing* on that path (verified here
 //! against the real harness); the server chat handler is the sole emitter of the
-//! `Error` event, sending exactly one `StreamEvent::Error { message: e.to_string() }`
-//! on `Err`. So "failed-turn event shape" is a property of that handler sink fed by
-//! the harness's emit-nothing-on-error contract — not of either piece alone. We
-//! mirror the handler sink verbatim (see `crates/server/src/routes/chat.rs`) and
-//! drive it with forced upstream failures, avoiding the network and any process-
-//! global env mutation (which would race `config_resolution`).
+//! `Error` event, sending exactly one structured `StreamEvent::Error` built from
+//! `engine_error_parts` on `Err`. So "failed-turn event shape" is a property of
+//! that handler sink fed by the harness's emit-nothing-on-error contract — not of
+//! either piece alone. We mirror the handler sink verbatim (see
+//! `crates/server/src/services/chat.rs`) and drive it with forced upstream
+//! failures, avoiding the network and any process-global env mutation (which
+//! would race `config_resolution`).
 
 use std::sync::Arc;
 
 use mewcode_engine::Harness;
-use mewcode_engine::error::EngineError;
+use mewcode_engine::error::{EngineError, engine_error_parts};
 use mewcode_engine::skills::SkillRegistry;
 use mewcode_engine::tools::ToolRegistry;
 use mewcode_protocol::{Mode, ModelId, StreamEvent};
@@ -78,14 +79,22 @@ proptest! {
             "run_turn must emit no events on the failure path"
         );
 
-        // --- The handler sink, mirrored verbatim from routes/chat.rs. ---------
+        // --- The handler sink, mirrored verbatim from services/chat.rs. ------
         // run_turn returned Err and emitted nothing; the handler sinks exactly one
-        // Error carrying e.to_string(), then the turn ends.
+        // structured Error from `engine_error_parts`, then the turn ends.
         let (tx, mut rx) = mpsc::channel::<StreamEvent>(16);
         let run_turn_result: Result<(), EngineError> = Err(err);
         rt.block_on(async {
             if let Err(e) = run_turn_result {
-                let _ = tx.send(StreamEvent::Error { message: e.to_string() }).await;
+                let (code, message, retryable) = engine_error_parts(&e);
+                let _ = tx
+                    .send(StreamEvent::Error {
+                        code,
+                        message,
+                        retryable,
+                        session_id: None,
+                    })
+                    .await;
             }
         });
         // Dropping the sender lets the drain see exactly what the turn emitted.
@@ -104,7 +113,7 @@ proptest! {
             events
         );
         match &events[0] {
-            StreamEvent::Error { message } => {
+            StreamEvent::Error { message, .. } => {
                 prop_assert!(!message.is_empty(), "Error.message must be non-empty");
             }
             other => prop_assert!(false, "the one event must be Error, got {other:?}"),

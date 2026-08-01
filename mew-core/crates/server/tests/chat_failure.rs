@@ -24,17 +24,20 @@ use mewcode_protocol::event::ChatRequest;
 use mewcode_protocol::routes::{CHAT, HEALTH};
 use mewcode_protocol::{Message, MessagePart, Mode, ModelId, Role, StreamEvent};
 use mewcode_server::store::memory::MemoryStore;
+use mewcode_server::store::{NewSession, SessionStore};
 use mewcode_server::{AppState, ServerConfig, build_app};
 use tower::ServiceExt;
 use uuid::Uuid;
 
-/// A throwaway server config; the chat handler resolves its credential from the
-/// process env, not from here, so the key value is irrelevant to the failure.
+/// A throwaway server config with no provider key: the chat handler resolves
+/// credentials store -> config -> env, and this config deliberately leaves the
+/// key `None` so the removed env var (and empty store) leave no key anywhere,
+/// forcing the turn to fail at the credential boundary.
 fn test_config() -> ServerConfig {
     ServerConfig {
         host: "127.0.0.1".into(),
         port: 0,
-        opencode_go_api_key: Some("test-key".into()),
+        opencode_go_api_key: None,
         openai_api_key: None,
         default_model: None,
         log: "off".into(),
@@ -42,21 +45,33 @@ fn test_config() -> ServerConfig {
     }
 }
 
-/// Build a fresh app backed by an empty in-memory store.
-fn app() -> axum::Router {
+/// Build a fresh app backed by an in-memory store with one session created, so
+/// the turn gets past the session-lookup guard and fails at the credential
+/// boundary. Returns `(router, session_id)`.
+async fn app() -> (axum::Router, Uuid) {
     let fact_store = FactStore::new(std::env::temp_dir().join(uuid::Uuid::new_v4().to_string()));
-    build_app(AppState::new(
-        test_config(),
-        Arc::new(MemoryStore::default()),
-        fact_store,
-    ))
+    let store = Arc::new(MemoryStore::default());
+    let session = store
+        .create_session(NewSession {
+            title: "failure test".into(),
+            model: ModelId::default(),
+            mode: Mode::default(),
+        })
+        .await
+        .expect("session creates");
+    let state = AppState::new(test_config(), store, fact_store);
+    // `AppState::new` loads the real `~/.config/mew/credentials.yaml`; clear it
+    // so a key from disk can't leak into the missing-key boundary we're testing.
+    state.credentials.lock().await.credentials.clear();
+    let router = build_app(state);
+    (router, session.id)
 }
 
 /// A minimal `ChatRequest` carrying a single user message, so the turn gets
 /// past the "no user message" guard and fails at the credential boundary.
-fn chat_request() -> ChatRequest {
+fn chat_request(session_id: Uuid) -> ChatRequest {
     ChatRequest {
-        session_id: Uuid::new_v4(),
+        session_id,
         model: ModelId::default(),
         provider: None,
         mode: Mode::default(),
@@ -125,7 +140,8 @@ async fn failed_turn_emits_one_error_and_server_keeps_serving() {
 
     // (1) A failing POST /chat: the HTTP response itself succeeds (SSE opens),
     // but the streamed body carries exactly one Error and nothing else.
-    let (status, body) = send(app(), post_chat(&chat_request())).await;
+    let (router, session_id) = app().await;
+    let (status, body) = send(router, post_chat(&chat_request(session_id))).await;
     assert_eq!(status, StatusCode::OK, "SSE response should open with 200");
 
     let events = parse_sse(&body);
@@ -139,6 +155,28 @@ async fn failed_turn_emits_one_error_and_server_keeps_serving() {
         "the single event must be Error, got: {:?}",
         events[0]
     );
+    // The structured code identifies the missing-key boundary so the client can
+    // prompt `/connect`; the message stays sanitised.
+    match &events[0] {
+        StreamEvent::Error {
+            code,
+            message,
+            retryable,
+            ..
+        } => {
+            assert_eq!(
+                *code,
+                mewcode_protocol::event::ErrorCode::MissingApiKey,
+                "missing key must surface as MissingApiKey, got {events:?}"
+            );
+            assert!(!message.is_empty(), "Error.message must be non-empty");
+            assert!(
+                !retryable,
+                "a missing key is a permanent condition, not retryable"
+            );
+        }
+        _ => unreachable!("matched Error above"),
+    }
     // No success/terminal events may follow the error.
     assert!(
         !events
@@ -150,7 +188,8 @@ async fn failed_turn_emits_one_error_and_server_keeps_serving() {
     // (2) The server is still alive: a subsequent request is served normally.
     // A second /chat fails the same way (still exactly one Error), and an
     // unrelated /health probe returns 200 — proving the process survived.
-    let (status, body) = send(app(), post_chat(&chat_request())).await;
+    let (router, session_id) = app().await;
+    let (status, body) = send(router, post_chat(&chat_request(session_id))).await;
     assert_eq!(status, StatusCode::OK, "server still serves /chat");
     let events = parse_sse(&body);
     assert_eq!(
@@ -161,7 +200,7 @@ async fn failed_turn_emits_one_error_and_server_keeps_serving() {
     assert!(matches!(events[0], StreamEvent::Error { .. }));
 
     let (status, _) = send(
-        app(),
+        app().await.0,
         Request::builder()
             .uri(HEALTH)
             .body(Body::empty())

@@ -61,7 +61,6 @@ fn finish_is_staged_instead_of_forwarded() {
     let mut reply = String::new();
     let mut assistant_message_id = None;
     let mut finish = None;
-    let mut engine_failed = false;
     let event = finish_event();
 
     stage_harness_event(
@@ -69,11 +68,9 @@ fn finish_is_staged_instead_of_forwarded() {
         &mut reply,
         &mut assistant_message_id,
         &mut finish,
-        &mut engine_failed,
         &mut client,
     );
 
-    assert!(!engine_failed);
     assert_eq!(finish, Some(event));
     assert!(matches!(
         rx.try_recv(),
@@ -82,30 +79,60 @@ fn finish_is_staged_instead_of_forwarded() {
 }
 
 #[test]
-fn harness_error_is_sanitized_and_not_forwarded() {
+fn stage_harness_event_accumulates_reply_and_stages_finish() {
     let (tx, mut rx) = mpsc::channel(4);
     let mut client = Some(tx);
     let mut reply = String::new();
     let mut assistant_message_id = None;
     let mut finish = None;
-    let mut engine_failed = false;
 
+    let start = StreamEvent::Start {
+        message_id: uuid::Uuid::new_v4(),
+        mode: mewcode_protocol::Mode::default(),
+        model: mewcode_protocol::ModelId::default(),
+        pwd: None,
+    };
     stage_harness_event(
-        StreamEvent::Error {
-            message: "/secret/provider/error".into(),
+        start.clone(),
+        &mut reply,
+        &mut assistant_message_id,
+        &mut finish,
+        &mut client,
+    );
+    stage_harness_event(
+        StreamEvent::TextDelta {
+            delta: "hello ".into(),
         },
         &mut reply,
         &mut assistant_message_id,
         &mut finish,
-        &mut engine_failed,
+        &mut client,
+    );
+    stage_harness_event(
+        StreamEvent::TextDelta {
+            delta: "world".into(),
+        },
+        &mut reply,
+        &mut assistant_message_id,
+        &mut finish,
         &mut client,
     );
 
-    assert!(engine_failed);
+    assert_eq!(reply, "hello world");
+    assert_eq!(assistant_message_id, Some(start_message_id(&start)));
+    assert_eq!(finish, None);
+    assert!(matches!(rx.try_recv(), Ok(StreamEvent::Start { .. })));
     assert!(matches!(
         rx.try_recv(),
-        Err(mpsc::error::TryRecvError::Empty)
+        Ok(StreamEvent::TextDelta { delta }) if delta == "hello "
     ));
+}
+
+fn start_message_id(event: &StreamEvent) -> uuid::Uuid {
+    match event {
+        StreamEvent::Start { message_id, .. } => *message_id,
+        _ => unreachable!(),
+    }
 }
 
 #[tokio::test]

@@ -48,6 +48,8 @@ pub struct ErrorResponse {
         routes::chat::chat_stream,
         routes::choices::respond,
         routes::compact::compact_session,
+        routes::memory::get_memory,
+        routes::memory::post_memory,
     ),
     components(
         schemas(
@@ -62,6 +64,8 @@ pub struct ErrorResponse {
             crate::routes::skills::SkillEntry,
             crate::routes::sessions::CreateSessionRequest,
             crate::routes::storage::StorageStatus,
+            crate::routes::memory::MemoryResponse,
+            crate::routes::memory::MemoryWriteRequest,
             mewcode_protocol::credential::ConnectProviderRequest,
             mewcode_protocol::credential::ConnectProviderResponse,
             mewcode_protocol::credential::ProviderCredential,

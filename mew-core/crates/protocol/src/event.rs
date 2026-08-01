@@ -113,13 +113,53 @@ pub enum StreamEvent {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         context_limit: Option<u64>,
     },
-    /// Stream was aborted by the user.
+    /// Stream was aborted by the user. A terminal, expected outcome: the
+    /// client should not surface it as an error or offer a retry.
     Aborted,
-    /// Stream emitted an error.
+    /// Stream emitted an error. The HTTP response is always 200 for SSE; the
+    /// [`ErrorCode`] field is the machine-readable contract consumers branch on.
     Error {
-        /// Human-readable error message.
+        /// Stable, machine-readable error classification.
+        code: ErrorCode,
+        /// Human-readable error message. Sanitised server-side: it never
+        /// contains provider response bodies, API keys, or other secrets.
         message: String,
+        /// Whether retrying the same request may succeed. Server-determined:
+        /// true only for transient conditions (e.g. upstream 5xx/429/network).
+        retryable: bool,
+        /// Session the error applies to, when known.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        session_id: Option<uuid::Uuid>,
     },
+}
+
+/// Stable, machine-readable classification of a streamed [`StreamEvent::Error`].
+///
+/// Consumers branch on this code to decide next steps (e.g. prompt to
+/// `/connect`, suggest `/compact`, or retry) instead of parsing the free-text
+/// `message`. Serialised kebab-case on the wire.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema,
+)]
+#[serde(rename_all = "kebab-case")]
+pub enum ErrorCode {
+    /// No API key is configured for the requested provider (store, config, or
+    /// env). Client action: prompt the user to run `/connect`.
+    MissingApiKey,
+    /// The session referenced by the request does not exist.
+    SessionNotFound,
+    /// The request itself was invalid (malformed history, replayed message id, ...).
+    BadRequest,
+    /// The upstream model provider failed (transport error or non-2xx status).
+    Upstream,
+    /// The model's context window overflowed. Client action: suggest `/compact`.
+    ContextOverflow,
+    /// A tool call failed during the turn.
+    ToolFailed,
+    /// Manual compaction could not complete.
+    CompactionFailed,
+    /// An unexpected internal error.
+    Internal,
 }
 
 /// A stable single-select choice request.

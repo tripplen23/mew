@@ -37,6 +37,7 @@ axum = { workspace = true }
 tower = { workspace = true }
 tower-http = { workspace = true }
 http = { workspace = true }
+http-body-util = "0.1"
 
 chrono = { workspace = true }
 uuid = { workspace = true }
@@ -57,6 +58,5 @@ rig-core = { workspace = true }
 
 [dev-dependencies]
 tower = { workspace = true, features = ["util"] }
-http-body-util = "0.1"
 tempfile = { workspace = true }
 proptest = { workspace = true }

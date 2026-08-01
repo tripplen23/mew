@@ -1,6 +1,7 @@
 use crate::credential::validate_key;
 use axum::Json;
 use axum::extract::State;
+use axum::http::StatusCode;
 use mewcode_protocol::credential::{
     ConnectProviderRequest, ConnectProviderResponse, ProviderCredential, ProviderStatus,
 };
@@ -77,13 +78,15 @@ pub async fn list_providers(State(state): State<AppState>) -> Json<Vec<ProviderE
     tag = "meta",
     request_body = ConnectProviderRequest,
     responses(
-        (status = 200, description = "Connection result", body = ConnectProviderResponse),
+        (status = 200, description = "Key validated and stored", body = ConnectProviderResponse),
+        (status = 401, description = "Key rejected by the provider. The body still carries the ConnectProviderResponse::InvalidKey payload for backward compatibility.", body = ConnectProviderResponse),
+        (status = 500, description = "Key validated but could not be persisted. The body still carries the ConnectProviderResponse::Error payload for backward compatibility.", body = ConnectProviderResponse),
     ),
 )]
 pub async fn connect_provider(
     State(state): State<AppState>,
     Json(req): Json<ConnectProviderRequest>,
-) -> Json<ConnectProviderResponse> {
+) -> (StatusCode, Json<ConnectProviderResponse>) {
     let ConnectProviderRequest { provider, api_key } = req;
 
     // Validate without holding the lock.
@@ -99,19 +102,28 @@ pub async fn connect_provider(
             // Brief critical section: lock, insert, save, unlock.
             let mut store = state.credentials.lock().await;
             if let Err(e) = store.store(credential) {
-                return Json(ConnectProviderResponse::Error {
-                    provider,
-                    message: format!("key validated but failed to save: {e}"),
-                });
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ConnectProviderResponse::Error {
+                        provider,
+                        message: format!("key validated but failed to save: {e}"),
+                    }),
+                );
             }
             // Release lock (guard dropped here).
             drop(store);
-            Json(ConnectProviderResponse::Ok {
-                provider,
-                validated_at,
-            })
+            (
+                StatusCode::OK,
+                Json(ConnectProviderResponse::Ok {
+                    provider,
+                    validated_at,
+                }),
+            )
         }
-        Err(reason) => Json(ConnectProviderResponse::InvalidKey { provider, reason }),
+        Err(reason) => (
+            StatusCode::UNAUTHORIZED,
+            Json(ConnectProviderResponse::InvalidKey { provider, reason }),
+        ),
     }
 }
 

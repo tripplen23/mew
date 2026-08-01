@@ -20,9 +20,7 @@ use crate::sse::from_channel;
         ("id" = Uuid, Path, description = "Session identifier"),
     ),
     responses(
-        (status = 200, description = "SSE stream of compaction events", body = StreamEvent, content_type = "text/event-stream"),
-        (status = 404, description = "Session not found"),
-        (status = 500, description = "Compaction failed"),
+        (status = 200, description = "SSE stream of compaction events. The HTTP status is always 200: failures are delivered in-band as a terminal StreamEvent::Error carrying a stable ErrorCode (CompactionFailed for compaction work, SessionNotFound/BadRequest for invalid requests).", body = StreamEvent, content_type = "text/event-stream"),
     ),
 )]
 pub async fn compact_session(

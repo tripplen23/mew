@@ -59,6 +59,36 @@ impl TurnUsage {
     }
 }
 
+/// Map a rig stream error onto the [`EngineError`] the caller should surface.
+///
+/// A provider HTTP error keeps its status so `engine_error_parts` can mark it
+/// retryable; the raw body is preserved for server-side logs but is never
+/// forwarded to the client. Errors without a provider status (transport or
+/// rig-internal) fall back to [`EngineError::Other`].
+#[doc(hidden)]
+pub fn map_stream_error(error: &rig_core::agent::StreamingError) -> EngineError {
+    let upstream = match error {
+        rig_core::agent::StreamingError::Completion(error) => {
+            error.provider_response_status().map(|status| {
+                (
+                    status.as_u16(),
+                    error.provider_response_body().unwrap_or_default(),
+                )
+            })
+        }
+        _ => None,
+    };
+    match upstream {
+        Some((status, body)) => EngineError::UpstreamStatus {
+            status,
+            // Truncated: the body is for logs, and a pathological response
+            // should not bloat the trace.
+            body: body.chars().take(500).collect(),
+        },
+        None => EngineError::Other(error.to_string()),
+    }
+}
+
 /// Pop the display record matching `args`. Tools don't see Rig's call id, so
 /// we correlate by the only stable signal: the argument JSON the model sent.
 // O(n) scan, first-match. Identical-arg calls are interchangeable for display.
@@ -187,7 +217,7 @@ pub async fn run_agent_stream<M: rig_core::completion::CompletionModel + 'static
                     }
                 }
             }
-            Err(e) => return Err(EngineError::Other(e.to_string())),
+            Err(e) => return Err(map_stream_error(&e)),
             Ok(_) => {
                 tracing::trace!("unhandled MultiTurnStreamItem variant");
             }

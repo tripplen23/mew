@@ -100,8 +100,18 @@ pub enum StreamMsg {
         /// Model context limit.
         context_limit: Option<u64>,
     },
-    /// Stream failed.
-    Failed(String),
+    /// Stream failed. Carries the structured error code so the update loop can
+    /// decide what to surface (toast text, `/connect` hint, retry hint).
+    Failed {
+        /// Sanitised human-readable message from the server.
+        message: String,
+        /// Machine-readable error classification.
+        code: mewcode_protocol::event::ErrorCode,
+        /// Server-determined: whether retrying the same request may succeed.
+        retryable: bool,
+    },
+    /// Stream was aborted by the user. Terminal but not an error: no toast.
+    Aborted,
     /// Runtime asks the client to render a structured choice prompt.
     ChoiceRequest(ChoiceRequest),
     /// Manual compaction has started.

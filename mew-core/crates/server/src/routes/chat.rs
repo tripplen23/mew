@@ -14,14 +14,16 @@ use crate::services;
 use crate::sse::from_channel;
 
 /// `POST /chat` — stream a chat turn. The response is `text/event-stream`;
-/// each `data:` line is a JSON [`StreamEvent`].
+/// each `data:` line is a JSON [`StreamEvent`]. The HTTP status is always
+/// `200`: turn failures are delivered in-band as a single terminal
+/// [`StreamEvent::Error`] carrying a stable [`ErrorCode`] and a retryable flag.
 #[utoipa::path(
     post,
     path = "/chat",
     tag = "chat",
     request_body = ChatRequest,
     responses(
-        (status = 200, description = "SSE stream of StreamEvent", body = StreamEvent, content_type = "text/event-stream"),
+        (status = 200, description = "SSE stream of StreamEvent. Always 200; failures arrive in-band as a terminal StreamEvent::Error.", body = StreamEvent, content_type = "text/event-stream"),
     ),
 )]
 pub async fn chat_stream(

@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
+use mewcode_protocol::event::ErrorCode;
 use mewcode_protocol::{Message, MessagePart, StreamEvent, ToolResult};
 use mewcode_server::services::compact::{
-    GENERIC_COMPACTION_ERROR, client_store_error_message, forward_compaction_event,
-    persist_compaction, prepare_compaction, validated_summary,
+    forward_compaction_event, persist_compaction, prepare_compaction, validated_summary,
 };
+use mewcode_server::store::SessionPatch;
 use mewcode_server::store::memory::MemoryStore;
-use mewcode_server::store::{SessionPatch, StoreError};
 use serde_json::json;
 use tokio::sync::{RwLock, mpsc};
 
@@ -62,32 +62,19 @@ async fn failed_checkpoint_persistence_does_not_update_tokens() {
 }
 
 #[test]
-fn compaction_store_errors_expose_only_stable_messages() {
-    assert_eq!(
-        client_store_error_message(&StoreError::NotFound),
-        "session not found"
-    );
-    assert_eq!(
-        client_store_error_message(&StoreError::Io(std::io::Error::other("/secret/path"))),
-        GENERIC_COMPACTION_ERROR
-    );
-}
-
-#[test]
-fn compaction_forwarder_sanitizes_errors_and_drops_full_clients() {
+fn compaction_forwarder_passes_errors_through_and_drops_full_clients() {
     let (tx, mut rx) = mpsc::channel(1);
     let mut client = Some(tx);
-    forward_compaction_event(
-        &mut client,
-        StreamEvent::Error {
-            message: "/secret/provider/error".into(),
-        },
-    );
+    let error = StreamEvent::Error {
+        code: ErrorCode::CompactionFailed,
+        message: "compaction failed".into(),
+        retryable: false,
+        session_id: None,
+    };
+    forward_compaction_event(&mut client, error.clone());
     assert_eq!(
-        rx.try_recv().expect("generic error should be forwarded"),
-        StreamEvent::Error {
-            message: GENERIC_COMPACTION_ERROR.into()
-        }
+        rx.try_recv().expect("error should be forwarded unchanged"),
+        error
     );
 
     let sender = client.as_ref().expect("client should still be attached");

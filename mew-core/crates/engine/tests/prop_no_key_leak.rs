@@ -2,12 +2,13 @@
 //!
 //! Feature: session-flow-and-engine-v0, Property 17: for any sentinel
 //! `OPENCODE_GO_API_KEY` value, the `Error` message emitted for a failed turn
-//! never contains that value as a substring. The `Error` event's message is
-//! `EngineError::to_string()`, so the guarantee reduces to: `EngineError`'s
-//! `Display` never formats `api_key`. We exercise the real failure path — a key
-//! IS present, the turn gets far enough to build a provider and issue a request,
-//! and that request fails — then assert the resulting `EngineError` (and the
-//! `Error.message` the handler would emit, which is identical) is key-free.
+//! never contains that value as a substring. The handler builds the message
+//! from `engine_error_parts` (generic for transport/internal failures), which is
+//! strictly safer than the raw `EngineError`; we still assert the raw `Display`
+//! never formats `api_key` so the guarantee holds at the source. We exercise the
+//! real failure path — a key IS present, the turn gets far enough to build a
+//! provider and issue a request, and that request fails — then assert the
+//! resulting `EngineError` is key-free.
 //!
 //! The failure is forced deterministically and offline by pointing
 //! `MEWCODE_ENGINE_BASE_URL` at a closed local endpoint (`http://127.0.0.1:1`),
@@ -101,7 +102,7 @@ proptest! {
         // Belt and suspenders: the success-only events never fire on failure, but
         // if any `Error` ever rode the channel its message must also be key-free.
         while let Ok(event) = rx.try_recv() {
-            if let StreamEvent::Error { message } = event {
+            if let StreamEvent::Error { message, .. } = event {
                 prop_assert!(
                     !message.contains(&sentinel),
                     "Error event leaked the API key: {message:?}"

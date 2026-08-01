@@ -4,16 +4,22 @@ use std::sync::Arc;
 
 use mewcode_engine::{
     Harness,
+    error::{EngineError, engine_error_parts},
     skills::SkillRegistry,
     tools::{ProjectContext, default_registry},
 };
-use mewcode_protocol::event::ChatRequest;
+use mewcode_protocol::event::{ChatRequest, ErrorCode};
 use mewcode_protocol::{Message, MessagePart, Role, StreamEvent};
 use tokio::sync::mpsc;
 
 use crate::AppState;
 
+use super::SESSION_NOT_FOUND;
 use super::runtime::{project_memory, project_root};
+
+/// Client-facing message for unexpected chat-turn failures. Deliberately
+/// generic: the specific cause goes to the server logs, not the client.
+const GENERIC_CHAT_ERROR: &str = "chat turn failed";
 
 #[doc(hidden)]
 pub fn canonical_turn_messages(
@@ -61,9 +67,6 @@ async fn persist_checkpoint(
 }
 
 #[doc(hidden)]
-pub const GENERIC_CHAT_ERROR: &str = "chat turn failed";
-
-#[doc(hidden)]
 pub fn try_forward_event(client: &mut Option<mpsc::Sender<StreamEvent>>, event: StreamEvent) {
     let Some(sender) = client else {
         return;
@@ -73,25 +76,42 @@ pub fn try_forward_event(client: &mut Option<mpsc::Sender<StreamEvent>>, event: 
     }
 }
 
+/// Forward a structured [`StreamEvent::Error`] with a stable code, sanitised
+/// message, and server-determined retryability.
+#[doc(hidden)]
+pub fn send_error(
+    client: &mut Option<mpsc::Sender<StreamEvent>>,
+    code: ErrorCode,
+    message: impl Into<String>,
+    retryable: bool,
+    session_id: Option<uuid::Uuid>,
+) {
+    try_forward_event(
+        client,
+        StreamEvent::Error {
+            code,
+            message: message.into(),
+            retryable,
+            session_id,
+        },
+    );
+}
+
 #[doc(hidden)]
 pub fn stage_harness_event(
     event: StreamEvent,
     reply: &mut String,
     assistant_message_id: &mut Option<uuid::Uuid>,
     finish: &mut Option<StreamEvent>,
-    engine_failed: &mut bool,
     client: &mut Option<mpsc::Sender<StreamEvent>>,
 ) {
+    // The harness signals failure by returning Err from `run_turn`, never by
+    // emitting Error events, so any Error here is forwarded verbatim.
     match &event {
         StreamEvent::Start { message_id, .. } => *assistant_message_id = Some(*message_id),
         StreamEvent::TextDelta { delta } => reply.push_str(delta),
         StreamEvent::Finish { .. } => {
             *finish = Some(event);
-            return;
-        }
-        StreamEvent::Error { message } => {
-            tracing::error!(%message, "harness stream error");
-            *engine_failed = true;
             return;
         }
         _ => {}
@@ -157,21 +177,23 @@ pub(crate) async fn start_chat_stream(
         let operation_lock = match state.existing_session_operation_lock(session_id).await {
             Ok(lock) => lock,
             Err(crate::store::StoreError::NotFound) => {
-                try_forward_event(
+                send_error(
                     &mut client,
-                    StreamEvent::Error {
-                        message: "session not found".into(),
-                    },
+                    ErrorCode::SessionNotFound,
+                    SESSION_NOT_FOUND,
+                    false,
+                    Some(session_id),
                 );
                 return;
             }
             Err(error) => {
                 tracing::error!(%error, %session_id, "failed to load session operation lock");
-                try_forward_event(
+                send_error(
                     &mut client,
-                    StreamEvent::Error {
-                        message: GENERIC_CHAT_ERROR.into(),
-                    },
+                    ErrorCode::Internal,
+                    GENERIC_CHAT_ERROR,
+                    false,
+                    Some(session_id),
                 );
                 return;
             }
@@ -181,21 +203,23 @@ pub(crate) async fn start_chat_stream(
         let session = match state.store.get_session(session_id).await {
             Ok(session) => session,
             Err(crate::store::StoreError::NotFound) => {
-                try_forward_event(
+                send_error(
                     &mut client,
-                    StreamEvent::Error {
-                        message: "session not found".into(),
-                    },
+                    ErrorCode::SessionNotFound,
+                    SESSION_NOT_FOUND,
+                    false,
+                    Some(session_id),
                 );
                 return;
             }
             Err(error) => {
                 tracing::error!(%error, %session_id, "failed to reload session");
-                try_forward_event(
+                send_error(
                     &mut client,
-                    StreamEvent::Error {
-                        message: GENERIC_CHAT_ERROR.into(),
-                    },
+                    ErrorCode::Internal,
+                    GENERIC_CHAT_ERROR,
+                    false,
+                    Some(session_id),
                 );
                 return;
             }
@@ -204,11 +228,12 @@ pub(crate) async fn start_chat_stream(
             match canonical_turn_messages(session.messages.clone(), &req.messages) {
                 Ok(turn) => turn,
                 Err(message) => {
-                    try_forward_event(
+                    send_error(
                         &mut client,
-                        StreamEvent::Error {
-                            message: message.into(),
-                        },
+                        ErrorCode::BadRequest,
+                        message,
+                        false,
+                        Some(session_id),
                     );
                     return;
                 }
@@ -219,11 +244,12 @@ pub(crate) async fn start_chat_stream(
             .await
         {
             tracing::error!(%error, %session_id, "failed to persist user message");
-            try_forward_event(
+            send_error(
                 &mut client,
-                StreamEvent::Error {
-                    message: GENERIC_CHAT_ERROR.into(),
-                },
+                ErrorCode::Internal,
+                GENERIC_CHAT_ERROR,
+                false,
+                Some(session_id),
             );
             return;
         }
@@ -278,7 +304,6 @@ pub(crate) async fn start_chat_stream(
         let mut reply = String::new();
         let mut finish = None;
         let mut assistant_message_id = None;
-        let mut engine_failed = false;
         while let Some(event) = hrx.recv().await {
             // ponytail: The public channel has a 64-event burst ceiling; a
             // stalled client loses the rest. Upgrade to a detached bounded
@@ -288,7 +313,6 @@ pub(crate) async fn start_chat_stream(
                 &mut reply,
                 &mut assistant_message_id,
                 &mut finish,
-                &mut engine_failed,
                 &mut client,
             );
         }
@@ -297,43 +321,36 @@ pub(crate) async fn start_chat_stream(
             Ok(outcome) => outcome,
             Err(error) => {
                 tracing::error!(%error, %session_id, "chat worker failed");
-                try_forward_event(
+                send_error(
                     &mut client,
-                    StreamEvent::Error {
-                        message: GENERIC_CHAT_ERROR.into(),
-                    },
+                    ErrorCode::Internal,
+                    GENERIC_CHAT_ERROR,
+                    false,
+                    Some(session_id),
                 );
                 return;
             }
         };
 
         if let Err(error) = result {
+            if matches!(error, EngineError::Aborted) {
+                try_forward_event(&mut client, StreamEvent::Aborted);
+                return;
+            }
             tracing::error!(?error, %session_id, "harness error");
-            try_forward_event(
-                &mut client,
-                StreamEvent::Error {
-                    message: GENERIC_CHAT_ERROR.into(),
-                },
-            );
-            return;
-        }
-        if engine_failed {
-            try_forward_event(
-                &mut client,
-                StreamEvent::Error {
-                    message: GENERIC_CHAT_ERROR.into(),
-                },
-            );
+            let (code, message, retryable) = engine_error_parts(&error);
+            send_error(&mut client, code, message, retryable, Some(session_id));
             return;
         }
 
         let Some(finish) = finish else {
             tracing::error!(%session_id, "successful chat turn ended without Finish");
-            try_forward_event(
+            send_error(
                 &mut client,
-                StreamEvent::Error {
-                    message: GENERIC_CHAT_ERROR.into(),
-                },
+                ErrorCode::Internal,
+                GENERIC_CHAT_ERROR,
+                false,
+                Some(session_id),
             );
             return;
         };
@@ -360,11 +377,12 @@ pub(crate) async fn start_chat_stream(
                         tracing::error!(%session_id, "chat reply had no assistant message id");
                     }
                 }
-                try_forward_event(
+                send_error(
                     &mut client,
-                    StreamEvent::Error {
-                        message: GENERIC_CHAT_ERROR.into(),
-                    },
+                    ErrorCode::Internal,
+                    GENERIC_CHAT_ERROR,
+                    false,
+                    Some(session_id),
                 );
             }
         }

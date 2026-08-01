@@ -1,5 +1,7 @@
 use thiserror::Error;
 
+use mewcode_protocol::event::ErrorCode;
+
 /// All errors the engine can produce.
 #[derive(Debug, Error)]
 pub enum EngineError {
@@ -75,4 +77,54 @@ fn contains_context_overflow(msg: &str) -> bool {
         || lower.contains("max_tokens")
         || lower.contains("prompt is too long")
         || lower.contains("context length exceeded")
+}
+
+/// Split an engine error into its streamed [`StreamEvent::Error`] fields.
+///
+/// `message` is a sanitised, user-actionable summary — the caller logs the
+/// raw error, which may carry provider bodies or keys. `retryable` is true
+/// only for transient conditions (upstream 5xx/429/network), so the client
+/// can offer a retry without reimplementing engine semantics.
+/// `EngineError::Aborted` never reaches here: callers intercept it and emit
+/// [`StreamEvent::Aborted`]; if it slips through it degrades to `Internal`.
+pub fn engine_error_parts(error: &EngineError) -> (ErrorCode, String, bool) {
+    match error {
+        EngineError::MissingApiKey => (
+            ErrorCode::MissingApiKey,
+            "no OpenCode Go API key is configured".into(),
+            false,
+        ),
+        EngineError::MissingNativeApiKey(name) => (
+            ErrorCode::MissingApiKey,
+            format!("{name} is not set"),
+            false,
+        ),
+        EngineError::Upstream(_) => (ErrorCode::Upstream, "upstream provider error".into(), true),
+        EngineError::UpstreamStatus { status, .. } => (
+            ErrorCode::Upstream,
+            format!("provider returned HTTP {status}"),
+            retryable_status(*status),
+        ),
+        EngineError::Tool { tool, .. } => (
+            ErrorCode::ToolFailed,
+            format!("tool `{tool}` failed"),
+            false,
+        ),
+        EngineError::Aborted => (ErrorCode::Internal, "internal error".into(), false),
+        EngineError::ContextOverflow(_) => (
+            ErrorCode::ContextOverflow,
+            "model context limit reached".into(),
+            false,
+        ),
+        EngineError::Serde(_) | EngineError::Other(_) => {
+            (ErrorCode::Internal, "internal error".into(), false)
+        }
+    }
+}
+
+/// True for HTTP statuses that commonly indicate a transient upstream fault
+/// worth retrying unchanged.
+#[doc(hidden)]
+pub fn retryable_status(status: u16) -> bool {
+    matches!(status, 408 | 409 | 425 | 429 | 500 | 502 | 503 | 504 | 529)
 }

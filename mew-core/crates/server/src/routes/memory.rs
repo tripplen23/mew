@@ -19,7 +19,7 @@ use crate::AppState;
 use crate::error::AppError;
 
 /// `GET /memory` — return the current memory content.
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct MemoryResponse {
     /// Profile name.
     pub profile: String,
@@ -28,13 +28,21 @@ pub struct MemoryResponse {
 }
 
 /// `POST /memory` body.
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct MemoryWriteRequest {
     /// New memory content (plain markdown). Overwrites the current file.
     pub content: String,
 }
 
 /// `GET /memory`
+#[utoipa::path(
+    get,
+    path = "/memory",
+    tag = "meta",
+    responses(
+        (status = 200, description = "Current memory content", body = MemoryResponse),
+    ),
+)]
 pub async fn get_memory(State(state): State<AppState>) -> Json<MemoryResponse> {
     let content = state.memory.read();
     Json(MemoryResponse {
@@ -44,6 +52,16 @@ pub async fn get_memory(State(state): State<AppState>) -> Json<MemoryResponse> {
 }
 
 /// `POST /memory`
+#[utoipa::path(
+    post,
+    path = "/memory",
+    tag = "meta",
+    request_body = MemoryWriteRequest,
+    responses(
+        (status = 200, description = "Memory written", body = MemoryResponse),
+        (status = 500, description = "Write failed", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn post_memory(
     State(state): State<AppState>,
     Json(req): Json<MemoryWriteRequest>,
