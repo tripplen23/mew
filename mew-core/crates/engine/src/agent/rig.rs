@@ -30,6 +30,7 @@ pub(super) async fn run_turn(
                 .build();
             stream::run_agent_stream(
                 rig_agent,
+                agent.model,
                 user_text,
                 history,
                 tx,
@@ -50,6 +51,7 @@ pub(super) async fn run_turn(
                 .build();
             stream::run_agent_stream(
                 rig_agent,
+                agent.model,
                 user_text,
                 history,
                 tx,

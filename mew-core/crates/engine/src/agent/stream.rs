@@ -115,6 +115,7 @@ fn take_display(sink: &DisplaySink, args: &Value) -> Option<mewcode_protocol::To
 /// Returns the full reply text and accumulated token usage.
 pub async fn run_agent_stream<M: rig_core::completion::CompletionModel + 'static>(
     agent: rig_core::agent::Agent<M>,
+    model: mewcode_protocol::ModelId,
     user_text: String,
     history: Vec<rig_core::completion::Message>,
     tx: &mpsc::Sender<StreamEvent>,
@@ -260,7 +261,14 @@ pub async fn run_agent_stream<M: rig_core::completion::CompletionModel + 'static
         usage.tool_use_prompt_tokens,
     );
     span.record("gen_ai.usage.reasoning_tokens", usage.reasoning_tokens);
-    if let Some(cost) = usage.cost {
+
+    // Cost on the span: provider-reported when available, pricing-table
+    // fallback otherwise. Same value Finish reports.
+    let cost = usage
+        .cost
+        .or_else(|| crate::helpers::pricing::turn_cost_usd(model, usage));
+    usage.cost = cost;
+    if let Some(cost) = cost {
         span.record("gen_ai.usage.cost", cost);
     }
 

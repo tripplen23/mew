@@ -53,7 +53,7 @@ const README_MARKER: &str = "MewcodeE2EMarker_42_zebra";
 /// Enabled only when `MEWCODE_E2E_LANGFUSE=1` is set *and* credentials exist;
 /// the trace round-trip is slow, so it is opt-in.
 fn init_langfuse_tracing() -> Option<SdkTracerProvider> {
-    if std::env::var("MEWCODE_E2E_LANGFUSE").is_err() {
+    if std::env::var("MEWCODE_E2E_LANGFUSE").as_deref() != Ok("1") {
         return None;
     }
     let public_key = std::env::var("LANGFUSE_PUBLIC_KEY")
@@ -247,12 +247,10 @@ async fn agent_reads_readme_via_tool_call() {
             .to_string(),
     }])];
 
-    let (events, error) = tokio::time::timeout(
-        Duration::from_secs(30),
-        collect_events(&harness, messages),
-    )
-    .await
-    .expect("agent turn should finish within 30 seconds");
+    let (events, error) =
+        tokio::time::timeout(Duration::from_secs(30), collect_events(&harness, messages))
+            .await
+            .expect("agent turn should finish within 30 seconds");
 
     // --- Assert no error ---
     assert!(error.is_none(), "harness should not error: {error:?}");
@@ -789,7 +787,9 @@ async fn prompt_caching_records_cache_read_tokens() {
     // Opt-in like the other trace checks: without MEWCODE_E2E_LANGFUSE the
     // span-export round-trip is skipped.
     if _tracing_provider.is_none() {
-        eprintln!("Skipping Langfuse cache-read verification (set MEWCODE_E2E_LANGFUSE=1 to enable)");
+        eprintln!(
+            "Skipping Langfuse cache-read verification (set MEWCODE_E2E_LANGFUSE=1 to enable)"
+        );
         let _ = std::fs::remove_dir_all(&project);
         let _ = std::fs::remove_dir_all(&data_dir);
         let _ = std::fs::remove_dir_all(

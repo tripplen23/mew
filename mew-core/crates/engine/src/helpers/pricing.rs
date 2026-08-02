@@ -31,17 +31,19 @@ struct PricingTable {
     models: HashMap<String, ModelPrice>,
 }
 
+static TABLE: std::sync::OnceLock<PricingTable> = std::sync::OnceLock::new();
+
 /// Total cost in USD for a turn, or `None` when the model has no known price.
 pub fn turn_cost_usd(model: ModelId, usage: TurnUsage) -> Option<f64> {
-    let table: PricingTable = serde_json::from_str(PRICING_JSON)
-        .expect("pricing.json must parse; corrupt asset");
+    let table = TABLE.get_or_init(|| {
+        serde_json::from_str(PRICING_JSON).expect("pricing.json must parse; corrupt asset")
+    });
     let price = table.models.get(model.as_str())?;
 
     // Charged input excludes tokens billed at the (cheaper) cache rate, so
     // cached reads aren't double-counted against `input`.
     let fresh_input = usage.input_tokens.saturating_sub(usage.cached_input_tokens);
-    let mut cost = fresh_input as f64 * price.input
-        + usage.output_tokens as f64 * price.output;
+    let mut cost = fresh_input as f64 * price.input + usage.output_tokens as f64 * price.output;
 
     if let Some(rate) = price.cache_read {
         cost += usage.cached_input_tokens as f64 * rate;

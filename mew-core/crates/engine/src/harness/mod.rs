@@ -377,9 +377,7 @@ impl Harness {
             output_tokens: (usage.output_tokens > 0).then_some(usage.output_tokens),
             session_tokens: Some(self.compaction.context_tokens),
             context_limit: (self.model.context_limit() > 0).then(|| self.model.context_limit()),
-            cost_usd: usage
-                .cost
-                .or_else(|| crate::helpers::pricing::turn_cost_usd(self.model, usage)),
+            cost_usd: usage.cost,
         })
         .await
         .map_err(|error| {
