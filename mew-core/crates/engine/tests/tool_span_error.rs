@@ -79,6 +79,34 @@ async fn failed_tool_call_marks_span_error() {
     );
 }
 
+struct SucceedingTool;
+
+#[async_trait]
+impl ToolContracts for SucceedingTool {
+    fn name(&self) -> &'static str {
+        "succeeding_tool"
+    }
+
+    fn descriptor(&self) -> ToolDescriptor {
+        ToolDescriptor {
+            name: "succeeding_tool".to_string(),
+            description: "always succeeds".to_string(),
+            input_schema: json!({"type": "object", "properties": {}}),
+            annotations: Default::default(),
+            examples: vec![],
+            max_response_chars: 100_000,
+        }
+    }
+
+    async fn execute(&self, _input: serde_json::Value) -> Result<ToolOutput, ToolError> {
+        Ok(ToolOutput::text("ok"))
+    }
+}
+
+fn succeeding_adapter() -> RigToolAdapter {
+    RigToolAdapter::new(Arc::new(SucceedingTool))
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn successful_tool_call_keeps_unset_status() {
     let exporter = InMemorySpanExporter::default();
@@ -95,11 +123,10 @@ async fn successful_tool_call_keeps_unset_status() {
 
     let _guard = tracing::subscriber::set_default(subscriber);
 
-    // Successful path only: the span is never marked errored.
-    let span = tracing::info_span!("execute_tool");
-    let _ = span.enter();
-
-    // No failing call made; just close the span.
+    let span = tracing::info_span!("execute_tool").entered();
+    let adapter = succeeding_adapter();
+    let result = adapter.call("{}".to_string()).await;
+    assert!(result.is_ok(), "successful tool call should return Ok");
     drop(span);
 
     let spans = exporter.get_finished_spans().unwrap();
