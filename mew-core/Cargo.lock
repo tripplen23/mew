@@ -1891,6 +1891,8 @@ dependencies = [
  "http",
  "ignore",
  "mewcode-protocol",
+ "opentelemetry",
+ "opentelemetry_sdk",
  "proptest",
  "regex",
  "reqwest 0.12.28",
@@ -1903,6 +1905,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+ "tracing-opentelemetry",
  "tracing-subscriber",
  "uuid",
 ]

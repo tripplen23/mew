@@ -23,6 +23,8 @@ tokio = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+opentelemetry = { workspace = true }
+tracing-opentelemetry = { workspace = true }
 
 rig-core = { workspace = true }
 reqwest = { workspace = true }
@@ -38,3 +40,4 @@ regex = { workspace = true }
 tokio = { workspace = true }
 proptest = { workspace = true }
 tempfile = { workspace = true }
+opentelemetry_sdk = { workspace = true, features = ["testing"] }
