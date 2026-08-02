@@ -105,7 +105,7 @@ proptest! {
         // No message is committed before `Finished`.
         prop_assert_eq!(message_count(&app), base_total);
 
-        update(&mut app, Msg::Stream(StreamMsg::Finished { duration_ms: 0, session_tokens: None, context_limit: None }));
+        update(&mut app, Msg::Stream(StreamMsg::Finished { duration_ms: 0, session_tokens: None, context_limit: None, cost_usd: None }));
 
         let s = session_state(&app);
         prop_assert!(s.streaming.is_none());
@@ -150,7 +150,7 @@ proptest! {
         for ev in events {
             update(&mut app, Msg::Stream(ev));
         }
-        update(&mut app, Msg::Stream(StreamMsg::Finished { duration_ms: 0, session_tokens: None, context_limit: None }));
+        update(&mut app, Msg::Stream(StreamMsg::Finished { duration_ms: 0, session_tokens: None, context_limit: None, cost_usd: None }));
 
         let s = session_state(&app);
         prop_assert!(s.streaming.is_none());
@@ -182,6 +182,7 @@ fn finish_commits_buffered_text() {
             duration_ms: 7,
             session_tokens: None,
             context_limit: None,
+            cost_usd: None,
         }),
     );
 
@@ -226,6 +227,7 @@ fn compacting_pending_message_is_sent_even_with_sound_enabled() {
             duration_ms: 5,
             session_tokens: None,
             context_limit: None,
+            cost_usd: None,
         }),
     );
 
@@ -297,6 +299,7 @@ fn mid_turn_auto_compaction_survives_normal_finish() {
             duration_ms: 10,
             session_tokens: Some(500),
             context_limit: Some(200_000),
+            cost_usd: None,
         }),
     );
 
@@ -389,6 +392,7 @@ fn compaction_summary_builds_up_from_streamed_deltas() {
             duration_ms: 10,
             session_tokens: Some(100),
             context_limit: Some(200_000),
+            cost_usd: None,
         }),
     );
 
@@ -549,6 +553,7 @@ fn message_after_compact_fully_finishes_is_sent_normally() {
             duration_ms: 4000,
             session_tokens: Some(50),
             context_limit: Some(200_000),
+            cost_usd: None,
         }),
     );
 

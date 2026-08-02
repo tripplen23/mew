@@ -300,6 +300,7 @@ pub(crate) async fn start_compaction(
                     output_tokens: None,
                     session_tokens: Some(estimated_tokens),
                     context_limit: Some(result.context_limit),
+                    cost_usd: None,
                 })
                 .await;
         });

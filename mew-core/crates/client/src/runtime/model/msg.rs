@@ -99,6 +99,8 @@ pub enum StreamMsg {
         session_tokens: Option<u64>,
         /// Model context limit.
         context_limit: Option<u64>,
+        /// Cost of this turn in USD, when the model has a known price.
+        cost_usd: Option<f64>,
     },
     /// Stream failed. Carries the structured error code so the update loop can
     /// decide what to surface (toast text, `/connect` hint, retry hint).

@@ -38,9 +38,8 @@ use opentelemetry::KeyValue;
 use opentelemetry::trace::TracerProvider as _;
 use opentelemetry_langfuse::ExporterBuilder;
 use opentelemetry_sdk::Resource;
-use opentelemetry_sdk::runtime::Tokio;
 use opentelemetry_sdk::trace::SdkTracerProvider;
-use opentelemetry_sdk::trace::span_processor_with_async_runtime::BatchSpanProcessor;
+use opentelemetry_sdk::trace::SimpleSpanProcessor;
 
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
@@ -50,7 +49,13 @@ const README_MARKER: &str = "MewcodeE2EMarker_42_zebra";
 
 /// Set up the Langfuse OTLP exporter so spans are sent to Langfuse.
 /// Returns the provider so the caller can flush + shut it down after the test.
+///
+/// Enabled only when `MEWCODE_E2E_LANGFUSE=1` is set *and* credentials exist;
+/// the trace round-trip is slow, so it is opt-in.
 fn init_langfuse_tracing() -> Option<SdkTracerProvider> {
+    if std::env::var("MEWCODE_E2E_LANGFUSE").is_err() {
+        return None;
+    }
     let public_key = std::env::var("LANGFUSE_PUBLIC_KEY")
         .ok()
         .filter(|s| !s.is_empty())?;
@@ -73,7 +78,7 @@ fn init_langfuse_tracing() -> Option<SdkTracerProvider> {
                 .with_attributes([KeyValue::new("service.name", "mewcode-e2e-test")])
                 .build(),
         )
-        .with_span_processor(BatchSpanProcessor::builder(exporter, Tokio).build())
+        .with_span_processor(SimpleSpanProcessor::new(exporter))
         .build();
 
     let tracer = provider.tracer("mewcode-e2e-test");
@@ -85,7 +90,7 @@ fn init_langfuse_tracing() -> Option<SdkTracerProvider> {
 
     tracing_subscriber::registry()
         .with(otel_layer)
-        .with(fmt::layer())
+        .with(fmt::layer().with_filter(EnvFilter::new("warn")))
         .try_init()
         .ok();
 
@@ -123,7 +128,10 @@ async fn langfuse_traces(session_id: &str) -> serde_json::Value {
         .unwrap_or_else(|_| "https://cloud.langfuse.com".to_string());
 
     let url = format!("{host}/api/public/traces?sessionId={session_id}&limit=5");
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .expect("reqwest client should build");
     let resp = client
         .get(&url)
         .basic_auth(&public_key, Some(&secret_key))
@@ -142,7 +150,10 @@ async fn langfuse_observations(trace_id: &str) -> serde_json::Value {
         .unwrap_or_else(|_| "https://cloud.langfuse.com".to_string());
 
     let url = format!("{host}/api/public/observations?traceId={trace_id}&limit=20");
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .expect("reqwest client should build");
     let resp = client
         .get(&url)
         .basic_auth(&public_key, Some(&secret_key))
@@ -165,11 +176,15 @@ async fn collect_events(
     let handle = tokio::spawn(async move { h.run_turn(&messages, tx).await });
 
     let mut events = Vec::new();
-    while let Some(event) = rx.recv().await {
-        events.push(event);
-    }
-
-    let result = handle.await;
+    let result = tokio::join!(
+        async {
+            while let Some(event) = rx.recv().await {
+                events.push(event);
+            }
+        },
+        handle
+    );
+    let result = result.1;
     let error = match result {
         Ok(Ok(())) => None,
         Ok(Err(e)) => Some(e.to_string()),
@@ -217,8 +232,10 @@ async fn agent_reads_readme_via_tool_call() {
     ));
     let session_id = uuid::Uuid::new_v4();
 
-    let harness = Harness::new(ModelId::Glm52, Mode::Build, skills, tools)
+    let harness = Harness::new(ModelId::MiMoV25, Mode::Build, skills, tools)
         .with_session(session_id)
+        .with_max_tokens(512)
+        .with_max_turns(4)
         .with_memory(MemoryStore::new(
             std::env::temp_dir().join(format!("mewcode-e2e-mem-{session_id}")),
         ));
@@ -230,7 +247,12 @@ async fn agent_reads_readme_via_tool_call() {
             .to_string(),
     }])];
 
-    let (events, error) = collect_events(&harness, messages).await;
+    let (events, error) = tokio::time::timeout(
+        Duration::from_secs(30),
+        collect_events(&harness, messages),
+    )
+    .await
+    .expect("agent turn should finish within 30 seconds");
 
     // --- Assert no error ---
     assert!(error.is_none(), "harness should not error: {error:?}");
@@ -271,6 +293,16 @@ async fn agent_reads_readme_via_tool_call() {
     assert!(has_text_delta, "should emit at least one TextDelta");
     assert!(has_finish, "should emit Finish event");
 
+    // --- Assert Finish carries a computed cost ---
+    let finish_cost = events.iter().find_map(|e| match e {
+        StreamEvent::Finish { cost_usd, .. } => *cost_usd,
+        _ => None,
+    });
+    assert!(
+        finish_cost.is_some_and(|c| c > 0.0),
+        "Finish should carry cost_usd > 0 — got {finish_cost:?}"
+    );
+
     // --- Assert the reply references the README content ---
     let reply: String = events
         .iter()
@@ -291,9 +323,19 @@ async fn agent_reads_readme_via_tool_call() {
          reply: {reply}"
     );
 
-    // --- Verify Langfuse trace ---
-    // Shut down the tracer provider first to force-flush all spans to Langfuse.
-    // Then wait for Langfuse to index them (batch processor + API indexing latency).
+    // --- Verify Langfuse trace (opt-in) ---
+    // The Langfuse OTLP export of our verbose spans is slow, so the round-trip
+    // runs only when MEWCODE_E2E_LANGFUSE=1. The local pipeline assertions
+    // above (events + reply) do not depend on it.
+    if _tracing_provider.is_none() {
+        eprintln!("Skipping Langfuse trace verification (set MEWCODE_E2E_LANGFUSE=1 to enable)");
+        let _ = std::fs::remove_dir_all(&project);
+        let _ = std::fs::remove_dir_all(&data_dir);
+        let _ = std::fs::remove_dir_all(
+            std::env::temp_dir().join(format!("mewcode-e2e-mem-{session_id}")),
+        );
+        return;
+    }
     if let Some(provider) = &_tracing_provider {
         let _ = provider.shutdown();
     }
@@ -362,6 +404,40 @@ async fn agent_reads_readme_via_tool_call() {
          observations: {obs_data:?}"
     );
 
+    // --- Assert usage + inferred cost on the chat-turn generation ---
+    let chat_turn = obs_data
+        .iter()
+        .find(|o| {
+            o.get("name").and_then(|v| v.as_str()) == Some("chat-turn")
+                && o.get("type").and_then(|v| v.as_str()) == Some("GENERATION")
+        })
+        .expect("chat-turn observation should be in obs_data");
+
+    let usage = chat_turn
+        .get("usageDetails")
+        .and_then(|u| u.as_object())
+        .expect("chat-turn should carry a usageDetails object");
+    assert!(
+        usage.get("input").and_then(|v| v.as_u64()).unwrap_or(0) > 0,
+        "usageDetails.input should be > 0 — got {usage:?}"
+    );
+    assert!(
+        usage.get("output").and_then(|v| v.as_u64()).unwrap_or(0) > 0,
+        "usageDetails.output should be > 0 — got {usage:?}"
+    );
+
+    // Cost is ingested directly from the provider's `gen_ai.usage.cost` span
+    // attribute (OpenCode Go's `inference-cost` chunk), so no model
+    // registration is required.
+    let cost = chat_turn
+        .get("calculatedTotalCost")
+        .and_then(|c| c.as_f64())
+        .unwrap_or(0.0);
+    assert!(
+        cost > 0.0,
+        "chat-turn should carry ingested cost > 0 (got {cost})"
+    );
+
     // Print a summary for manual verification
     eprintln!("\n=== E2E Test Summary ===");
     eprintln!("Events: {} total", events.len());
@@ -412,8 +488,10 @@ async fn agent_writes_file_via_tool_call() {
     ));
     let session_id = uuid::Uuid::new_v4();
 
-    let harness = Harness::new(ModelId::Glm52, Mode::Build, skills, tools)
+    let harness = Harness::new(ModelId::MiMoV25, Mode::Build, skills, tools)
         .with_session(session_id)
+        .with_max_tokens(512)
+        .with_max_turns(4)
         .with_memory(MemoryStore::new(
             std::env::temp_dir().join(format!("mewcode-e2e-mem-{session_id}")),
         ));
@@ -497,8 +575,10 @@ async fn agent_runs_bash_via_tool_call() {
     ));
     let session_id = uuid::Uuid::new_v4();
 
-    let harness = Harness::new(ModelId::Glm52, Mode::Build, skills, tools)
+    let harness = Harness::new(ModelId::MiMoV25, Mode::Build, skills, tools)
         .with_session(session_id)
+        .with_max_tokens(512)
+        .with_max_turns(4)
         .with_memory(MemoryStore::new(
             std::env::temp_dir().join(format!("mewcode-e2e-mem-{session_id}")),
         ));
@@ -574,8 +654,10 @@ async fn plan_mode_rejects_write_file() {
     ));
     let session_id = uuid::Uuid::new_v4();
 
-    let harness = Harness::new(ModelId::Glm52, Mode::Plan, skills, tools)
+    let harness = Harness::new(ModelId::MiMoV25, Mode::Plan, skills, tools)
         .with_session(session_id)
+        .with_max_tokens(512)
+        .with_max_turns(4)
         .with_memory(MemoryStore::new(
             std::env::temp_dir().join(format!("mewcode-e2e-mem-{session_id}")),
         ));
@@ -641,8 +723,10 @@ async fn prompt_caching_records_cache_read_tokens() {
     ));
     let session_id = uuid::Uuid::new_v4();
 
-    let harness = Harness::new(ModelId::Glm52, Mode::Build, skills, tools)
+    let harness = Harness::new(ModelId::MiMoV25, Mode::Build, skills, tools)
         .with_session(session_id)
+        .with_max_tokens(512)
+        .with_max_turns(4)
         .with_memory(MemoryStore::new(
             std::env::temp_dir().join(format!("mewcode-e2e-mem-{session_id}")),
         ));
@@ -702,6 +786,17 @@ async fn prompt_caching_records_cache_read_tokens() {
     );
 
     // Flush spans and verify Langfuse trace has cache_read tokens.
+    // Opt-in like the other trace checks: without MEWCODE_E2E_LANGFUSE the
+    // span-export round-trip is skipped.
+    if _tracing_provider.is_none() {
+        eprintln!("Skipping Langfuse cache-read verification (set MEWCODE_E2E_LANGFUSE=1 to enable)");
+        let _ = std::fs::remove_dir_all(&project);
+        let _ = std::fs::remove_dir_all(&data_dir);
+        let _ = std::fs::remove_dir_all(
+            std::env::temp_dir().join(format!("mewcode-e2e-mem-{session_id}")),
+        );
+        return;
+    }
     if let Some(provider) = &_tracing_provider {
         let _ = provider.shutdown();
     }

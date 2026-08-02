@@ -27,10 +27,15 @@ pub(super) fn render_status(frame: &mut Frame, chunk: Rect, s: &SessionState, th
         0.0
     };
     let token_display = format_tokens(s.session_tokens);
+    let cost_display = if s.session_cost_usd > 0.0 {
+        format!("  ·  ${:.4}", s.session_cost_usd)
+    } else {
+        String::new()
+    };
 
     let left = format!("  {pwd}");
     let right = format!(
-        "{token_display} ({token_pct:.0}%)  ·  {}  ·  {}",
+        "{token_display} ({token_pct:.0}%){cost_display}  ·  {}  ·  {}",
         mode.label(),
         model
     );

@@ -21,7 +21,7 @@ pub const CHOICE_DENY: &str = "deny";
 
 /// Server → client streaming events. Sent over SSE as JSON lines; the
 /// shape mirrors the AI SDK's `UIMessageStreamResponse`.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum StreamEvent {
     /// Stream has started; the assistant message id is known.
@@ -112,6 +112,9 @@ pub enum StreamEvent {
         /// Model context limit.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         context_limit: Option<u64>,
+        /// Cost of this turn in USD, or `None` when unknown.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cost_usd: Option<f64>,
     },
     /// Stream was aborted by the user. A terminal, expected outcome: the
     /// client should not surface it as an error or offer a retry.
