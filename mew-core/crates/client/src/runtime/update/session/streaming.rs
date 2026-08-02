@@ -161,6 +161,7 @@ pub(crate) fn apply_stream_event(s: &mut SessionState, ev: StreamMsg) -> Option<
             duration_ms: _,
             session_tokens,
             context_limit,
+            cost_usd,
         } => {
             let manual = s.compaction.active;
             if manual {
@@ -172,6 +173,9 @@ pub(crate) fn apply_stream_event(s: &mut SessionState, ev: StreamMsg) -> Option<
             }
             if let Some(limit) = context_limit {
                 s.context_limit = limit;
+            }
+            if let Some(cost) = cost_usd {
+                s.session_cost_usd += cost;
             }
 
             if let Some(st) = s.streaming.take() {

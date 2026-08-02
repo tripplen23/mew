@@ -41,23 +41,30 @@ pub fn chat_turn_span(model: ModelId, mode: Mode) -> tracing::Span {
         "chat-turn",
         gen_ai.request.model = model.as_str(),
         mewcode.mode = ?mode,
-        langfuse.trace.name = TRACE_NAME_CHAT_TURN,
+        // Trace list stays scannable: name includes the model, e.g. "chat-turn deepseek-v4-flash".
+        langfuse.trace.name = format!("{TRACE_NAME_CHAT_TURN} {}", model.as_str()),
         langfuse.session.id = tracing::field::Empty,
         langfuse.trace.input = tracing::field::Empty,
         langfuse.trace.output = tracing::field::Empty,
         langfuse.observation.type = LANGFUSE_OBSERVATION_GENERATION,
         langfuse.observation.input = tracing::field::Empty,
         langfuse.observation.output = tracing::field::Empty,
+        gen_ai.usage.input_tokens = tracing::field::Empty,
+        gen_ai.usage.output_tokens = tracing::field::Empty,
+        gen_ai.usage.reasoning_tokens = tracing::field::Empty,
+        gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
         gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
         gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
+        gen_ai.usage.cost = tracing::field::Empty,
     )
 }
 
 /// Record the turn's input on the current span.
 /// Exposed as `pub` for the tracing-instrumentation test.
 pub fn record_turn_input(span: &tracing::Span, system_prompt: &str, user_text: &str) {
-    let trace_input = format!("{system_prompt}\n\n{user_text}");
-    span.record(FIELD_LANGFUSE_TRACE_INPUT, &trace_input);
+    // Trace-level input is the user's prompt only — the trace list preview
+    // stays readable; the full system prompt lives in the observation input.
+    span.record(FIELD_LANGFUSE_TRACE_INPUT, user_text);
 
     let input = serde_json::json!([
         { "role": GEN_AI_ROLE_USER, "content": user_text },

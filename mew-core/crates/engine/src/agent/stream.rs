@@ -39,6 +39,9 @@ pub struct TurnUsage {
     pub output_tokens: u64,
     pub cached_input_tokens: u64,
     pub cache_creation_input_tokens: u64,
+    pub reasoning_tokens: u64,
+    pub tool_use_prompt_tokens: u64,
+    pub cost: Option<f64>,
 }
 
 impl TurnUsage {
@@ -56,6 +59,8 @@ impl TurnUsage {
             && self.output_tokens == 0
             && self.cached_input_tokens == 0
             && self.cache_creation_input_tokens == 0
+            && self.reasoning_tokens == 0
+            && self.tool_use_prompt_tokens == 0
     }
 }
 
@@ -107,6 +112,7 @@ fn take_display(sink: &DisplaySink, args: &Value) -> Option<mewcode_protocol::To
 /// Returns the full reply text and accumulated token usage.
 pub async fn run_agent_stream<M: rig_core::completion::CompletionModel + 'static>(
     agent: rig_core::agent::Agent<M>,
+    model: mewcode_protocol::ModelId,
     user_text: String,
     history: Vec<rig_core::completion::Message>,
     tx: &mpsc::Sender<StreamEvent>,
@@ -194,12 +200,22 @@ pub async fn run_agent_stream<M: rig_core::completion::CompletionModel + 'static
                 usage.output_tokens += call.usage.output_tokens;
                 usage.cached_input_tokens += call.usage.cached_input_tokens;
                 usage.cache_creation_input_tokens += call.usage.cache_creation_input_tokens;
+                usage.reasoning_tokens += call.usage.reasoning_tokens;
+                usage.tool_use_prompt_tokens += call.usage.tool_use_prompt_tokens;
+                // Provider-reported cost lands in `Usage::cost` once upstream
+                // rig merges 0xPlaygrounds/rig#2243 and we bump rig-core;
+                // until then `cost_usd` falls back to pricing.json.
+                // if usage.cost.is_none() {
+                //     usage.cost = call.usage.cost;
+                // }
 
                 tracing::debug!(
                     input_tokens = call.usage.input_tokens,
                     output_tokens = call.usage.output_tokens,
                     cached_input_tokens = call.usage.cached_input_tokens,
                     cache_creation_input_tokens = call.usage.cache_creation_input_tokens,
+                    reasoning_tokens = call.usage.reasoning_tokens,
+                    tool_use_prompt_tokens = call.usage.tool_use_prompt_tokens,
                     "completion call usage"
                 );
             }
@@ -224,8 +240,11 @@ pub async fn run_agent_stream<M: rig_core::completion::CompletionModel + 'static
         }
     }
 
-    // Record accumulated cache totals on the parent span
+    // Record accumulated usage on the parent chat-turn span. The field names
+    // mirror rig's `record_usage_on_span` so LangFuse maps them to usageDetails.
     let span = tracing::Span::current();
+    span.record("gen_ai.usage.input_tokens", usage.input_tokens);
+    span.record("gen_ai.usage.output_tokens", usage.output_tokens);
     span.record(
         "gen_ai.usage.cache_read.input_tokens",
         usage.cached_input_tokens,
@@ -234,6 +253,21 @@ pub async fn run_agent_stream<M: rig_core::completion::CompletionModel + 'static
         "gen_ai.usage.cache_creation.input_tokens",
         usage.cache_creation_input_tokens,
     );
+    span.record(
+        "gen_ai.usage.tool_use_prompt_tokens",
+        usage.tool_use_prompt_tokens,
+    );
+    span.record("gen_ai.usage.reasoning_tokens", usage.reasoning_tokens);
+
+    // Cost on the span: provider-reported when available, pricing-table
+    // fallback otherwise. Same value Finish reports.
+    let cost = usage
+        .cost
+        .or_else(|| crate::helpers::pricing::turn_cost_usd(model, usage));
+    usage.cost = cost;
+    if let Some(cost) = cost {
+        span.record("gen_ai.usage.cost", cost);
+    }
 
     Ok((full_reply, usage))
 }

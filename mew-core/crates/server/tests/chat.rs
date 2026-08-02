@@ -25,6 +25,7 @@ fn finish_event() -> StreamEvent {
         output_tokens: None,
         session_tokens: Some(10),
         context_limit: Some(100),
+        cost_usd: None,
     }
 }
 

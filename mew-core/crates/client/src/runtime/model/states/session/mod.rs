@@ -136,6 +136,8 @@ pub struct SessionState {
     pub session_tokens: u64,
     /// Model context limit, received from the Finish event.
     pub context_limit: u64,
+    /// Running session cost in USD, accumulated from Finish events.
+    pub session_cost_usd: f64,
     /// FIFO queue of messages the user submitted while a turn was in flight
     pub message_queue: Vec<String>,
     /// Rendered-lines cache for committed transcript history. See
@@ -170,6 +172,7 @@ impl SessionState {
             pwd: None,
             session_tokens: 0,
             context_limit: 0,
+            session_cost_usd: 0.0,
             message_queue: Vec::new(),
             transcript_cache: TranscriptCache::default(),
         }

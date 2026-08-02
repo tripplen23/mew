@@ -63,6 +63,7 @@ impl ToolDyn for RigToolAdapter {
                         message: format!("invalid JSON arguments: {e}"),
                         hint: Some("check that the arguments are valid JSON".into()),
                     };
+                    mark_tool_span_error(&error.to_string());
                     return Ok(serialize_tool_error(&error));
                 }
             };
@@ -78,6 +79,7 @@ impl ToolDyn for RigToolAdapter {
                     // so Rig sends it back to the model as the tool result.
                     // The model sees the error kind + hint and can retry
                     // with corrected input.
+                    mark_tool_span_error(&e.to_string());
                     Ok(serialize_tool_error(&e))
                 }
             }
@@ -98,6 +100,7 @@ impl ToolDyn for RigToolAdapter {
                         message: format!("invalid JSON arguments: {e}"),
                         hint: Some("check that the arguments are valid JSON".into()),
                     };
+                    mark_tool_span_error(&error.to_string());
                     return ToolExecutionResult::failed(
                         serialize_tool_error(&error),
                         failure_for_tool_error(&error),
@@ -109,13 +112,23 @@ impl ToolDyn for RigToolAdapter {
                 Err(error @ ToolError::Rejected { .. }) => {
                     ToolExecutionResult::denied(serialize_tool_error(&error))
                 }
-                Err(error) => ToolExecutionResult::failed(
-                    serialize_tool_error(&error),
-                    failure_for_tool_error(&error),
-                ),
+                Err(error) => {
+                    mark_tool_span_error(&error.to_string());
+                    ToolExecutionResult::failed(
+                        serialize_tool_error(&error),
+                        failure_for_tool_error(&error),
+                    )
+                }
             }
         })
     }
+}
+
+/// Mark the current OTel span (rig's `execute_tool`) as errored so LangFuse
+/// shows failed tool calls at ERROR level. No-op without an OTel layer.
+fn mark_tool_span_error(message: &str) {
+    use tracing_opentelemetry::OpenTelemetrySpanExt;
+    tracing::Span::current().set_status(opentelemetry::trace::Status::error(message.to_string()));
 }
 
 fn serialize_tool_error(error: &ToolError) -> String {

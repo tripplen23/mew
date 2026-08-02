@@ -734,7 +734,8 @@ fn stream_finished_commits_one_assistant_message() {
             StreamMsg::Finished {
                 duration_ms: 12,
                 session_tokens: None,
-                context_limit: None
+                context_limit: None,
+                cost_usd: None,
             }
         ),
         Cmd::PlayNotificationSound
@@ -865,6 +866,7 @@ fn stream_event_without_streaming_is_ignored() {
             duration_ms: 1,
             session_tokens: None,
             context_limit: None,
+            cost_usd: None,
         },
     );
     let s = sess(&app);

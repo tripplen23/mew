@@ -12,6 +12,7 @@ pub mod config;
 pub mod context;
 pub mod error;
 pub mod harness;
+pub mod helpers;
 pub mod migration;
 pub mod observability;
 pub mod skills;

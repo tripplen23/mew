@@ -57,6 +57,22 @@ impl Visit for CaptureVisitor<'_> {
             .expect("records lock")
             .push((field.name().to_string(), format!("{value:?}")));
     }
+
+    fn record_u64(&mut self, field: &Field, value: u64) {
+        self.0
+            .0
+            .lock()
+            .expect("records lock")
+            .push((field.name().to_string(), value.to_string()));
+    }
+
+    fn record_f64(&mut self, field: &Field, value: f64) {
+        self.0
+            .0
+            .lock()
+            .expect("records lock")
+            .push((field.name().to_string(), value.to_string()));
+    }
 }
 
 #[test]
@@ -71,8 +87,8 @@ fn chat_turn_span_records_langfuse_io_fields() {
     record_turn_output(&span, "pong");
 
     assert!(
-        records.contains("langfuse.trace.input", "system\n\nhello"),
-        "trace input should include system prompt and user text"
+        records.contains("langfuse.trace.input", "hello"),
+        "trace input should be the user prompt only (system prompt lives in observation input)"
     );
     assert!(
         records.contains("langfuse.observation.input", "hello"),
@@ -103,4 +119,35 @@ fn chat_turn_span_records_langfuse_io_fields() {
     );
     assert!(records.contains("langfuse.trace.output", "pong"));
     assert!(records.contains("langfuse.observation.output", "pong"));
+}
+
+#[test]
+fn chat_turn_span_records_usage_fields() {
+    let records = Records::default();
+    let subscriber = Registry::default().with(CaptureLayer(records.clone()));
+    let _guard = tracing::subscriber::set_default(subscriber);
+
+    let span = chat_turn_span(ModelId::default(), Mode::default());
+    span.record("gen_ai.usage.input_tokens", 100u64);
+    span.record("gen_ai.usage.output_tokens", 50u64);
+    span.record("gen_ai.usage.reasoning_tokens", 10u64);
+    span.record("gen_ai.usage.tool_use_prompt_tokens", 5u64);
+    span.record("gen_ai.usage.cache_read.input_tokens", 20u64);
+    span.record("gen_ai.usage.cache_creation.input_tokens", 3u64);
+    span.record("gen_ai.usage.cost", 0.0004f64);
+
+    for (field, value) in [
+        ("gen_ai.usage.input_tokens", "100"),
+        ("gen_ai.usage.output_tokens", "50"),
+        ("gen_ai.usage.reasoning_tokens", "10"),
+        ("gen_ai.usage.tool_use_prompt_tokens", "5"),
+        ("gen_ai.usage.cache_read.input_tokens", "20"),
+        ("gen_ai.usage.cache_creation.input_tokens", "3"),
+        ("gen_ai.usage.cost", "0.0004"),
+    ] {
+        assert!(
+            records.contains(field, value),
+            "{field} should be recorded as {value}"
+        );
+    }
 }

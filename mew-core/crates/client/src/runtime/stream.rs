@@ -112,6 +112,7 @@ pub(crate) async fn run_chat_stream(api: ApiClient, req: ChatRequest, tx: mpsc::
                 duration_ms,
                 session_tokens,
                 context_limit,
+                cost_usd,
                 ..
             }) => {
                 terminated = true;
@@ -120,6 +121,7 @@ pub(crate) async fn run_chat_stream(api: ApiClient, req: ChatRequest, tx: mpsc::
                         duration_ms,
                         session_tokens,
                         context_limit,
+                        cost_usd,
                     }))
                     .await;
                 break;
@@ -223,6 +225,7 @@ pub(crate) async fn run_compact_stream(api: ApiClient, session_id: Uuid, tx: mps
                 duration_ms,
                 session_tokens,
                 context_limit,
+                cost_usd,
                 ..
             }) => {
                 terminated = true;
@@ -231,6 +234,7 @@ pub(crate) async fn run_compact_stream(api: ApiClient, session_id: Uuid, tx: mps
                         duration_ms,
                         session_tokens,
                         context_limit,
+                        cost_usd,
                     }))
                     .await;
                 break;

@@ -47,6 +47,8 @@ pub struct Harness {
     approval_broker: Option<ApprovalBroker>,
     compaction: CompactionState,
     engine_config: Option<EngineConfig>,
+    max_tokens: Option<u64>,
+    max_turns: Option<usize>,
 }
 
 impl std::fmt::Debug for Harness {
@@ -107,6 +109,8 @@ impl Harness {
             approval_broker: None,
             compaction: CompactionState::default(),
             engine_config: None,
+            max_tokens: None,
+            max_turns: None,
         }
     }
 
@@ -186,6 +190,18 @@ impl Harness {
     /// When set, this is used instead of calling `EngineConfig::from_env()`.
     pub fn with_engine_config(mut self, cfg: EngineConfig) -> Self {
         self.engine_config = Some(cfg);
+        self
+    }
+
+    /// Override the per-turn completion token cap.
+    pub fn with_max_tokens(mut self, max_tokens: u64) -> Self {
+        self.max_tokens = Some(max_tokens);
+        self
+    }
+
+    /// Override the maximum number of model/tool turns.
+    pub fn with_max_turns(mut self, max_turns: usize) -> Self {
+        self.max_turns = Some(max_turns);
         self
     }
 
@@ -333,6 +349,12 @@ impl Harness {
         };
         let tools = crate::tools::adapter::rig_tools(tools_registry);
         let mut agent = Agent::new(provider.clone(), self.model, system_prompt).with_tools(tools);
+        if let Some(max_tokens) = self.max_tokens {
+            agent = agent.with_max_tokens(max_tokens);
+        }
+        if let Some(max_turns) = self.max_turns {
+            agent = agent.with_max_turns(max_turns);
+        }
         if let Some(sink) = self.display_sink.clone() {
             agent = agent.with_display_sink(sink);
         }
@@ -355,6 +377,7 @@ impl Harness {
             output_tokens: (usage.output_tokens > 0).then_some(usage.output_tokens),
             session_tokens: Some(self.compaction.context_tokens),
             context_limit: (self.model.context_limit() > 0).then(|| self.model.context_limit()),
+            cost_usd: usage.cost,
         })
         .await
         .map_err(|error| {
@@ -409,6 +432,7 @@ impl Harness {
             } else {
                 None
             },
+            cost_usd: None,
         })
         .await
         .map_err(|e| EngineError::Other(e.to_string()))?;
