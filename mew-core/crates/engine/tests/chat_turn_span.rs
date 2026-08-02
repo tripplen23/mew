@@ -87,8 +87,8 @@ fn chat_turn_span_records_langfuse_io_fields() {
     record_turn_output(&span, "pong");
 
     assert!(
-        records.contains("langfuse.trace.input", "system\n\nhello"),
-        "trace input should include system prompt and user text"
+        records.contains("langfuse.trace.input", "hello"),
+        "trace input should be the user prompt only (system prompt lives in observation input)"
     );
     assert!(
         records.contains("langfuse.observation.input", "hello"),
