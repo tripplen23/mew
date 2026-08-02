@@ -41,9 +41,6 @@ pub struct TurnUsage {
     pub cache_creation_input_tokens: u64,
     pub reasoning_tokens: u64,
     pub tool_use_prompt_tokens: u64,
-    /// Provider-reported cost (USD) for the whole turn, when the provider
-    /// supplies it (OpenCode Go's `inference-cost` chunk, surfaced once
-    /// upstream rig merges 0xPlaygrounds/rig#2243).
     pub cost: Option<f64>,
 }
 
