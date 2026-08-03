@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/tripplen23/mew/compare/mew-core-v0.6.0...mew-core-v0.7.0) (2026-08-02)
+
+
+### Features
+
+* track per-turn token usage and cost ([#170](https://github.com/tripplen23/mew/issues/170)) ([6e709bb](https://github.com/tripplen23/mew/commit/6e709bb885404659c12e9bccd58adcd6bfdfc130))
+
 ## [0.6.0](https://github.com/tripplen23/mew/compare/mew-core-v0.5.0...mew-core-v0.6.0) (2026-08-01)
 
 
