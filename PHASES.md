@@ -9,8 +9,8 @@ A phase is complete only when its acceptance criteria pass in a clean environmen
 | Milestone  | Outcome                                     | Status   |
 | ---------- | ------------------------------------------- | -------- |
 | Foundation | General local coding-agent substrate        | Complete |
-| M0         | Product contract and evaluation laboratory  | Active   |
-| M1         | Durable migration runs                      | Planned  |
+| M0         | Product contract and evaluation laboratory  | Complete |
+| M1         | Durable migration runs                      | Active   |
 | M2         | Isolated acquisition and reproduction       | Planned  |
 | M3         | Behavioral DNA extraction                   | Planned  |
 | M4         | Contract review and evolution planning      | Planned  |
