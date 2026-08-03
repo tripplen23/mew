@@ -47,7 +47,7 @@ fn expand_path(raw: &str) -> String {
     result
 }
 
-/// Server configuration, loaded from `mewcode.toml` and the environment.
+/// Server configuration, loaded from `mew.toml` and the environment.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ServerConfig {
     /// Host to bind to.
@@ -94,7 +94,7 @@ fn default_log() -> String {
 }
 
 impl ServerConfig {
-    /// Load from env vars and optional `mewcode.toml`.
+    /// Load from env vars and optional `mew.toml`.
     pub fn load() -> Result<Self, Box<figment::Error>> {
         let mut figment = Figment::new()
             .merge(Toml::file(CONFIG_FILE).nested())

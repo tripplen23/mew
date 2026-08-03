@@ -52,9 +52,10 @@ fn load_discovers_project_skills() {
         include_dev_dir: false,
     };
     let reg = SkillRegistry::load(&cfg);
-    assert_eq!(reg.len(), 2);
-    assert!(reg.get("alpha").is_some());
-    assert!(reg.get("beta").is_some());
+    let alpha = reg.get("alpha").unwrap();
+    let beta = reg.get("beta").unwrap();
+    assert_eq!(alpha.source, SkillSource::Project);
+    assert_eq!(beta.source, SkillSource::Project);
 }
 
 #[test]
@@ -100,7 +101,7 @@ fn external_shadows_bundled() {
 
 #[test]
 fn project_shadows_global() {
-    // `~/.config/mewcode/skills` is the global install; the
+    // `~/.config/mew/skills` is the global install; the
     // project dir shadows it. We can't easily mock the home
     // directory, so this test uses `external_dirs` as a stand-in
     // for global and asserts the project-shadows-earlier
@@ -136,11 +137,11 @@ fn missing_paths_are_silently_skipped() {
         include_dev_dir: false,
     };
     let reg = SkillRegistry::load(&cfg);
-    // No crash; registry is empty.
-    assert!(reg.is_empty());
+    // No crash. Global skills may exist on the developer machine; this test
+    // only owns the two seed paths below.
     // The contract: every seed path we couldn't find is in
     // `missing_paths`. The test stays deterministic even if the
-    // dev machine happens to have `~/.config/mewcode/skills`.
+    // dev machine happens to have `~/.config/mew/skills`.
     let missing = reg.missing_paths();
     assert!(
         missing.contains(&bundled),
@@ -279,7 +280,11 @@ fn list_for_tool_returns_sorted_entries() {
         include_dev_dir: false,
     };
     let reg = SkillRegistry::load(&cfg);
-    let entries = reg.list_for_tool();
+    let entries: Vec<_> = reg
+        .list_for_tool()
+        .into_iter()
+        .filter(|entry| entry.source == "project")
+        .collect();
     assert_eq!(entries.len(), 2);
     assert_eq!(entries[0].name, "alpha");
     assert_eq!(entries[1].name, "zulu");

@@ -7,6 +7,8 @@ use std::path::Path;
 
 use mewcode_protocol::{Message, MessagePart, Role};
 
+use crate::skills::SkillRegistry;
+
 const MAX_REFERENCED_FILES: usize = 10;
 const MAX_REFERENCED_FILE_BYTES: u64 = 50 * 1024;
 const REFERENCED_FILES_HEADER: &str = "Referenced files:";
@@ -36,9 +38,13 @@ pub fn last_user_text(messages: &[Message]) -> Option<String> {
         })
 }
 
-/// Test-facing prompt expansion for file mentions; production calls it via [`crate::harness::Harness`].
+/// Prompt expansion for file mentions; production calls it via [`crate::harness::Harness`].
+///
+/// Returns the expanded text plus whether the `User message:` header was
+/// already emitted (i.e. file context was included). A header-free result
+/// is exactly the raw message text.
 #[doc(hidden)]
-pub fn user_text_with_file_context(messages: &[Message], root: &Path) -> Option<String> {
+pub fn user_text_with_file_context(messages: &[Message], root: &Path) -> Option<(String, bool)> {
     let msg = messages.iter().rev().find(|m| m.role == Role::User)?;
     let text = text_of(msg);
     let mut paths = mentioned_paths(&text);
@@ -67,7 +73,7 @@ pub fn user_text_with_file_context(messages: &[Message], root: &Path) -> Option<
     expanded.truncate(MAX_REFERENCED_FILES);
 
     if expanded.is_empty() {
-        return Some(text);
+        return Some((text, false));
     }
 
     let mut out = String::new();
@@ -77,7 +83,73 @@ pub fn user_text_with_file_context(messages: &[Message], root: &Path) -> Option<
     }
     let _ = writeln!(out, "\n{USER_MESSAGE_HEADER}");
     out.push_str(&text);
+    Some((out, true))
+}
+
+/// Prompt expansion for file mentions and explicit `/skill-name` invocations.
+/// Production calls it via [`crate::harness::Harness`].
+#[doc(hidden)]
+pub fn user_text_with_context(
+    messages: &[Message],
+    root: Option<&Path>,
+    skills: &SkillRegistry,
+) -> Option<String> {
+    let raw = last_user_text(messages)?;
+    let (expanded, has_file_header) = root
+        .and_then(|root| user_text_with_file_context(messages, root))
+        .unwrap_or_else(|| (raw.clone(), false));
+    Some(
+        expand_explicit_skill_invocation(&raw, &expanded, has_file_header, skills)
+            .unwrap_or(expanded),
+    )
+}
+
+fn expand_explicit_skill_invocation(
+    raw: &str,
+    expanded: &str,
+    has_file_header: bool,
+    skills: &SkillRegistry,
+) -> Option<String> {
+    let name = raw
+        .split_whitespace()
+        .next()
+        .and_then(|token| token.strip_prefix('/'))
+        .filter(|name| !name.is_empty())?;
+    let loaded = skills.get(name)?;
+    // Model-only skills fall through unexpanded; the model sees the raw /name.
+    if !loaded.skill.user_invocable {
+        return None;
+    }
+    let body = &loaded.skill.body;
+
+    // Longer than any backtick run in the body, or its fences close it early.
+    let ticks = "`".repeat(longest_backtick_run(body).max(2) + 1);
+
+    let mut out = String::new();
+    let _ = writeln!(out, "Invoked skill: `{name}`");
+    let _ = writeln!(out, "Follow this skill before answering:");
+    let _ = writeln!(out, "{ticks}skill {name}");
+    out.push_str(body);
+    let _ = writeln!(out, "\n{ticks}\n");
+    if !has_file_header {
+        let _ = writeln!(out, "{USER_MESSAGE_HEADER}");
+    }
+    out.push_str(expanded);
     Some(out)
+}
+
+fn longest_backtick_run(s: &str) -> usize {
+    let mut best = 0;
+    let mut run = 0;
+    for c in s.chars() {
+        if c == '`' {
+            run += 1;
+            best = best.max(run);
+        } else {
+            run = 0;
+        }
+    }
+    best
 }
 
 fn collect_dir_files(dir: &Path, root: &Path, out: &mut Vec<String>, limit: usize) {

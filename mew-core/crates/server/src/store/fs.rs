@@ -408,8 +408,8 @@ impl SessionStore for FsStore {
 ///
 /// Precedence:
 /// 1. `MEWCODE_DATA_DIR`, if set and non-empty; else
-/// 2. `$XDG_DATA_HOME/mewcode`; else
-/// 3. `~/.local/share/mewcode`.
+/// 2. `$XDG_DATA_HOME/mew`; else
+/// 3. `~/.local/share/mew`.
 ///
 /// Steps 2 and 3 are resolved via [`dirs::data_dir`], which returns
 /// `$XDG_DATA_HOME` when set and `~/.local/share` otherwise on Linux.
@@ -420,7 +420,7 @@ pub fn resolve_data_dir() -> Result<PathBuf, StoreError> {
             .ok_or_else(|| {
                 StoreError::Invalid("could not resolve a default data directory".to_string())
             })?
-            .join("mewcode"),
+            .join("mew"),
     };
     // Create the data dir and its `sessions/` subdir on first use.
     std::fs::create_dir_all(dir.join(SESSIONS_SUBDIR))?;

@@ -8,6 +8,8 @@ mod turn_compaction;
 
 pub use self::completion::last_user_text;
 #[doc(hidden)]
+pub use self::completion::user_text_with_context;
+#[doc(hidden)]
 pub use self::completion::user_text_with_file_context;
 pub use self::turn_compaction::{
     CompactionBlocked, CompactionCheckpoint, CompactionMode, CompactionState, accept_summary,
@@ -229,11 +231,11 @@ impl Harness {
 
         // Validate the request and credentials before Start so boundary
         // failures still produce only the caller-owned Error event.
-        let user_text = if let Some(root) = self.project_root.as_deref() {
-            completion::user_text_with_file_context(messages, root)
-        } else {
-            last_user_text(messages)
-        }
+        let user_text = completion::user_text_with_context(
+            messages,
+            self.project_root.as_deref(),
+            &self.skills,
+        )
         .ok_or_else(|| EngineError::Other("no user message in chat history".to_string()))?;
         let cfg = self
             .engine_config

@@ -1,15 +1,15 @@
 //! Durable memory scaffold — the agent's persistent fact store.
 //!
-//! Each profile gets one `.md` file under `~/.mewcode/memories/`.
+//! Each profile gets one `.md` file under `~/.mew/memories/`.
 //! The content is injected into the system prompt as a `<memory>` section
 //! so the agent sees its persistent facts every turn.
 //!
 //! This is the mewcode equivalent of Hermes Agent's MEMORY.md / USER.md
 //! system: durable facts the agent can read and update via the
-//! `mewcode_memory` tool.
+//! `mew_memory` tool.
 //!
 //! NOTE: This is intentionally a scaffold. The file read/write path, the
-//! `mewcode_memory` tool, and the system-prompt injection are wired, but
+//! `mew_memory` tool, and the system-prompt injection are wired, but
 //! higher-level behaviours — when the model should save a fact, memory
 //! summarisation/compaction, multi-profile selection, and client-visible
 //! memory UI — are not implemented yet. They will be fleshed out in a
@@ -119,7 +119,7 @@ impl MemoryStore {
         Some(format!("<memory>\n{}\n</memory>", body.trim()))
     }
 
-    /// The path to the memory file (useful for the `mewcode_memory` tool).
+    /// The path to the memory file (useful for the `mew_memory` tool).
     pub fn path(&self) -> &PathBuf {
         &self.path
     }

@@ -16,17 +16,17 @@ pub struct SkillLoadConfig {
     /// Additional shared/external skill directories. Inserted between
     /// bundled and project precedence.
     pub external_dirs: Vec<PathBuf>,
-    /// If set, walk up from here looking for `<start>/.mewcode/skills`.
+    /// If set, walk up from here looking for `<start>/.mew/skills`.
     /// This is `None` only in tests; production always sets it.
     pub project_search_start: Option<PathBuf>,
     /// If true, also load `./skills/` (dev convenience). Production
-    /// users should keep their skills in `.mewcode/skills/`.
+    /// users should keep their skills in `.mew/skills/`.
     pub include_dev_dir: bool,
 }
 
 impl Default for SkillLoadConfig {
-    /// Discovers the standard locations: `~/.config/mewcode/skills/`
-    /// (global) and `<cwd>/.mewcode/skills/` (project, walking up).
+    /// Discovers the standard locations: `~/.config/mew/skills/`
+    /// (global) and `<cwd>/.mew/skills/` (project, walking up).
     /// The dev `./skills/` dir is not included; opt in with
     /// `include_dev_dir: true` if you want it.
     fn default() -> Self {

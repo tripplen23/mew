@@ -30,7 +30,7 @@ pub(super) fn tools_lines(mode: Mode) -> Vec<Line<'static>> {
 /// The `/skills` overlay body, built from the catalog fetched via
 /// `GET /skills`. `None` is the fetch-in-flight / fetch-failed state;
 /// an empty list means the server found no skills.
-pub(super) fn skills_lines(s: &SessionState) -> Vec<Line<'static>> {
+pub(super) fn skills_lines(s: &SessionState, max_width: usize) -> Vec<Line<'static>> {
     let Some(entries) = s.skills.as_ref() else {
         return vec![Line::from(Span::styled(
             "Loading skills...",
@@ -43,26 +43,23 @@ pub(super) fn skills_lines(s: &SessionState) -> Vec<Line<'static>> {
             Style::default().fg(Color::DarkGray),
         ))];
     }
-    let mut lines: Vec<Line> = Vec::with_capacity(entries.len() * 2);
-    for e in entries {
-        lines.push(Line::from(vec![
-            Span::styled(
-                format!("• {}", e.name),
-                Style::default().add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                format!("  ({})", e.source),
-                Style::default().fg(Color::DarkGray),
-            ),
-        ]));
-        if !e.description.is_empty() {
-            lines.push(Line::from(Span::styled(
-                format!("  {}", e.description),
-                Style::default().fg(Color::Gray),
-            )));
-        }
-    }
-    lines
+    let start = s.skills_picker.scroll.min(entries.len().saturating_sub(1));
+    entries
+        .iter()
+        .enumerate()
+        .skip(start)
+        .map(|(i, entry)| {
+            let style = if i == s.skills_picker.cursor {
+                Style::default().fg(Color::Black).bg(Color::Cyan)
+            } else {
+                Style::default().add_modifier(Modifier::BOLD)
+            };
+            Line::from(Span::styled(
+                truncate_with_ellipsis(&format!(" {}", entry.name), max_width, "…"),
+                style,
+            ))
+        })
+        .collect()
 }
 
 pub(super) fn theme_lines() -> Vec<Line<'static>> {

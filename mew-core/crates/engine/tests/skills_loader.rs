@@ -7,9 +7,13 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use mewcode_engine::skills::{SkillRegistry, SkillSource};
+use mewcode_engine::skills::{MAX_CATALOG_DESCRIPTION_CHARS, SkillRegistry, SkillSource};
+use mewcode_engine::tools::SkillViewTool;
+use mewcode_protocol::ToolContracts;
+use serde_json::json;
 
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -34,10 +38,14 @@ fn tempdir() -> TempDir {
 }
 
 fn write_skill(dir: &Path, name: &str, description: &str) {
+    write_skill_frontmatter(dir, name, description, "");
+}
+
+fn write_skill_frontmatter(dir: &Path, name: &str, description: &str, extra: &str) {
     let skill_dir = dir.join(name);
     fs::create_dir_all(&skill_dir).unwrap();
     let body = format!(
-        "---\nname: {name}\ndescription: {description}\n---\n\n# {name}\n\nDo the {name} thing.\n"
+        "---\nname: {name}\ndescription: {description}\n{extra}---\n\n# {name}\n\nDo the {name} thing.\n"
     );
     fs::write(skill_dir.join("SKILL.md"), body).unwrap();
 }
@@ -126,4 +134,118 @@ fn view_body_missing_skill_returns_not_found() {
     let reg = SkillRegistry::new();
     let err = reg.view_body("does-not-exist").expect_err("missing");
     assert!(matches!(err, mewcode_protocol::SkillError::NotFound { .. }));
+}
+
+#[test]
+fn disable_model_invocation_skill_hidden_from_model_facing_surfaces() {
+    let tmp = tempdir();
+    write_skill(tmp.path(), "alpha", "A normal skill.");
+    write_skill_frontmatter(
+        tmp.path(),
+        "secret",
+        "A user-only skill.",
+        "disable-model-invocation: true\n",
+    );
+
+    let mut reg = SkillRegistry::new();
+    reg.load_dir(tmp.path(), SkillSource::Global);
+    assert_eq!(reg.len(), 2);
+
+    let cat = reg.catalog_for_system_prompt();
+    assert!(cat.contains("**alpha**"));
+    assert!(!cat.contains("**secret**"));
+
+    let tool_names: Vec<_> = reg.list_for_tool().into_iter().map(|e| e.name).collect();
+    assert_eq!(tool_names, vec!["alpha"]);
+
+    let user_names: Vec<_> = reg.list_for_user().into_iter().map(|e| e.name).collect();
+    assert_eq!(user_names, vec!["alpha", "secret"]);
+}
+
+#[test]
+fn user_invocable_false_skill_hidden_from_user_picker() {
+    let tmp = tempdir();
+    write_skill(tmp.path(), "alpha", "A normal skill.");
+    write_skill_frontmatter(
+        tmp.path(),
+        "internal",
+        "A model-only skill.",
+        "user-invocable: false\n",
+    );
+
+    let mut reg = SkillRegistry::new();
+    reg.load_dir(tmp.path(), SkillSource::Global);
+
+    let cat = reg.catalog_for_system_prompt();
+    assert!(cat.contains("**alpha**"));
+    assert!(cat.contains("**internal**"));
+
+    let tool_names: Vec<_> = reg.list_for_tool().into_iter().map(|e| e.name).collect();
+    assert_eq!(tool_names, vec!["alpha", "internal"]);
+
+    let user_names: Vec<_> = reg.list_for_user().into_iter().map(|e| e.name).collect();
+    assert_eq!(user_names, vec!["alpha"]);
+}
+
+#[test]
+fn catalog_truncates_descriptions_and_omits_skills_over_budget() {
+    let tmp = tempdir();
+    let desc = "x".repeat(400);
+    for i in 0..80 {
+        write_skill(tmp.path(), &format!("skill-{i:02}"), &desc);
+    }
+
+    let mut reg = SkillRegistry::new();
+    reg.load_dir(tmp.path(), SkillSource::Global);
+
+    let cat = reg.catalog_for_system_prompt();
+    assert!(cat.contains('…'), "descriptions should be truncated");
+    assert!(
+        cat.contains("more skills installed"),
+        "over-budget catalog should warn"
+    );
+    assert!(cat.ends_with("</skills>\n"));
+    assert!(
+        cat.len() < 8_200,
+        "catalog ({}) should stay near the 8k budget",
+        cat.len()
+    );
+    assert!(!cat.contains("skill-79"), "over-budget skills are dropped");
+    let kept: Vec<_> = (0..80)
+        .filter(|i| cat.contains(&format!("skill-{i:02}")))
+        .collect();
+    assert!(
+        kept.len() < 80 && kept.len() >= 50,
+        "kept {} of 80",
+        kept.len()
+    );
+    assert!(
+        !cat.contains(&"x".repeat(MAX_CATALOG_DESCRIPTION_CHARS + 50)),
+        "truncated descriptions must not keep the full tail"
+    );
+}
+
+#[tokio::test]
+async fn skill_view_rejects_model_invocation_only_skill() {
+    let tmp = tempdir();
+    write_skill_frontmatter(
+        tmp.path(),
+        "secret",
+        "A user-only skill.",
+        "disable-model-invocation: true\n",
+    );
+
+    let mut reg = SkillRegistry::new();
+    reg.load_dir(tmp.path(), SkillSource::Global);
+    let tool = SkillViewTool::new(Arc::new(reg));
+
+    let out = tool.execute(json!({ "name": "secret" })).await;
+    let err = out.expect_err("model must be rejected");
+    assert!(
+        err.to_string().contains("user-invocable only"),
+        "unexpected error: {err}"
+    );
+
+    let ok = tool.execute(json!({ "name": "does-not-exist" })).await;
+    assert!(ok.is_err(), "missing skill stays not-found");
 }

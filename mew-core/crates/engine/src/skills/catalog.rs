@@ -3,7 +3,15 @@
 
 use std::fmt::Write as _;
 
-use super::SkillRegistry;
+use super::{LoadedSkill, SkillRegistry};
+
+/// Character cap on the `<skills>` block; only the
+/// catalog is capped.
+pub const CATALOG_BUDGET_CHARS: usize = 8_000;
+
+/// Longest description kept verbatim; longer ones get `…` before
+/// skills are dropped.
+pub const MAX_CATALOG_DESCRIPTION_CHARS: usize = 120;
 
 /// One entry returned by [`SkillRegistry::list_for_tool`].
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -19,43 +27,92 @@ pub struct SkillListEntry {
 }
 
 impl SkillRegistry {
-    /// Render the L0 system-prompt catalog. Empty string if no skills
-    /// are loaded (so callers can prepend unconditionally).
+    /// Render the L0 system-prompt catalog ("" if none loaded, so
+    /// callers can prepend unconditionally).
     ///
-    /// The format is intentionally compact: one line per skill, no
-    /// body, no per-skill invocation hint. The model reads the
-    /// `skills_list` and `skill_view` tool descriptors (1-2 lines
-    /// each) for the *how*, and this block for the *what*.
+    /// One line per skill, no body. `disable-model-invocation` skills
+    /// are excluded — the model must not know them. Capped at
+    /// [`CATALOG_BUDGET_CHARS`]: overflow truncates descriptions, then
+    /// drops skills (name-sorted, deterministic), then appends a
+    /// `+N more` warning.
     pub fn catalog_for_system_prompt(&self) -> String {
-        if self.skills.is_empty() {
+        let loaded: Vec<_> = self
+            .skills()
+            .into_iter()
+            .filter(|l| !l.skill.disable_model_invocation)
+            .collect();
+        if loaded.is_empty() {
             return String::new();
         }
+        let header = catalog_header();
+        let budget = CATALOG_BUDGET_CHARS - header.len();
+        let mut entries: Vec<String> = loaded.iter().map(|l| l.skill.catalog_entry()).collect();
+        if entries.iter().map(String::len).sum::<usize>() > budget {
+            entries = loaded
+                .iter()
+                .map(|l| {
+                    l.skill
+                        .catalog_entry_truncated(MAX_CATALOG_DESCRIPTION_CHARS)
+                })
+                .collect();
+        }
         let mut out = String::new();
-        out.push_str(catalog_header());
-        for loaded in self.skills() {
-            let _ = writeln!(out, "{}", loaded.skill.catalog_entry());
+        out.push_str(header);
+        let mut remaining = budget;
+        let mut omitted = 0;
+        for entry in entries {
+            if entry.len() + 1 > remaining {
+                omitted += 1;
+                continue;
+            }
+            out.push_str(&entry);
+            out.push('\n');
+            remaining -= entry.len() + 1;
+        }
+        if omitted > 0 {
+            let _ = writeln!(
+                out,
+                "… +{omitted} more skills installed. Run `skills_list()` for the full catalog."
+            );
         }
         out.push_str("</skills>\n");
         out
     }
 
     /// L0 catalog for the `skills_list` tool (model-facing JSON).
-    /// Returns `[{name, description, source, assets}, ...]`.
+    /// Returns `[{name, description, source, assets}, ...]`. Excludes
+    /// skills with `disable-model-invocation: true`.
     pub fn list_for_tool(&self) -> Vec<SkillListEntry> {
         self.skills()
             .into_iter()
-            .map(|loaded| SkillListEntry {
-                name: loaded.skill.name.clone(),
-                description: loaded.skill.description.clone(),
-                source: loaded.source.label(),
-                assets: loaded
-                    .skill
-                    .assets
-                    .iter()
-                    .map(|p| p.to_string_lossy().to_string())
-                    .collect(),
-            })
+            .filter(|l| !l.skill.disable_model_invocation)
+            .map(to_entry)
             .collect()
+    }
+
+    /// L0 catalog for the user-facing `/skills` picker (server route).
+    /// Excludes skills with `user-invocable: false` — the user must
+    /// not see skills only the model can invoke.
+    pub fn list_for_user(&self) -> Vec<SkillListEntry> {
+        self.skills()
+            .into_iter()
+            .filter(|l| l.skill.user_invocable)
+            .map(to_entry)
+            .collect()
+    }
+}
+
+fn to_entry(loaded: &LoadedSkill) -> SkillListEntry {
+    SkillListEntry {
+        name: loaded.skill.name.clone(),
+        description: loaded.skill.description.clone(),
+        source: loaded.source.label(),
+        assets: loaded
+            .skill
+            .assets
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect(),
     }
 }
 

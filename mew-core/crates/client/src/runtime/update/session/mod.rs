@@ -16,8 +16,8 @@ use commands::switch_mode;
 use composer::on_session_submit;
 use connect::on_connect_provider_key;
 use picker::{
-    on_file_picker_key, on_model_picker_key, on_session_list_key, open_file_picker,
-    refresh_file_picker,
+    on_file_picker_key, on_model_picker_key, on_session_list_key, on_skills_picker_key,
+    open_file_picker, refresh_file_picker,
 };
 use slash::{SlashPickerResult, on_slash_picker_key, open_slash_picker, slash_default_cursor};
 
@@ -90,6 +90,7 @@ pub(super) fn on_session_key(
         },
         Overlay::ModelPicker => return on_model_picker_key(s, key),
         Overlay::FilePicker => return on_file_picker_key(s, key),
+        Overlay::Skills => return on_skills_picker_key(s, key),
         Overlay::Choice => return on_choice_key(s, key),
         Overlay::ConnectProvider => return on_connect_provider_key(s, key),
         Overlay::SessionList => return on_session_list_key(s, key),
@@ -115,7 +116,7 @@ pub(super) fn on_session_key(
             }
             // Non-Enter keys fall through so typing edits the title.
         }
-        Overlay::None | Overlay::Tools | Overlay::Skills | Overlay::Theme => {}
+        Overlay::None | Overlay::Tools | Overlay::Theme => {}
     }
 
     match key.code {

@@ -25,11 +25,11 @@ use serde::{Deserialize, Serialize};
 /// Filename every skill bundle must contain.
 pub const SKILL_FILE: &str = "SKILL.md";
 
-/// Subdirectory (under `~/.config/mewcode/`) for globally-installed skills.
+/// Subdirectory (under `~/.config/mew/`) for globally-installed skills.
 pub const GLOBAL_SKILLS_DIR: &str = "skills";
 
 /// Subdirectory (under the project root) for per-project skills.
-pub const PROJECT_SKILLS_DIR: &str = ".mewcode/skills";
+pub const PROJECT_SKILLS_DIR: &str = ".mew/skills";
 
 /// A single skill.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -47,6 +47,19 @@ pub struct Skill {
     /// Not auto-loaded into the prompt; the engine may expose them via tools.
     #[serde(default)]
     pub assets: Vec<PathBuf>,
+    /// Hidden from the model: only the user can invoke this skill
+    /// (via `/name` in the composer). Absent from the system-prompt
+    /// catalog, `skills_list`, and `skill_view` results.
+    #[serde(default)]
+    pub disable_model_invocation: bool,
+    /// Hidden from the user-facing `/skills` picker: only the model
+    /// can invoke this skill. A user `/name` text invocation is ignored.
+    #[serde(default = "default_true")]
+    pub user_invocable: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Skill {
@@ -69,6 +82,21 @@ impl Skill {
     /// under 3 kB of prompt.
     pub fn catalog_entry(&self) -> String {
         format!("- **{}** — {}", self.name, self.description)
+    }
+
+    /// Like [`Skill::catalog_entry`], but with a description truncated
+    /// to `max_desc_chars` (with `…`) when it is longer. Used when the
+    /// full catalog exceeds the prompt budget: the name is always kept
+    /// so the model still knows the skill exists.
+    pub fn catalog_entry_truncated(&self, max_desc_chars: usize) -> String {
+        let description = if self.description.chars().count() > max_desc_chars {
+            let mut s: String = self.description.chars().take(max_desc_chars).collect();
+            s.push('…');
+            s
+        } else {
+            self.description.clone()
+        };
+        format!("- **{}** — {}", self.name, description)
     }
 }
 
@@ -245,13 +273,18 @@ pub fn parse_skill_md(raw: &str, path: &Path) -> Result<Skill, SkillError> {
         body: body.trim().to_string(),
         location: PathBuf::new(),
         assets: Vec::new(),
+        disable_model_invocation: parsed.disable_model_invocation.unwrap_or(false),
+        user_invocable: parsed.user_invocable.unwrap_or(true),
     })
 }
 
 #[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 struct Frontmatter {
     name: Option<String>,
     description: Option<String>,
+    disable_model_invocation: Option<bool>,
+    user_invocable: Option<bool>,
 }
 
 /// Split a `SKILL.md` document into frontmatter and body. Returns

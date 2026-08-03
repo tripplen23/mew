@@ -394,13 +394,13 @@ pub(crate) async fn start_chat_stream(
 /// Build an EngineConfig from the credential store (YAML), ServerConfig,
 /// and environment variables, in priority order:
 ///   1. Credential store (YAML, from /connect TUI)
-///   2. ServerConfig fields (from mewcode.toml or env)
+///   2. ServerConfig fields (from mew.toml or env)
 ///   3. Raw environment variables
 pub async fn build_engine_config(state: &AppState) -> mewcode_engine::EngineConfig {
     let store = state.credentials.lock().await;
     // Read the stored credential directly (not via `api_key()`, which already
     // falls back to env) so the documented priority holds: store -> config ->
-    // env. Otherwise an env key would silently beat a mewcode.toml key.
+    // env. Otherwise an env key would silently beat a mew.toml key.
     let api_key = store
         .credentials
         .get(&mewcode_protocol::ProviderId::OpenCodeGo)
