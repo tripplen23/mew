@@ -82,7 +82,7 @@ macro_rules! define_models {
             }
 
             /// Default model used when none is specified.
-            pub const DEFAULT: ModelId = ModelId::MiniMaxM3;
+            pub const DEFAULT: ModelId = ModelId::DeepSeekV4Flash;
         }
     };
 }
