@@ -1,3 +1,5 @@
+use serde_json::json;
+
 use crate::{Message, MessagePart, Mode, ModelId, ProviderId};
 
 /// Phase of a manual compaction operation.
@@ -261,6 +263,10 @@ pub struct ChatRequest {
 
 /// Client → server request for a headless code review.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+#[schema(example = json!({
+    "diff": "diff --git a/src/foo.rs b/src/foo.rs\nindex 111..222 100644\n--- a/src/foo.rs\n+++ b/src/foo.rs\n@@ -1,3 +1,4 @@\n pub fn add(a: i32, b: i32) -> i32 {\n     a + b\n }\n+\n+// TODO: fix\n",
+    "extra": "focus on error handling"
+}))]
 pub struct ReviewRequest {
     /// The diff to review, already fetched by the caller.
     pub diff: String,
