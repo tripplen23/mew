@@ -10,7 +10,7 @@ design evidence those issues reference.
 
 | Event | Required repo permission | Use |
 |---|---|---|
-| `pull_request` | Contents (read) | PR opened/synchronized — main trigger |
+| `pull_request` | Pull requests (read) | PR opened/synchronized — main trigger |
 | `pull_request_review` | Pull requests (read) | Review submitted |
 | `pull_request_review_comment` | Pull requests (read) | Line/thread comments |
 | `issue_comment` | Issues (read) | PR body/timeline comments — where `@Mew` mentions land |

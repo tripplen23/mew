@@ -49,7 +49,11 @@ impl SkillRegistry {
         let header = catalog_header();
         let budget = CATALOG_BUDGET_CHARS - header.len();
         let mut entries: Vec<String> = loaded.iter().map(|l| l.skill.catalog_entry()).collect();
-        if entries.iter().map(String::len).sum::<usize>() > budget {
+        // Count the rendered newline per entry too — the render loop
+        // below charges `len + 1` each. Mismatched preflight would
+        // skip truncation and drop entries that only exceed the
+        // budget once newlines are counted.
+        if entries.iter().map(|entry| entry.len() + 1).sum::<usize>() > budget {
             entries = loaded
                 .iter()
                 .map(|l| {

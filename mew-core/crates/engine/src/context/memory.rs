@@ -1,10 +1,12 @@
 //! Durable memory scaffold — the agent's persistent fact store.
 //!
-//! Each profile gets one `.md` file under `~/.mew/memories/`.
-//! The content is injected into the system prompt as a `<memory>` section
-//! so the agent sees its persistent facts every turn.
+//! Each profile gets one `.md` file under `<data_dir>/memories/` —
+//! `$XDG_DATA_HOME/mew` (default `~/.local/share/mew`), overridable
+//! via `MEWCODE_DATA_DIR`. The content is injected into the system
+//! prompt as a `<memory>` section so the agent sees its persistent
+//! facts every turn.
 //!
-//! This is the mewcode equivalent of Hermes Agent's MEMORY.md / USER.md
+//! This is the Mew equivalent of Hermes Agent's MEMORY.md / USER.md
 //! system: durable facts the agent can read and update via the
 //! `mew_memory` tool.
 //!

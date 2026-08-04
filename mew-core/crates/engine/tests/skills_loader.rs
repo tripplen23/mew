@@ -225,6 +225,33 @@ fn catalog_truncates_descriptions_and_omits_skills_over_budget() {
     );
 }
 
+#[test]
+fn catalog_truncates_when_only_rendered_newlines_exceed_budget() {
+    // Boundary: entry bytes fit under the budget but the newline each
+    // entry is rendered with does not. Truncation must kick in before
+    // any entry is dropped — a preflight that ignores the newlines
+    // would skip truncation and omit entries instead.
+    // (header is 387 bytes incl. one 3-byte em-dash, so entry budget =
+    // 8000 - 387 = 7613; each entry is 217 bytes: 17 prefix + 3-byte
+    // em-dash + 198 desc. 35 × 217 = 7595, +1 newline each = 7630.
+    // Truncated to 120+… desc: 35 × 141 = 4935, fits.)
+    let tmp = tempdir();
+    for i in 0..35 {
+        write_skill(tmp.path(), &format!("skill-{i:02}"), &"x".repeat(198));
+    }
+
+    let mut reg = SkillRegistry::new();
+    reg.load_dir(tmp.path(), SkillSource::Global);
+
+    let cat = reg.catalog_for_system_prompt();
+    assert!(cat.contains('…'), "descriptions should truncate, not skip");
+    assert!(
+        !cat.contains("more skills installed"),
+        "truncation must fit all entries — no omission needed"
+    );
+    assert!(cat.contains("skill-00"), "names are kept after truncation");
+}
+
 #[tokio::test]
 async fn skill_view_rejects_model_invocation_only_skill() {
     let tmp = tempdir();
