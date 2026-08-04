@@ -121,17 +121,3 @@ pub fn longest_backtick_run(text: &str) -> usize {
     }
     longest
 }
-
-#[cfg(test)]
-mod tests {
-    use super::longest_backtick_run;
-
-    #[test]
-    fn counts_backtick_runs() {
-        assert_eq!(longest_backtick_run("no ticks"), 0);
-        assert_eq!(longest_backtick_run("a ` b"), 1);
-        assert_eq!(longest_backtick_run("```"), 3);
-        assert_eq!(longest_backtick_run("a `` b ``` c"), 3);
-        assert_eq!(longest_backtick_run("``````"), 6);
-    }
-}

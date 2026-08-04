@@ -15,6 +15,7 @@ use mewcode_engine::context::MemoryStore as FactStore;
 use mewcode_protocol::env::OPENCODE_GO_API_KEY;
 use mewcode_protocol::event::ReviewRequest;
 use mewcode_protocol::routes::REVIEW;
+use mewcode_server::routes::review::longest_backtick_run;
 use mewcode_server::store::SessionStore as _;
 use mewcode_server::store::memory::MemoryStore;
 use mewcode_server::{AppState, ServerConfig, build_app};
@@ -100,10 +101,9 @@ async fn failed_review_returns_500_and_cleans_up_session() {
 fn longest_backtick_run_counts_runs() {
     // The prompt fence must be longer than any backtick run in the diff so a
     // malicious diff cannot close the fence early and inject instructions.
-    let r = mewcode_server::routes::review::longest_backtick_run;
-    assert_eq!(r("no ticks"), 0);
-    assert_eq!(r("a ` b"), 1);
-    assert_eq!(r("```"), 3);
-    assert_eq!(r("a `` b ``` c"), 3);
-    assert_eq!(r("``````"), 6);
+    assert_eq!(longest_backtick_run("no ticks"), 0);
+    assert_eq!(longest_backtick_run("a ` b"), 1);
+    assert_eq!(longest_backtick_run("```"), 3);
+    assert_eq!(longest_backtick_run("a `` b ``` c"), 3);
+    assert_eq!(longest_backtick_run("``````"), 6);
 }
