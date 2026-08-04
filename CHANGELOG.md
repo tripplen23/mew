@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/tripplen23/mew/compare/mew-core-v0.7.0...mew-core-v0.8.0) (2026-08-04)
+
+
+### Features
+
+* skill picker and explicit /skill invocation ([#177](https://github.com/tripplen23/mew/issues/177)) ([918d746](https://github.com/tripplen23/mew/commit/918d7464d60fb6fbeaebbd105d8448b4cde1221c))
+
 ## [0.7.0](https://github.com/tripplen23/mew/compare/mew-core-v0.6.0...mew-core-v0.7.0) (2026-08-02)
 
 
