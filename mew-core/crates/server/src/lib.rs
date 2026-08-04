@@ -30,7 +30,7 @@ use mewcode_engine::context::MemoryStore;
 use mewcode_engine::tools::ApprovalBroker;
 use mewcode_protocol::routes::{
     CHAT, CHOICES, HEALTH, MEMORY_GET, MEMORY_POST, PROVIDER_CONNECT, PROVIDER_STATUS, PROVIDERS,
-    SESSION_BY_ID, SESSION_COMPACT, SESSIONS, SKILLS, STORAGE_STATUS,
+    REVIEW, SESSION_BY_ID, SESSION_COMPACT, SESSIONS, SKILLS, STORAGE_STATUS,
 };
 use serde_json::json;
 use tokio::sync::{Mutex, RwLock};
@@ -219,6 +219,7 @@ pub fn build_app(state: AppState) -> Router {
             axum::routing::post(routes::compact::compact_session),
         )
         .route(CHAT, axum::routing::post(routes::chat::chat_stream))
+        .route(REVIEW, axum::routing::post(routes::review::review))
         .route(CHOICES, axum::routing::post(routes::choices::respond))
         .route(STORAGE_STATUS, axum::routing::get(routes::storage::status))
         .route(MEMORY_GET, axum::routing::get(routes::memory::get_memory))
