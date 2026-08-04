@@ -49,7 +49,7 @@ macro_rules! define_models {
         }
 
         impl ModelId {
-            /// Wire id of the default model. Used in `as_str()` and in tests.
+            /// Wire id of the MiniMax M3 model. Used in `as_str()` and in tests.
             pub const MINIMAX_M3_ID: &'static str = "minimax-m3";
 
             /// All supported models in display order.
@@ -82,7 +82,7 @@ macro_rules! define_models {
             }
 
             /// Default model used when none is specified.
-            pub const DEFAULT: ModelId = ModelId::MiniMaxM3;
+            pub const DEFAULT: ModelId = ModelId::DeepSeekV4Flash;
         }
     };
 }

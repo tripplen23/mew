@@ -21,7 +21,7 @@ pub const ENV_PREFIX: &str = "MEWCODE_CLIENT_";
 /// it doesn't match [`ENV_PREFIX`].
 pub const ENV_API_URL: &str = "MEWCODE_API_URL";
 
-/// Client configuration, loaded from `mewcode.toml` and the environment.
+/// Client configuration, loaded from `mew.toml` and the environment.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ClientConfig {
     /// Base URL of the mewcode server.

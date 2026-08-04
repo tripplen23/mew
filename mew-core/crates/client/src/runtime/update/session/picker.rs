@@ -60,6 +60,20 @@ pub(super) fn on_file_picker_key(s: &mut SessionState, key: KeyEvent) -> Cmd {
     }
 }
 
+pub(super) fn on_skills_picker_key(s: &mut SessionState, key: KeyEvent) -> Cmd {
+    match key.code {
+        KeyCode::Up => cursor_move(s, -1),
+        KeyCode::Down => cursor_move(s, 1),
+        KeyCode::PageUp => cursor_move(s, -(s.skills_picker.viewport.max(1) as i32)),
+        KeyCode::PageDown => cursor_move(s, s.skills_picker.viewport.max(1) as i32),
+        KeyCode::Enter => {
+            pick_skill(s);
+            Cmd::None
+        }
+        _ => Cmd::None,
+    }
+}
+
 pub(super) fn open_file_picker(s: &mut SessionState) -> Cmd {
     s.overlay = Overlay::FilePicker;
     s.file_picker.picker.cursor = 0;
@@ -173,6 +187,17 @@ fn cursor_move(s: &mut SessionState, delta: i32) -> Cmd {
         }
         Overlay::FilePicker => {
             file_cursor_move(s, delta);
+            Cmd::None
+        }
+        Overlay::Skills => {
+            let len = s.skills.as_ref().map(Vec::len).unwrap_or(0);
+            move_picker_cursor(&mut s.skills_picker, len, delta);
+            s.skills_picker.scroll = clamp_picker_scroll(
+                s.skills_picker.scroll,
+                s.skills_picker.cursor,
+                len,
+                s.skills_picker.viewport.max(1) as usize,
+            );
             Cmd::None
         }
         _ => Cmd::None,
@@ -317,6 +342,17 @@ pub(crate) fn clamp_file_picker_scroll(s: &mut SessionState) {
     );
 }
 
+pub(crate) fn clamp_skills_picker_scroll(s: &mut SessionState) {
+    let len = s.skills.as_ref().map(Vec::len).unwrap_or(0);
+    clamp_picker_cursor(&mut s.skills_picker, len);
+    s.skills_picker.scroll = clamp_picker_scroll(
+        s.skills_picker.scroll,
+        s.skills_picker.cursor,
+        len,
+        s.skills_picker.viewport.max(1) as usize,
+    );
+}
+
 fn pick_file(s: &mut SessionState) {
     let Some((path, is_dir)) = s
         .filtered_files()
@@ -332,6 +368,20 @@ fn pick_file(s: &mut SessionState) {
     } else {
         s.overlay = Overlay::None;
     }
+}
+
+fn pick_skill(s: &mut SessionState) {
+    let Some(name) = s
+        .skills
+        .as_ref()
+        .and_then(|skills| skills.get(s.skills_picker.cursor))
+        .map(|skill| skill.name.clone())
+    else {
+        return;
+    };
+    s.pasted.clear();
+    s.composer.insert_str(format!("/{name} "));
+    s.overlay = Overlay::None;
 }
 
 fn replace_current_file_token(s: &mut SessionState, replacement: &str) {

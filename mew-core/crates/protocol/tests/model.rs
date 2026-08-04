@@ -13,8 +13,8 @@ fn all_have_unique_strs() {
 }
 
 #[test]
-fn default_is_minimax_m3() {
-    assert_eq!(ModelId::default(), ModelId::MiniMaxM3);
+fn default_is_deepseek_v4_flash() {
+    assert_eq!(ModelId::default(), ModelId::DeepSeekV4Flash);
 }
 
 #[test]

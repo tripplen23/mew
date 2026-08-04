@@ -38,7 +38,7 @@ mod config;
 mod source;
 mod view;
 
-pub use catalog::SkillListEntry;
+pub use catalog::{CATALOG_BUDGET_CHARS, MAX_CATALOG_DESCRIPTION_CHARS, SkillListEntry};
 pub use config::SkillLoadConfig;
 pub use source::{LoadedSkill, SkillSource};
 
@@ -88,10 +88,10 @@ impl SkillRegistry {
             reg.load_dir(dir, SkillSource::External);
         }
 
-        // 3. Global (`~/.config/mewcode/skills`). Loaded before project
+        // 3. Global (`~/.config/mew/skills`). Loaded before project
         //    so project can shadow global on name collision.
         if let Some(home) = dirs::home_dir() {
-            let global = home.join(".config").join("mewcode").join(GLOBAL_SKILLS_DIR);
+            let global = home.join(".config").join("mew").join(GLOBAL_SKILLS_DIR);
             reg.load_dir(&global, SkillSource::Global);
         }
 
@@ -115,12 +115,12 @@ impl SkillRegistry {
         reg
     }
 
-    /// Walk up from `start` looking for the first `.mewcode/skills` directory.
+    /// Walk up from `start` looking for the first `.mew/skills` directory.
     pub fn find_project_skills_dir() -> Option<PathBuf> {
         Self::find_project_skills_dir_from(&std::env::current_dir().ok()?)
     }
 
-    /// Walk up from `start` looking for the first `.mewcode/skills` directory.
+    /// Walk up from `start` looking for the first `.mew/skills` directory.
     pub fn find_project_skills_dir_from(start: &Path) -> Option<PathBuf> {
         let mut cur: Option<&Path> = Some(start);
         while let Some(dir) = cur {
@@ -134,7 +134,7 @@ impl SkillRegistry {
     }
 
     /// Dev convenience: also look for `./skills/`. Production users
-    /// should keep skills in `.mewcode/skills/`.
+    /// should keep skills in `.mew/skills/`.
     pub fn find_dev_skills_dir_from(start: &Path) -> Option<PathBuf> {
         let dev = start.join("skills");
         if dev.is_dir() { Some(dev) } else { None }

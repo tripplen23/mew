@@ -23,6 +23,7 @@ mod session;
 
 use session::picker::{
     clamp_file_picker_scroll, clamp_model_picker_scroll, clamp_session_list_scroll,
+    clamp_skills_picker_scroll,
 };
 use session::{apply_stream_event, on_session_key, on_session_paste, submit_choice_response};
 
@@ -207,7 +208,10 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
             // Fire-and-forget: only surface the error toast if
             // the /skills overlay is still showing.
             match result {
-                Ok(entries) => s.skills = Some(entries),
+                Ok(entries) => {
+                    s.skills = Some(entries);
+                    clamp_skills_picker_scroll(s);
+                }
                 Err(e) => {
                     if s.overlay == Overlay::Skills {
                         *toast = Some(Toast::error(format!("/skills: {e}")));

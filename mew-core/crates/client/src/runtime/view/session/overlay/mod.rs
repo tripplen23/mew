@@ -34,7 +34,24 @@ pub(super) fn render_active_overlay(frame: &mut Frame, area: Rect, s: &mut Sessi
             let mode = s.session.as_ref().map(|sess| sess.mode).unwrap_or_default();
             render_panel(frame, area, "Tools", tools_lines(mode))
         }
-        Overlay::Skills => render_panel(frame, area, "Skills", skills_lines(s)),
+        Overlay::Skills => {
+            let rect = centered_rect(area, 60, 60);
+            let inner_w = rect.width.saturating_sub(2) as usize;
+            let body = skills_lines(s, inner_w);
+            render_scrolled_panel(
+                frame,
+                area,
+                "Skills",
+                "Enter insert, Esc close",
+                60,
+                60,
+                body,
+                s.skills.as_ref().map(Vec::len).unwrap_or(0),
+                s.skills_picker.scroll,
+                s.skills_picker.cursor,
+                &mut s.skills_picker.viewport,
+            );
+        }
         Overlay::Theme => render_panel(frame, area, "Theme", theme_lines()),
         Overlay::Choice => render_panel(frame, area, "Choose", choice_lines(s)),
         Overlay::ConnectProvider => {

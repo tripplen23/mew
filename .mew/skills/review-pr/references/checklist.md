@@ -8,8 +8,8 @@ the model should tick off line by line. Read with
 ## Correctness
 - [ ] No off-by-one errors in slice indices or loop bounds
 - [ ] Null / `None` / `Err` paths are handled (no `.unwrap()` on user input)
-- [ ] No race conditions: shared state is either immutable, behind a
-      mutex, or behind an actor / channel
+- [ ] No race conditions: shared state is immutable, behind an atomic, a
+      mutex, or an actor / channel — and the strategy fits the operation
 - [ ] Async: every `.await` is on a `Send` future; no `Rc` across awaits
 - [ ] API usage matches the crate's docs (not just compiles)
 
@@ -38,6 +38,7 @@ the model should tick off line by line. Read with
 - [ ] The error path is exercised by a test
 
 ## Public API
-- [ ] Backwards compatible (no removed items, no signature changes)
-- [ ] Migration path documented in the commit message if not
+- [ ] Public API changes have an explicit compatibility assessment
+- [ ] If compatibility changes, the migration path is documented in the
+      commit message or project documentation
 - [ ] Changelog / docs updated

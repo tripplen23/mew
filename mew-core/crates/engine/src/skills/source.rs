@@ -5,9 +5,9 @@ use mewcode_protocol::Skill;
 /// Source of a loaded skill.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SkillSource {
-    /// `~/.config/mewcode/skills/...` (global install).
+    /// `~/.config/mew/skills/...` (global install).
     Global,
-    /// `<project>/.mewcode/skills/...` (per-project, walks up).
+    /// `<project>/.mew/skills/...` (per-project, walks up).
     Project,
     /// A directory listed in `config.external_dirs` (shared install).
     External,

@@ -7,7 +7,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use uuid::Uuid;
 
-use mewcode_client::net::Session;
+use mewcode_client::net::{Session, SkillEntry};
 use mewcode_client::runtime::model::{App, Cmd, FileEntry, Msg, Overlay, Screen, SessionState};
 use mewcode_client::runtime::update;
 use mewcode_protocol::{MessagePart, Mode, ModelId, Role};
@@ -62,6 +62,12 @@ fn on_session() -> App {
 
 fn sess(app: &App) -> &SessionState {
     match &app.screen {
+        Screen::Session(s) => s,
+    }
+}
+
+fn sess_mut(app: &mut App) -> &mut SessionState {
+    match &mut app.screen {
         Screen::Session(s) => s,
     }
 }
@@ -527,6 +533,65 @@ fn slash_skills_opens_skills_overlay_and_fetches_when_uncached() {
         Cmd::FetchSkills
     ));
     assert_eq!(sess(&app).overlay, Overlay::Skills);
+}
+
+#[test]
+fn skills_picker_navigates_without_scrolling_transcript_and_inserts_invocation() {
+    let mut app = on_session();
+    sess_mut(&mut app).max_scroll = 10;
+    update(
+        &mut app,
+        Msg::SkillsFetched(Ok(vec![
+            SkillEntry {
+                name: "first-skill".to_string(),
+                description: "first".to_string(),
+                source: "project".to_string(),
+                assets: Vec::new(),
+            },
+            SkillEntry {
+                name: "second-skill".to_string(),
+                description: "second".to_string(),
+                source: "global".to_string(),
+                assets: Vec::new(),
+            },
+        ])),
+    );
+    sess_mut(&mut app).overlay = Overlay::Skills;
+
+    update(&mut app, key(KeyCode::Down));
+    assert_eq!(
+        sess(&app).scroll,
+        0,
+        "picker keys must not scroll transcript"
+    );
+
+    update(&mut app, key(KeyCode::Enter));
+    assert_eq!(sess(&app).overlay, Overlay::None);
+    assert_eq!(sess(&app).composer_text(), "/second-skill ");
+}
+
+#[test]
+fn skills_picker_scroll_keeps_cursor_visible() {
+    let mut app = on_session();
+    let skills = (0..6)
+        .map(|i| SkillEntry {
+            name: format!("skill-{i}"),
+            description: format!("description {i}"),
+            source: "project".to_string(),
+            assets: Vec::new(),
+        })
+        .collect();
+    update(&mut app, Msg::SkillsFetched(Ok(skills)));
+    let s = sess_mut(&mut app);
+    s.overlay = Overlay::Skills;
+    s.skills_picker.viewport = 3;
+
+    for _ in 0..4 {
+        update(&mut app, key(KeyCode::Down));
+    }
+
+    assert_eq!(sess(&app).skills_picker.cursor, 4);
+    assert_eq!(sess(&app).skills_picker.scroll, 2);
 }
 
 #[test]

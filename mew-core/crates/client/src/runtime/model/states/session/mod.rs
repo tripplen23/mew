@@ -118,6 +118,8 @@ pub struct SessionState {
     pub session_list: SessionListState,
     /// Cached skill catalog for the [`Overlay::Skills`] overlay.
     pub skills: Option<Vec<SkillEntry>>,
+    /// Cursor and viewport state for the skill picker overlay.
+    pub skills_picker: PickerState,
     /// Highlighted row in the slash-command picker (0-based).
     pub slash_cursor: usize,
     /// File picker with @ command
@@ -163,6 +165,7 @@ impl SessionState {
             model_picker: ModelPickerState::default(),
             session_list: SessionListState::default(),
             skills: None,
+            skills_picker: PickerState::default(),
             slash_cursor: 0,
             file_picker: FilePickerState::default(),
             pending_choice: None,

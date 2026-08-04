@@ -5,7 +5,7 @@ description: Review a pull request for correctness, style, and test coverage. Us
 
 # How to review a pull request
 
-When you are invoked via `use_skill("review-pr")`, follow this procedure:
+When you are invoked to review code (the user asks for a review, or the review-pr skill fires), follow this procedure. Load sub-files with `skill_view(name="review-pr", path=...)`:
 
 1. **Get the diff.** Use `bash` to run `git diff main...HEAD` (or whatever the
    base branch is). If the repo has no git history, ask the user how to

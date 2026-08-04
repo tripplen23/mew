@@ -47,7 +47,7 @@ pub(super) fn render_session(frame: &mut Frame, area: Rect, s: &mut SessionState
 
     render_transcript(frame, chunks[0], s, theme);
     render_message_queue(frame, chunks[1], s, theme);
-    render_composer(frame, chunks[2], &composer_text, theme);
+    render_composer(frame, chunks[2], &composer_text, s.skills.as_deref(), theme);
     render_status(frame, chunks[3], s, theme);
 
     if !active_overlay_text_input(s) {

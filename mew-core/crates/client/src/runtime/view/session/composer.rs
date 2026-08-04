@@ -10,6 +10,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Clear, Paragraph, Wrap};
 
+use crate::net::SkillEntry;
 use crate::runtime::model::{PASTED_MARKER_PREFIX, SessionState};
 use crate::runtime::view::theme::{COMPOSER_HORIZONTAL_PAD, COMPOSER_LEFT_PAD, Theme};
 
@@ -129,7 +130,13 @@ pub(super) fn composer_height(area: Rect, composer_text: &str) -> u16 {
     composer_lines.saturating_add(1).clamp(2, max_height.max(2))
 }
 
-pub(super) fn render_composer(frame: &mut Frame, chunk: Rect, composer_text: &str, theme: Theme) {
+pub(super) fn render_composer(
+    frame: &mut Frame,
+    chunk: Rect,
+    composer_text: &str,
+    skills: Option<&[SkillEntry]>,
+    theme: Theme,
+) {
     frame.render_widget(
         Block::default().style(Style::default().bg(theme.panel_bg)),
         chunk,
@@ -159,7 +166,14 @@ pub(super) fn render_composer(frame: &mut Frame, chunk: Rect, composer_text: &st
     );
     let lines = composer_text
         .lines()
-        .map(|line| composer_line(line, theme))
+        .enumerate()
+        .map(|(i, line)| {
+            if i == 0 {
+                first_line(line, skills, theme)
+            } else {
+                composer_line(line, theme)
+            }
+        })
         .collect::<Vec<_>>();
     let composer = Paragraph::new(Text::from(lines))
         .style(Style::default().fg(theme.text).bg(theme.panel_bg))
@@ -167,7 +181,34 @@ pub(super) fn render_composer(frame: &mut Frame, chunk: Rect, composer_text: &st
     frame.render_widget(composer, inner);
 }
 
+/// First composer line: a leading `/skill-name` that matches the loaded
+/// catalog renders as a chip, mirroring how the server expands it.
+fn first_line(line: &str, skills: Option<&[SkillEntry]>, theme: Theme) -> Line<'static> {
+    let Some(name) = leading_skill_name(line, skills) else {
+        return composer_line(line, theme);
+    };
+    let mut spans = vec![Span::styled(
+        format!("/{name}"),
+        Style::default()
+            .fg(theme.chip_fg)
+            .bg(theme.lavender)
+            .add_modifier(Modifier::BOLD),
+    )];
+    spans.extend(line_spans(&line[name.len() + 1..], theme));
+    Line::from(spans)
+}
+
+fn leading_skill_name<'a>(line: &'a str, skills: Option<&'a [SkillEntry]>) -> Option<&'a str> {
+    let name = line.strip_prefix('/')?.split_whitespace().next()?;
+    let known = skills.is_some_and(|sk| sk.iter().any(|entry| entry.name == name));
+    known.then_some(name)
+}
+
 fn composer_line(line: &str, theme: Theme) -> Line<'static> {
+    Line::from(line_spans(line, theme))
+}
+
+fn line_spans(line: &str, theme: Theme) -> Vec<Span<'static>> {
     let mut spans = Vec::new();
     let mut rest = line;
 
@@ -178,7 +219,7 @@ fn composer_line(line: &str, theme: Theme) -> Line<'static> {
         let marked = &rest[start..];
         let Some(end) = marked.find(']') else {
             spans.push(Span::raw(marked.to_string()));
-            return Line::from(spans);
+            return spans;
         };
         let end = end + 1;
         spans.push(Span::styled(
@@ -194,7 +235,7 @@ fn composer_line(line: &str, theme: Theme) -> Line<'static> {
     if !rest.is_empty() {
         spans.extend(render_mentions(rest, theme));
     }
-    Line::from(spans)
+    spans
 }
 
 pub(crate) fn render_mentions(text: &str, theme: Theme) -> Vec<Span<'static>> {

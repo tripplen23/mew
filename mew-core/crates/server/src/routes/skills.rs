@@ -41,7 +41,7 @@ pub async fn list_skills(State(state): State<AppState>) -> Json<Vec<SkillEntry>>
         include_dev_dir: true,
     };
     let entries = SkillRegistry::load(&cfg)
-        .list_for_tool()
+        .list_for_user()
         .into_iter()
         .map(|e| SkillEntry {
             name: e.name,

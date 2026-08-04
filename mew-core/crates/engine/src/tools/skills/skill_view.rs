@@ -86,6 +86,18 @@ impl ToolContracts for SkillViewTool {
             .to_string();
         let path = input.get("path").and_then(|v| v.as_str());
 
+        if let Some(loaded) = self.skills.get(&name) {
+            if loaded.skill.disable_model_invocation {
+                return Err(ToolError::Rejected {
+                    message: format!("skill '{name}' is user-invocable only"),
+                    hint: Some(
+                        "only the user can invoke this skill (e.g. via /{name}); it is intentionally absent from the catalog and skills_list"
+                            .into(),
+                    ),
+                });
+            }
+        }
+
         match path {
             None => {
                 let body = self.skills.view_body(&name).map_err(|e| match e {

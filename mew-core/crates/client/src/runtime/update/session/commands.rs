@@ -78,9 +78,11 @@ pub(super) fn on_model_command(s: &mut SessionState) -> Cmd {
     }
 }
 
-/// Handle `/skills`: open the read-only skills overlay
+/// Handle `/skills`: open the skill picker overlay.
 pub(super) fn on_skills_command(s: &mut SessionState) -> Cmd {
     s.overlay = Overlay::Skills;
+    s.skills_picker.cursor = 0;
+    s.skills_picker.scroll = 0;
     if s.skills.is_none() {
         Cmd::FetchSkills
     } else {

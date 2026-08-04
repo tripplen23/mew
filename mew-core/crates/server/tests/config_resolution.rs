@@ -43,7 +43,7 @@ async fn clear_credentials(state: &AppState) {
     store.credentials.clear();
 }
 
-/// Resolution priority is store -> config (mewcode.toml) -> env; a blank key
+/// Resolution priority is store -> config field -> env; a blank key
 /// is left empty so the engine's `Provider::for_model` rejects it as missing.
 #[tokio::test]
 async fn build_engine_config_resolution_priority() {
@@ -72,7 +72,7 @@ async fn build_engine_config_resolution_priority() {
         assert_eq!(cfg.api_key, "store-key");
     }
 
-    // Config (mewcode.toml) beats a raw env var.
+    // Config field beats a raw env var.
     {
         let state = app_with(ServerConfig {
             opencode_go_api_key: Some("cfg-key".into()),
