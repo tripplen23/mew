@@ -5,8 +5,10 @@ use std::fmt::Write as _;
 
 use super::{LoadedSkill, SkillRegistry};
 
-/// Character cap on the `<skills>` block; only the
-/// catalog is capped.
+/// Byte budget for the catalog's *entry list* (header excluded).
+/// Approximate, not a hard cap on the whole `<skills>` block: the
+/// `+N more` warning line and `</skills>` footer are appended after
+/// budgeting, so the final block can slightly exceed this.
 pub const CATALOG_BUDGET_CHARS: usize = 8_000;
 
 /// Longest description kept verbatim; longer ones get `…` before
@@ -31,10 +33,10 @@ impl SkillRegistry {
     /// callers can prepend unconditionally).
     ///
     /// One line per skill, no body. `disable-model-invocation` skills
-    /// are excluded — the model must not know them. Capped at
-    /// [`CATALOG_BUDGET_CHARS`]: overflow truncates descriptions, then
-    /// drops skills (name-sorted, deterministic), then appends a
-    /// `+N more` warning.
+    /// are excluded — the model must not know them. The entry list is
+    /// budgeted at [`CATALOG_BUDGET_CHARS`] (byte length): overflow
+    /// truncates descriptions, then drops skills (name-sorted,
+    /// deterministic), then appends a `+N more` warning line.
     pub fn catalog_for_system_prompt(&self) -> String {
         let loaded: Vec<_> = self
             .skills()
