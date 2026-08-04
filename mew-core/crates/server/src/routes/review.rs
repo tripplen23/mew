@@ -63,30 +63,52 @@ pub async fn review(
     };
 
     let mut rx = services::chat::start_chat_stream(state.clone(), chat_req).await;
-    let mut findings = String::new();
-    let mut status = StatusCode::OK;
-    while let Some(event) = rx.recv().await {
-        match event {
-            StreamEvent::TextDelta { delta } => findings.push_str(&delta),
-            StreamEvent::Error { message, .. } => {
-                tracing::error!(%message, "review: chat turn failed");
-                status = StatusCode::INTERNAL_SERVER_ERROR;
+
+    // Drain + cleanup in a detached task so a client disconnect (which drops
+    // this request future at the next await) cannot skip session deletion.
+    // The task owns the stream and the store handle; the handler only awaits
+    // the outcome channel.
+    let (tx, rx_result) = tokio::sync::oneshot::channel();
+    tokio::spawn(async move {
+        let mut findings = String::new();
+        let mut status = StatusCode::OK;
+        while let Some(event) = rx.recv().await {
+            match event {
+                StreamEvent::TextDelta { delta } => findings.push_str(&delta),
+                StreamEvent::Error { message, .. } => {
+                    tracing::error!(%message, "review: chat turn failed");
+                    status = StatusCode::INTERNAL_SERVER_ERROR;
+                }
+                StreamEvent::Aborted => {
+                    tracing::warn!("review: chat turn aborted");
+                    status = StatusCode::INTERNAL_SERVER_ERROR;
+                }
+                _ => {}
             }
-            _ => {}
         }
-    }
 
-    // Throwaway session: drop it once the turn is fully drained. The chat
-    // task holds the session operation lock until it exits, so deletion
-    // after the stream closes cannot race an in-flight turn. Best effort —
-    // a missing session is fine, real failures are logged, not fatal.
-    if let Err(error) = state.store.delete_session(session.id).await {
-        if !matches!(error, crate::store::StoreError::NotFound) {
-            tracing::warn!(%error, session_id = %session.id, "review: failed to delete throwaway session");
+        // Throwaway session: drop it once the turn is fully drained. The chat
+        // task holds the session operation lock until it exits, so deletion
+        // after the stream closes cannot race an in-flight turn. Best effort —
+        // a missing session is fine, real failures are logged, not fatal.
+        if let Err(error) = state.store.delete_session(session.id).await {
+            if !matches!(error, crate::store::StoreError::NotFound) {
+                tracing::warn!(%error, session_id = %session.id, "review: failed to delete throwaway session");
+            }
         }
-    }
 
-    (status, Json(ReviewResponse { findings }))
+        let _ = tx.send((status, findings));
+    });
+
+    match rx_result.await {
+        Ok((status, findings)) => (status, Json(ReviewResponse { findings })),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ReviewResponse {
+                findings: String::new(),
+            }),
+        ),
+    }
 }
 
 /// Assemble the review prompt. The diff and extra focus are untrusted
