@@ -1,6 +1,11 @@
 use clap::{Args, Parser, Subcommand};
 
 use mewcode_client::ClientConfig;
+use mewcode_protocol::event::ChatRequest;
+use mewcode_protocol::{Message, MessagePart, Mode, ModelId, StreamEvent};
+
+use futures::StreamExt;
+use std::io::Write as _;
 
 /// Name of the server binary that the `server` subcommand shells out to.
 const SERVER_BINARY: &str = "mewcode-server";
@@ -30,6 +35,18 @@ enum Cmd {
     Hello,
     /// Read, write, and list persistent memory.
     Memory(MemoryArgs),
+    /// Review the current branch diff against a base branch.
+    Review(ReviewArgs),
+}
+
+#[derive(Debug, Args)]
+struct ReviewArgs {
+    /// Base branch (or ref) to compare against. Defaults to `main`.
+    #[arg(default_value = "main")]
+    base: String,
+    /// Extra focus instruction appended to the review prompt.
+    #[arg(long)]
+    extra: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -98,6 +115,7 @@ fn main() -> anyhow::Result<()> {
             Cmd::Migrate => {
                 anyhow::bail!("migrate is not implemented yet")
             }
+            Cmd::Review(args) => run_review(&args).await,
             Cmd::Memory(args) => match args.command {
                 MemoryCommand::Read => {
                     let content = read_memory().await?;
@@ -119,6 +137,75 @@ fn main() -> anyhow::Result<()> {
             },
         }
     })
+}
+
+/// Review the current branch's diff against `base`, streamed via the server.
+///
+/// Runs in `Mode::Plan` so the reviewing model can read files and run
+/// read-only git inspection, but cannot modify the working tree.
+async fn run_review(args: &ReviewArgs) -> Result<(), anyhow::Error> {
+    let diff = git_diff(&args.base)?;
+    if diff.trim().is_empty() {
+        anyhow::bail!(
+            "no diff between '{base}' and HEAD — nothing to review",
+            base = args.base
+        );
+    }
+
+    let mut prompt = format!(
+        "Review the diff below — it is already fetched, do not re-fetch it. \
+         Load the `review-pr` skill from the catalog and follow its procedure.\n\
+         Review in two passes: first scan the diff for issues, then re-check \
+         each candidate issue against the surrounding code and drop anything \
+         you cannot confirm. Report findings one per line in the skill's \
+         format, with a Verdict line at the end.\n\
+         \n```diff\n{diff}\n```"
+    );
+    if let Some(extra) = &args.extra {
+        prompt.push_str(&format!("\n\nExtra focus: {extra}"));
+    }
+
+    let config = ClientConfig::load()?;
+    let client = mewcode_client::net::ApiClient::new(&config.api_url);
+    let session = client
+        .create_session(&mewcode_client::net::CreateSessionRequest {
+            title: "mew review".into(),
+            model: Some(ModelId::DEFAULT),
+            mode: Some(Mode::Plan),
+        })
+        .await?;
+    let req = ChatRequest {
+        session_id: session.id,
+        model: ModelId::DEFAULT,
+        provider: None,
+        mode: Mode::Plan,
+        messages: vec![Message::user(vec![MessagePart::Text { text: prompt }])],
+    };
+
+    let mut stream = client.chat_stream(&req).await?;
+    while let Some(event) = stream.next().await {
+        if let StreamEvent::TextDelta { delta } = event? {
+            print!("{delta}");
+            std::io::stdout().flush()?;
+        }
+    }
+    println!();
+    Ok(())
+}
+
+/// `git diff <base>...HEAD` (three-dot: merge-base semantics).
+fn git_diff(base: &str) -> Result<String, anyhow::Error> {
+    let out = std::process::Command::new("git")
+        .args(["diff", &format!("{base}...HEAD")])
+        .output()
+        .map_err(|e| anyhow::anyhow!("failed to run git: {e} (is git installed?)"))?;
+    if !out.status.success() {
+        anyhow::bail!(
+            "git diff {base}...HEAD failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
 /// Read memory from the server.
