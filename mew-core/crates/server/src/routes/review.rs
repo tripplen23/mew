@@ -108,6 +108,10 @@ fn build_prompt(req: &ReviewRequest) -> String {
 }
 
 /// Longest run of consecutive backticks in `text`.
+///
+/// Test surface only: the review prompt picks its fence from this so a
+/// malicious diff cannot close it early (see `build_prompt`).
+#[doc(hidden)]
 pub fn longest_backtick_run(text: &str) -> usize {
     let mut longest = 0;
     let mut current = 0;

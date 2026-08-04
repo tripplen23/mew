@@ -65,6 +65,20 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
+## 5. Code Quality Per CONTRIBUTING.md
+
+**Always follow the coding standards in `CONTRIBUTING.md` before considering code complete:**
+
+- All tests live in external `tests/*.rs` files — never `#[cfg(test)] mod tests` inside source files. Source is 100% production code.
+- If a test needs a private item, make it `pub` with `#[doc(hidden)]` and re-export it at the module root.
+- Docstrings: concise, `///` above the item, what it's *for* + trade-offs, not restating the signature.
+- Inline comments explain *why*, not *what*.
+- No magic strings with domain meaning — use `pub const` in `protocol::routes`, `protocol::env`, `protocol::model`, or the owning crate's `config.rs`.
+- No back-edges in the dependency graph: nothing depends on `client` or `server`.
+- Run `make fmt-check lint test` (or `make check`) before finishing.
+
+When in doubt about a standard, read `CONTRIBUTING.md` — it is the source of truth.
+
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.

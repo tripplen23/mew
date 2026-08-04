@@ -15,7 +15,7 @@ use mewcode_engine::context::MemoryStore as FactStore;
 use mewcode_protocol::env::OPENCODE_GO_API_KEY;
 use mewcode_protocol::event::ReviewRequest;
 use mewcode_protocol::routes::REVIEW;
-use mewcode_server::routes::review::longest_backtick_run;
+use mewcode_server::routes::longest_backtick_run;
 use mewcode_server::store::SessionStore as _;
 use mewcode_server::store::memory::MemoryStore;
 use mewcode_server::{AppState, ServerConfig, build_app};
