@@ -64,10 +64,8 @@ pub async fn review(
 
     let mut rx = services::chat::start_chat_stream(state.clone(), chat_req).await;
 
-    // Drain + cleanup in a detached task so a client disconnect (which drops
-    // this request future at the next await) cannot skip session deletion.
-    // The task owns the stream and the store handle; the handler only awaits
-    // the outcome channel.
+    // Drain + cleanup in a detached task: a client disconnect drops this
+    // request future mid-await, which would otherwise skip session deletion.
     let (tx, rx_result) = tokio::sync::oneshot::channel();
     tokio::spawn(async move {
         let mut findings = String::new();
@@ -87,10 +85,8 @@ pub async fn review(
             }
         }
 
-        // Throwaway session: drop it once the turn is fully drained. The chat
-        // task holds the session operation lock until it exits, so deletion
-        // after the stream closes cannot race an in-flight turn. Best effort —
-        // a missing session is fine, real failures are logged, not fatal.
+        // Best effort: delete after drain — the chat task holds the op lock
+        // until exit, so this cannot race an in-flight turn.
         if let Err(error) = state.store.delete_session(session.id).await {
             if !matches!(error, crate::store::StoreError::NotFound) {
                 tracing::warn!(%error, session_id = %session.id, "review: failed to delete throwaway session");
