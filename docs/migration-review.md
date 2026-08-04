@@ -43,9 +43,9 @@ A migration run is complete only when:
 - the review findings are recorded with evidence;
 - `final_verification` evidence exists (PRD §9.7, step 10).
 
-For terse comment style, the ported `caveman-review` skill offers the
-one-line-per-finding format (`L42: 🔴 bug: ...`); use it when reviewing large
-diffs to keep the evidence log compact.
+Keep each finding on one line in the evidence log
+(`path:line: severity: problem. fix.`) to stay compact when reviewing
+large diffs.
 
 ## Out of scope (future)
 
