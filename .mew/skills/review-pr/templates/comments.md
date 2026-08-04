@@ -24,10 +24,10 @@ and you're done. Read with
 
 ## "Concurrent access"
 
-> This shared state isn't behind a `Mutex` / `RwLock`, so two
-> concurrent calls to `<method>` could see a torn read. Could you
-> either wrap it in a lock or move it to thread-local / per-task
-> storage?
+> This shared state isn't behind a `Mutex` / `RwLock` (or atomic), so
+> two concurrent calls to `<method>` could race. If the design really
+> is lock-free, say why; otherwise wrap it in a lock or move it to
+> thread-local / per-task storage.
 
 ---
 
