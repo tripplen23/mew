@@ -93,6 +93,14 @@ pub struct GithubServerConfig {
     pub private_key_path: Option<String>,
 }
 
+impl GithubServerConfig {
+    /// All three app credentials present; a partial set disables the
+    /// webhook so deliveries never fail halfway through a review.
+    pub fn is_complete(&self) -> bool {
+        self.webhook_secret.is_some() && self.app_id.is_some() && self.private_key_path.is_some()
+    }
+}
+
 /// Skills subsection of [`ServerConfig`].
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct SkillServerConfig {

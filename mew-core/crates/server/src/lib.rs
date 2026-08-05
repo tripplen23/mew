@@ -41,6 +41,7 @@ use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
 use crate::credential::CredentialStore;
+use crate::github::GithubClient;
 use crate::openapi::ApiDoc;
 use crate::store::{SessionStore, StoreError};
 
@@ -69,12 +70,19 @@ pub struct AppState {
     pub session_tokens: Arc<RwLock<HashMap<uuid::Uuid, u64>>>,
     /// Serializes mutations for each known session independently.
     pub session_operations: Arc<Mutex<HashMap<uuid::Uuid, Arc<Mutex<()>>>>>,
+    /// Reusable GitHub App client with token cache, built at startup when
+    /// the GitHub config is complete; `None` disables the webhook.
+    pub github_client: Option<GithubClient>,
+    /// Recently processed `X-GitHub-Delivery` IDs with timestamps; guards
+    /// against GitHub redelivering a mention and double-reviewing.
+    pub webhook_deliveries: Arc<Mutex<HashMap<String, std::time::Instant>>>,
 }
 
 impl AppState {
     /// Construct a new state over the given session store and memory store.
     pub fn new(config: ServerConfig, store: Arc<dyn SessionStore>, memory: MemoryStore) -> Self {
         let credentials = CredentialStore::load().unwrap_or_default();
+        let github_client = GithubClient::from_config(&config.github);
         Self {
             config,
             store,
@@ -83,6 +91,8 @@ impl AppState {
             approvals: ApprovalBroker::default(),
             session_tokens: Arc::new(RwLock::new(HashMap::new())),
             session_operations: Arc::new(Mutex::new(HashMap::new())),
+            github_client,
+            webhook_deliveries: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 

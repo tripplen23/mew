@@ -20,28 +20,56 @@ use crate::services::github_bot;
 type HmacSha256 = Hmac<Sha256>;
 
 /// `POST /webhook/github` — verify, accept, and fan out to a detached
-/// review task. Returns 200 for anything that is not an invalid signature;
-/// GitHub retries non-2xx deliveries, so real failures are logged and the
-/// delivery is acked rather than replayed.
+/// review task.
+///
+/// Contract:
+/// - incomplete GitHub App config → 404 (endpoint disabled)
+/// - missing/bad `X-Hub-Signature-256` → 401 (GitHub flags the delivery)
+/// - duplicate `X-GitHub-Delivery` → 200 with `accepted: false` (already
+///   handled; a non-2xx would make GitHub redeliver and double-review)
+/// - anything else → 200. Real failures are logged and the delivery acked
+///   rather than replayed.
+///
+/// Not in the OpenAPI spec: utoipa cannot describe `Bytes` bodies, and
+/// GitHub (not humans) is the only client of this endpoint.
 pub async fn webhook(
     State(state): State<AppState>,
     headers: HeaderMap,
     body: Bytes,
 ) -> (StatusCode, Json<Value>) {
-    let Some(secret) = state.config.github.webhook_secret.as_deref() else {
-        tracing::warn!("github webhook delivery ignored: webhook secret not configured");
-        return (StatusCode::OK, Json(json!({ "accepted": false })));
-    };
+    if !state.config.github.is_complete() {
+        tracing::warn!("github webhook delivery ignored: app config incomplete");
+        return (StatusCode::NOT_FOUND, Json(json!({ "accepted": false })));
+    }
+    let secret = state
+        .config
+        .github
+        .webhook_secret
+        .as_deref()
+        .expect("is_complete ensures secret");
     let Some(signature) = headers
         .get("x-hub-signature-256")
         .and_then(|v| v.to_str().ok())
     else {
-        tracing::warn!("github webhook delivery ignored: missing signature");
-        return (StatusCode::OK, Json(json!({ "accepted": false })));
+        tracing::warn!("github webhook delivery rejected: missing signature");
+        return (StatusCode::UNAUTHORIZED, Json(json!({ "accepted": false })));
     };
     if !verify_signature(secret, &body, signature) {
-        tracing::warn!("github webhook delivery ignored: bad signature");
-        return (StatusCode::OK, Json(json!({ "accepted": false })));
+        tracing::warn!("github webhook delivery rejected: bad signature");
+        return (StatusCode::UNAUTHORIZED, Json(json!({ "accepted": false })));
+    }
+
+    if let Some(delivery_id) = headers
+        .get("x-github-delivery")
+        .and_then(|v| v.to_str().ok())
+    {
+        let mut seen = state.webhook_deliveries.lock().await;
+        let cutoff = std::time::Instant::now() - std::time::Duration::from_secs(600);
+        seen.retain(|_, at| *at > cutoff);
+        if seen.insert(delivery_id.to_owned(), std::time::Instant::now()).is_some() {
+            tracing::debug!(delivery_id, "github webhook: duplicate delivery, skipping");
+            return (StatusCode::OK, Json(json!({ "accepted": false, "duplicate": true })));
+        }
     }
 
     let payload: Value = match serde_json::from_slice(&body) {
