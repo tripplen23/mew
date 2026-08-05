@@ -33,6 +33,9 @@ fn test_config() -> ServerConfig {
         default_model: None,
         log: "off".into(),
         skills: Default::default(),
+        github_webhook_secret: None,
+        github_app_id: None,
+        github_private_key_path: None,
     }
 }
 

@@ -71,6 +71,16 @@ pub struct ServerConfig {
     /// Skill configuration.
     #[serde(default)]
     pub skills: SkillServerConfig,
+    /// GitHub App webhook secret for `X-Hub-Signature-256` verification.
+    /// Unset disables the webhook endpoint.
+    #[serde(default)]
+    pub github_webhook_secret: Option<String>,
+    /// GitHub App ID (JWT `iss` for installation tokens). Optional.
+    #[serde(default)]
+    pub github_app_id: Option<u64>,
+    /// Path to the GitHub App private key (`.pem`). Optional.
+    #[serde(default)]
+    pub github_private_key_path: Option<String>,
 }
 
 /// Skills subsection of [`ServerConfig`].

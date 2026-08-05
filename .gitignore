@@ -52,3 +52,4 @@ mew-mcp/bin/
 # Local GitHub App private keys + helper scripts (never commit)
 .secrets/
 **/.secrets/
+mewcli.2026-08-05.private-key.pem

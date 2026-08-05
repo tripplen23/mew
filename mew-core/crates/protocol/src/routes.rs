@@ -25,6 +25,9 @@ pub const CHAT: &str = "/chat";
 /// `POST /review` — headless code review of a diff via the `review-pr` skill.
 pub const REVIEW: &str = "/review";
 
+/// `POST /webhook/github` — GitHub App webhook endpoint (the @Mew review bot).
+pub const GITHUB_WEBHOOK: &str = "/webhook/github";
+
 /// `POST /choices` — answer a pending interactive choice.
 pub const CHOICES: &str = "/choices";
 
