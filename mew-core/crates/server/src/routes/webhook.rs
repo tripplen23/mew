@@ -28,7 +28,7 @@ pub async fn webhook(
     headers: HeaderMap,
     body: Bytes,
 ) -> (StatusCode, Json<Value>) {
-    let Some(secret) = state.config.github_webhook_secret.as_deref() else {
+    let Some(secret) = state.config.github.webhook_secret.as_deref() else {
         tracing::warn!("github webhook delivery ignored: webhook secret not configured");
         return (StatusCode::OK, Json(json!({ "accepted": false })));
     };

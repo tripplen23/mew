@@ -49,11 +49,13 @@ impl GithubClient {
     pub fn from_state(state: &AppState) -> Result<Self> {
         let app_id = state
             .config
-            .github_app_id
+            .github
+            .app_id
             .ok_or_else(|| anyhow!("github app id not configured"))?;
         let key_path = state
             .config
-            .github_private_key_path
+            .github
+            .private_key_path
             .as_deref()
             .ok_or_else(|| anyhow!("github private key path not configured"))?;
         Self::new(app_id, key_path)
