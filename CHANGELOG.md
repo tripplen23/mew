@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/tripplen23/mew/compare/mew-core-v0.8.0...mew-core-v0.9.0) (2026-08-05)
+
+
+### Features
+
+* POST /review — headless review route (foundation for GitHub bot) ([#184](https://github.com/tripplen23/mew/issues/184)) ([82da063](https://github.com/tripplen23/mew/commit/82da063361253ccb10bfecbcb3db8bb4c8a5263e))
+
 ## [0.8.0](https://github.com/tripplen23/mew/compare/mew-core-v0.7.0...mew-core-v0.8.0) (2026-08-04)
 
 
