@@ -16,6 +16,111 @@ use serde_json::Value;
 
 use crate::AppState;
 
+/// One machine-parseable finding from the review skill output.
+#[derive(Debug, Clone, PartialEq)]
+pub struct InlineComment {
+    pub path: String,
+    /// New-file line number (`+` side of the diff hunk).
+    pub line: u32,
+    /// `severity: message` as written by the skill.
+    pub body: String,
+}
+
+/// Parse the skill's structured findings (`## <path>` headers with
+/// `- <line>: <severity>: <message>` entries) into inline comments. Lines
+/// that do not match are skipped — they stay visible in the review body.
+///
+/// Test surface only; the review path is the only production caller.
+#[doc(hidden)]
+pub fn parse_findings(text: &str) -> Vec<InlineComment> {
+    let mut comments = Vec::new();
+    let mut path: Option<&str> = None;
+    for line in text.lines() {
+        if let Some(rest) = line.strip_prefix("## ") {
+            path = Some(rest.trim());
+            continue;
+        }
+        let Some(path) = path else { continue };
+        let Some(rest) = line.trim_start().strip_prefix("- ") else {
+            continue;
+        };
+        if let Some((number, body)) = rest.split_once(':') {
+            if let Ok(line) = number.trim().parse::<u32>() {
+                comments.push(InlineComment {
+                    path: path.to_owned(),
+                    line,
+                    body: body.trim().to_owned(),
+                });
+            }
+        }
+    }
+    comments
+}
+
+/// Map of file path → new-file line numbers present in the diff hunks
+/// (context and added lines; GitHub only accepts inline comments on these).
+///
+/// Test surface only; the review path is the only production caller.
+#[doc(hidden)]
+pub fn diff_new_lines(diff: &str) -> std::collections::HashMap<String, std::collections::BTreeSet<u32>> {
+    use std::collections::{BTreeSet, HashMap};
+
+    let mut result: HashMap<String, BTreeSet<u32>> = HashMap::new();
+    let mut path: Option<&str> = None;
+    for line in diff.lines() {
+        if let Some(rest) = line.strip_prefix("+++ b/") {
+            // ponytail: assumes `+++ b/` lines are file headers, which
+            // holds for every diff git produces; a literal added line
+            // starting with "+++ b/" would misparse.
+            path = Some(rest);
+            result.entry(rest.to_owned()).or_default();
+            continue;
+        }
+        let Some(path) = path else { continue };
+        let Some(hunk) = line.strip_prefix("@@ ") else {
+            continue;
+        };
+        let Some(plus) = hunk.split_whitespace().nth(1) else {
+            continue;
+        };
+        let nums = plus.trim_start_matches('+');
+        let (start, count) = match nums.split_once(',') {
+            Some((start, count)) => (
+                start.parse::<u32>().unwrap_or(0),
+                count.parse::<u32>().unwrap_or(0),
+            ),
+            None => (nums.parse::<u32>().unwrap_or(0), 1),
+        };
+        if count > 0 {
+            if let Some(lines) = result.get_mut(path) {
+                lines.extend(start..start + count);
+            }
+        }
+    }
+    result
+}
+
+/// Split parsed findings into those anchorable to the diff (path + line
+/// exist in the hunks) and those that are not. Unanchored findings stay in
+/// the review body rather than being dropped.
+///
+/// Test surface only; the review path is the only production caller.
+#[doc(hidden)]
+pub fn anchor_inline_comments(
+    comments: Vec<InlineComment>,
+    diff_lines: &std::collections::HashMap<String, std::collections::BTreeSet<u32>>,
+) -> (Vec<InlineComment>, Vec<InlineComment>) {
+    let mut anchored = Vec::new();
+    let mut unanchored = Vec::new();
+    for comment in comments {
+        match diff_lines.get(&comment.path) {
+            Some(lines) if lines.contains(&comment.line) => anchored.push(comment),
+            _ => unanchored.push(comment),
+        }
+    }
+    (anchored, unanchored)
+}
+
 /// Extract the mention target from a webhook payload: the PR number when
 /// the event is a comment mentioning `@mew` (app slug `mewcli`) on an open
 /// pull request, else `None`.
@@ -153,7 +258,7 @@ async fn review_pr(state: &AppState, owner: &str, repo: &str, pr_number: u64) ->
     let (status, response) = crate::routes::review::run_review(
         state.clone(),
         ReviewRequest {
-            diff,
+            diff: diff.clone(),
             extra: Some(format!("PR {owner}/{repo}#{pr_number}")),
         },
     )
@@ -164,7 +269,20 @@ async fn review_pr(state: &AppState, owner: &str, repo: &str, pr_number: u64) ->
         response.findings
     );
 
-    client
-        .post_review(&token, owner, repo, pr_number, &response.findings)
-        .await
+    // Anchor findings to diff lines; findings that cannot be anchored (or
+    // exceed GitHub's per-review comment cap) stay in the review body —
+    // the body always carries the full findings text, so nothing is lost.
+    let findings = &response.findings;
+    let (anchored, _) = anchor_inline_comments(parse_findings(findings), &diff_new_lines(&diff));
+    if anchored.is_empty() {
+        client
+            .post_review(&token, owner, repo, pr_number, findings)
+            .await?;
+    } else {
+        let inline: Vec<InlineComment> = anchored.into_iter().take(50).collect();
+        client
+            .post_review_with_comments(&token, owner, repo, pr_number, findings, &inline)
+            .await?;
+    }
+    Ok(())
 }

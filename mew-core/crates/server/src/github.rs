@@ -202,6 +202,35 @@ impl GithubClient {
         Ok(())
     }
 
+    /// Post a review with line-anchored inline comments; `body` is the
+    /// summary text shown at the top of the review.
+    pub(crate) async fn post_review_with_comments(
+        &self,
+        token: &str,
+        owner: &str,
+        repo: &str,
+        pr_number: u64,
+        body: &str,
+        comments: &[crate::services::github_bot::InlineComment],
+    ) -> Result<()> {
+        let comments = comments
+            .iter()
+            .map(|c| json!({ "path": c.path, "line": c.line, "body": c.body }))
+            .collect::<Vec<_>>();
+        self.http
+            .post(format!(
+                "{API_ROOT}/repos/{owner}/{repo}/pulls/{pr_number}/reviews"
+            ))
+            .bearer_auth(token)
+            .json(&json!({ "body": body, "event": "COMMENT", "comments": comments }))
+            .send()
+            .await
+            .context("posting PR review with comments")?
+            .error_for_status()
+            .context("GitHub rejected review post")?;
+        Ok(())
+    }
+
     /// App JWT (RS256, ≤10 min, `iss` = app ID). `iat` is backdated 60s so
     /// GitHub's clock-skew tolerance never rejects a fresh token.
     #[doc(hidden)]
