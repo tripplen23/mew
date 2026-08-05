@@ -22,6 +22,9 @@ pub const SESSION_BY_ID: &str = "/sessions/{id}";
 /// `POST /chat` — SSE chat stream.
 pub const CHAT: &str = "/chat";
 
+/// `POST /review` — headless code review of a diff via the `review-pr` skill.
+pub const REVIEW: &str = "/review";
+
 /// `POST /choices` — answer a pending interactive choice.
 pub const CHOICES: &str = "/choices";
 

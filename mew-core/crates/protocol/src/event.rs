@@ -259,6 +259,23 @@ pub struct ChatRequest {
     pub messages: Vec<Message>,
 }
 
+/// Client → server request for a headless code review.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+pub struct ReviewRequest {
+    /// The diff to review, already fetched by the caller.
+    pub diff: String,
+    /// Extra focus instruction appended to the review prompt.
+    #[serde(default)]
+    pub extra: Option<String>,
+}
+
+/// Result of a headless code review.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+pub struct ReviewResponse {
+    /// Review findings in the `review-pr` skill's output format.
+    pub findings: String,
+}
+
 /// Concatenate all `Text` parts of a message.
 pub fn text_of(msg: &Message) -> String {
     msg.parts

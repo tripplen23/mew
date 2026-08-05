@@ -7,9 +7,10 @@ description: Review a pull request for correctness, style, and test coverage. Us
 
 When you are invoked to review code (the user asks for a review, or the review-pr skill fires), follow this procedure. Load sub-files with `skill_view(name="review-pr", path=...)`:
 
-1. **Get the diff.** Use `bash` to run `git diff main...HEAD` (or whatever the
-   base branch is). If the repo has no git history, ask the user how to
-   obtain the diff.
+1. **Get the diff.** If the diff is already provided in the request, use it
+   as-is — do not re-fetch it. Otherwise use `bash` to run
+   `git diff main...HEAD` (or whatever the base branch is). If the repo has
+   no git history, ask the user how to obtain the diff.
 
 2. **Read the surrounding code.** For every changed file, read at least
    one related file to understand the conventions the project uses.
@@ -28,7 +29,12 @@ When you are invoked to review code (the user asks for a review, or the review-p
    - **Public API.** If the diff changes a public API, is it backwards
      compatible? If not, is the migration path clear?
 
-4. **Format your response.** Group feedback by file. Use this structure:
+4. **Validate before reporting.** Re-check every candidate issue against
+   the surrounding code. Drop anything you cannot confirm. Only report
+   issues you are confident are real — false positives erode trust and
+   waste the reviewer's time.
+
+5. **Format your response.** Group feedback by file. Use this structure:
    ```
    ## <file path>
    - <line range or symbol>: <one-sentence finding>
