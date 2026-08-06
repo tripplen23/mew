@@ -6,10 +6,10 @@
 //! longer than GitHub's delivery timeout, and a non-2xx would cause
 //! GitHub to redeliver and double review).
 
+use axum::Json;
 use axum::body::Bytes;
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
-use axum::Json;
 use hmac::{Hmac, Mac};
 use serde_json::{Value, json};
 use sha2::Sha256;
@@ -66,9 +66,15 @@ pub async fn webhook(
         let mut seen = state.webhook_deliveries.lock().await;
         let cutoff = std::time::Instant::now() - std::time::Duration::from_secs(600);
         seen.retain(|_, at| *at > cutoff);
-        if seen.insert(delivery_id.to_owned(), std::time::Instant::now()).is_some() {
+        if seen
+            .insert(delivery_id.to_owned(), std::time::Instant::now())
+            .is_some()
+        {
             tracing::debug!(delivery_id, "github webhook: duplicate delivery, skipping");
-            return (StatusCode::OK, Json(json!({ "accepted": false, "duplicate": true })));
+            return (
+                StatusCode::OK,
+                Json(json!({ "accepted": false, "duplicate": true })),
+            );
         }
     }
 
@@ -92,12 +98,7 @@ pub async fn webhook(
 
     match github_bot::mention_request(&event, &payload) {
         Some(pr_number) => {
-            github_bot::handle_mention(
-                state,
-                owner.to_owned(),
-                repo.to_owned(),
-                pr_number,
-            );
+            github_bot::handle_mention(state, owner.to_owned(), repo.to_owned(), pr_number);
             (StatusCode::OK, Json(json!({ "accepted": true })))
         }
         None => (StatusCode::OK, Json(json!({ "accepted": false }))),

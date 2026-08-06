@@ -20,9 +20,21 @@ Must-fix: 42
     assert_eq!(
         findings,
         vec![
-            InlineComment { path: "src/foo.rs".into(), line: 42, body: "🔴 Must fix: crashes when x is None".into() },
-            InlineComment { path: "src/foo.rs".into(), line: 17, body: "🟢 Suggestion: rename y".into() },
-            InlineComment { path: "src/bar.rs".into(), line: 3, body: "🟡 Should fix: unhandled error".into() },
+            InlineComment {
+                path: "src/foo.rs".into(),
+                line: 42,
+                body: "🔴 Must fix: crashes when x is None".into()
+            },
+            InlineComment {
+                path: "src/foo.rs".into(),
+                line: 17,
+                body: "🟢 Suggestion: rename y".into()
+            },
+            InlineComment {
+                path: "src/bar.rs".into(),
+                line: 3,
+                body: "🟡 Should fix: unhandled error".into()
+            },
         ]
     );
 }
@@ -42,8 +54,16 @@ free-floating text
     assert_eq!(
         findings,
         vec![
-            InlineComment { path: "src/foo.rs".into(), line: 42, body: "🔴 Must fix: ok".into() },
-            InlineComment { path: "src/foo.rs".into(), line: 7, body: "trailing space stays".into() },
+            InlineComment {
+                path: "src/foo.rs".into(),
+                line: 42,
+                body: "🔴 Must fix: ok".into()
+            },
+            InlineComment {
+                path: "src/foo.rs".into(),
+                line: 7,
+                body: "trailing space stays".into()
+            },
         ]
     );
 }
@@ -105,9 +125,21 @@ diff --git a/src/foo.rs b/src/foo.rs
 ";
     let lines = diff_new_lines(diff);
     let findings = vec![
-        InlineComment { path: "src/foo.rs".into(), line: 3, body: "anchored".into() },
-        InlineComment { path: "src/foo.rs".into(), line: 99, body: "beyond hunk".into() },
-        InlineComment { path: "missing.rs".into(), line: 1, body: "not in diff".into() },
+        InlineComment {
+            path: "src/foo.rs".into(),
+            line: 3,
+            body: "anchored".into(),
+        },
+        InlineComment {
+            path: "src/foo.rs".into(),
+            line: 99,
+            body: "beyond hunk".into(),
+        },
+        InlineComment {
+            path: "missing.rs".into(),
+            line: 1,
+            body: "not in diff".into(),
+        },
     ];
     let (anchored, unanchored) = anchor_inline_comments(findings, &lines);
     assert_eq!(anchored.len(), 1);

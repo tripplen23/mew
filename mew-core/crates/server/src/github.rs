@@ -87,11 +87,16 @@ impl GithubClient {
                 .find(|i| i["account"]["login"].as_str() == Some(owner))
                 .and_then(|i| i["id"].as_u64())
             {
-                self.installation_ids.lock().unwrap().insert(owner.to_owned(), id);
+                self.installation_ids
+                    .lock()
+                    .unwrap()
+                    .insert(owner.to_owned(), id);
                 return Ok(id);
             }
             url = next_page_url(link.as_deref()).ok_or_else(|| {
-                anyhow!("GitHub App not installed for {owner} (scanned {MAX_INSTALLATION_PAGES} pages)")
+                anyhow!(
+                    "GitHub App not installed for {owner} (scanned {MAX_INSTALLATION_PAGES} pages)"
+                )
             })?;
         }
         Err(anyhow!("GitHub App not installed for {owner}"))

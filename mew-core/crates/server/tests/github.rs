@@ -10,11 +10,8 @@ const FIXTURE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures")
 
 #[test]
 fn jwt_is_verifiable_rs256_with_app_claims() {
-    let client = GithubClient::new(
-        424242,
-        &format!("{FIXTURE_DIR}/test-github-app-key.pem"),
-    )
-    .expect("fixture key loads");
+    let client = GithubClient::new(424242, &format!("{FIXTURE_DIR}/test-github-app-key.pem"))
+        .expect("fixture key loads");
     let jwt = client.jwt().expect("jwt signs");
 
     let public_pem = std::fs::read_to_string(format!("{FIXTURE_DIR}/test-github-app-key.pub.pem"))

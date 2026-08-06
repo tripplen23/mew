@@ -97,13 +97,23 @@ async fn body_json(response: axum::response::Response) -> (StatusCode, Value) {
     let bytes = axum::body::to_bytes(response.into_body(), 1024 * 1024)
         .await
         .expect("body readable");
-    (status, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
 }
 
 #[tokio::test]
 async fn webhook_accepts_mention_with_valid_signature() {
     let payload = mention_payload("please review @mew");
-    let (status, body) = body_json(app().await.oneshot(webhook_post(&payload, Some(SECRET))).await.unwrap()).await;
+    let (status, body) = body_json(
+        app()
+            .await
+            .oneshot(webhook_post(&payload, Some(SECRET)))
+            .await
+            .unwrap(),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body, json!({ "accepted": true }));
 }
@@ -111,7 +121,14 @@ async fn webhook_accepts_mention_with_valid_signature() {
 #[tokio::test]
 async fn webhook_rejects_bad_signature() {
     let payload = mention_payload("please review @mew");
-    let (status, body) = body_json(app().await.oneshot(webhook_post(&payload, Some("wrong-secret"))).await.unwrap()).await;
+    let (status, body) = body_json(
+        app()
+            .await
+            .oneshot(webhook_post(&payload, Some("wrong-secret")))
+            .await
+            .unwrap(),
+    )
+    .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     assert_eq!(body, json!({ "accepted": false }));
 }
@@ -119,7 +136,14 @@ async fn webhook_rejects_bad_signature() {
 #[tokio::test]
 async fn webhook_rejects_missing_signature() {
     let payload = mention_payload("please review @mew");
-    let (status, body) = body_json(app().await.oneshot(webhook_post(&payload, None)).await.unwrap()).await;
+    let (status, body) = body_json(
+        app()
+            .await
+            .oneshot(webhook_post(&payload, None))
+            .await
+            .unwrap(),
+    )
+    .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     assert_eq!(body, json!({ "accepted": false }));
 }
@@ -127,7 +151,11 @@ async fn webhook_rejects_missing_signature() {
 #[tokio::test]
 async fn webhook_disabled_without_full_github_config() {
     let payload = mention_payload("please review @mew");
-    let response = app_without_github().await.oneshot(webhook_post(&payload, Some(SECRET))).await.unwrap();
+    let response = app_without_github()
+        .await
+        .oneshot(webhook_post(&payload, Some(SECRET)))
+        .await
+        .unwrap();
     let (status, body) = body_json(response).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert_eq!(body, json!({ "accepted": false }));
@@ -169,7 +197,14 @@ async fn webhook_deduplicates_delivery_ids() {
 #[tokio::test]
 async fn webhook_acknowledges_ping_without_repository() {
     let payload = json!({ "zen": "keep it simple" });
-    let (status, body) = body_json(app().await.oneshot(webhook_post(&payload, Some(SECRET))).await.unwrap()).await;
+    let (status, body) = body_json(
+        app()
+            .await
+            .oneshot(webhook_post(&payload, Some(SECRET)))
+            .await
+            .unwrap(),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body, json!({ "accepted": false }));
 }
@@ -177,7 +212,14 @@ async fn webhook_acknowledges_ping_without_repository() {
 #[tokio::test]
 async fn webhook_ignores_non_mention_comment() {
     let payload = mention_payload("looks good to me");
-    let (status, body) = body_json(app().await.oneshot(webhook_post(&payload, Some(SECRET))).await.unwrap()).await;
+    let (status, body) = body_json(
+        app()
+            .await
+            .oneshot(webhook_post(&payload, Some(SECRET)))
+            .await
+            .unwrap(),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body, json!({ "accepted": false }));
 }
@@ -221,18 +263,36 @@ fn mention_request_matches_mewcli_mention() {
 
 #[test]
 fn mention_request_rejects_similar_handles_and_emails() {
-    assert_eq!(mention_request("issue_comment", &mention_payload("@mewbot review")), None);
-    assert_eq!(mention_request("issue_comment", &mention_payload("user@mew.example")), None);
-    assert_eq!(mention_request("issue_comment", &mention_payload("@mew.example")), None);
-    assert_eq!(mention_request("issue_comment", &mention_payload("mention @mewtoo")), None);
+    assert_eq!(
+        mention_request("issue_comment", &mention_payload("@mewbot review")),
+        None
+    );
+    assert_eq!(
+        mention_request("issue_comment", &mention_payload("user@mew.example")),
+        None
+    );
+    assert_eq!(
+        mention_request("issue_comment", &mention_payload("@mew.example")),
+        None
+    );
+    assert_eq!(
+        mention_request("issue_comment", &mention_payload("mention @mewtoo")),
+        None
+    );
 }
 
 #[test]
 fn mention_request_ignores_code_fences() {
     let body = "```\n@mew\n```";
-    assert_eq!(mention_request("issue_comment", &mention_payload(body)), None);
+    assert_eq!(
+        mention_request("issue_comment", &mention_payload(body)),
+        None
+    );
     let body = "```\nrun @mew --help\n```\nplease review @mewcli";
-    assert_eq!(mention_request("issue_comment", &mention_payload(body)), Some(42));
+    assert_eq!(
+        mention_request("issue_comment", &mention_payload(body)),
+        Some(42)
+    );
 }
 
 #[test]
@@ -247,6 +307,12 @@ fn mention_request_rejects_issues_and_other_events() {
     let mut issue = mention_payload("@mew");
     issue["issue"]["pull_request"] = Value::Null;
     assert_eq!(mention_request("issue_comment", &issue), None);
-    assert_eq!(mention_request("pull_request", &mention_payload("@mew")), None);
-    assert_eq!(mention_request("issue_comment", &mention_payload("@meow")), None);
+    assert_eq!(
+        mention_request("pull_request", &mention_payload("@mew")),
+        None
+    );
+    assert_eq!(
+        mention_request("issue_comment", &mention_payload("@meow")),
+        None
+    );
 }

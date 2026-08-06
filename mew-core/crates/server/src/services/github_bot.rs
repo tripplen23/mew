@@ -62,7 +62,9 @@ pub fn parse_findings(text: &str) -> Vec<InlineComment> {
 ///
 /// Test surface only; the review path is the only production caller.
 #[doc(hidden)]
-pub fn diff_new_lines(diff: &str) -> std::collections::HashMap<String, std::collections::BTreeSet<u32>> {
+pub fn diff_new_lines(
+    diff: &str,
+) -> std::collections::HashMap<String, std::collections::BTreeSet<u32>> {
     use std::collections::{BTreeSet, HashMap};
 
     let mut result: HashMap<String, BTreeSet<u32>> = HashMap::new();
