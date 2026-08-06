@@ -37,9 +37,7 @@ pub async fn webhook(
     headers: HeaderMap,
     body: Bytes,
 ) -> (StatusCode, Json<Value>) {
-    // Fail closed: a client exists only when the app credentials are
-    // complete AND the private key loaded. A mention is never acked
-    // without a working client behind it.
+    // Fail closed: never ack a mention without a working client behind it.
     if state.github_client.is_none() {
         tracing::warn!("github webhook delivery ignored: app not configured");
         return (StatusCode::NOT_FOUND, Json(json!({ "accepted": false })));
