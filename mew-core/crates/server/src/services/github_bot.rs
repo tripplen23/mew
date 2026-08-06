@@ -137,8 +137,7 @@ pub fn mention_request(event: &str, payload: &Value) -> Option<u64> {
         return None;
     }
     let comment = payload["comment"]["body"].as_str()?;
-    // `issue_comment` fires for issues and PRs alike; only PRs have a
-    // non-null `pull_request` key on the issue object.
+    // `issue_comment` fires for issues and PRs alike; only PRs carry a non-null `pull_request` key.
     if payload["issue"]["pull_request"].is_null() {
         return None;
     }
@@ -270,9 +269,8 @@ async fn review_pr(state: &AppState, owner: &str, repo: &str, pr_number: u64) ->
         response.findings
     );
 
-    // Anchor findings to diff lines; findings that cannot be anchored (or
-    // exceed GitHub's per-review comment cap) stay in the review body —
-    // the body always carries the full findings text, so nothing is lost.
+    // Anchor findings to diff lines; anything unanchorable — or past the
+    // per-review comment cap — stays in the body, so nothing is lost.
     let findings = &response.findings;
     let (anchored, _) = anchor_inline_comments(parse_findings(findings), &diff_new_lines(&diff));
     if anchored.is_empty() {
