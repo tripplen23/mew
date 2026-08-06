@@ -53,7 +53,9 @@ impl GithubClient {
     }
 
     /// Build from server config; `None` when the app credentials are
-    /// incomplete (the webhook route is then disabled).
+    /// missing or the private key cannot be loaded. The webhook route
+    /// guards on this presence — a clientless state means disabled, so a
+    /// delivery is never acknowledged without a working client behind it.
     pub fn from_config(config: &GithubServerConfig) -> Option<Self> {
         Self::new(config.app_id?, config.private_key_path.as_deref()?).ok()
     }

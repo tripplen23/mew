@@ -37,8 +37,11 @@ pub async fn webhook(
     headers: HeaderMap,
     body: Bytes,
 ) -> (StatusCode, Json<Value>) {
-    if !state.config.github.is_complete() {
-        tracing::warn!("github webhook delivery ignored: app config incomplete");
+    // Fail closed: a client exists only when the app credentials are
+    // complete AND the private key loaded. A mention is never acked
+    // without a working client behind it.
+    if state.github_client.is_none() {
+        tracing::warn!("github webhook delivery ignored: app not configured");
         return (StatusCode::NOT_FOUND, Json(json!({ "accepted": false })));
     }
     let secret = state
@@ -46,7 +49,7 @@ pub async fn webhook(
         .github
         .webhook_secret
         .as_deref()
-        .expect("is_complete ensures secret");
+        .expect("client exists only when the full config, secret included, is set");
     let Some(signature) = headers
         .get("x-hub-signature-256")
         .and_then(|v| v.to_str().ok())

@@ -46,7 +46,10 @@ fn test_config() -> ServerConfig {
         github: mewcode_server::config::GithubServerConfig {
             webhook_secret: Some(SECRET.into()),
             app_id: Some(12345),
-            private_key_path: Some("/nonexistent-test-key.pem".into()),
+            private_key_path: Some(format!(
+                "{}/tests/fixtures/test-github-app-key.pem",
+                env!("CARGO_MANIFEST_DIR")
+            )),
         },
     }
 }
@@ -277,6 +280,18 @@ fn mention_request_rejects_similar_handles_and_emails() {
     );
     assert_eq!(
         mention_request("issue_comment", &mention_payload("mention @mewtoo")),
+        None
+    );
+    assert_eq!(
+        mention_request("issue_comment", &mention_payload("@mewcli.example")),
+        None
+    );
+    assert_eq!(
+        mention_request("issue_comment", &mention_payload("@mew-bot")),
+        None
+    );
+    assert_eq!(
+        mention_request("issue_comment", &mention_payload("@mewcli-bot")),
         None
     );
 }

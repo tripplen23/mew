@@ -172,8 +172,9 @@ fn strip_code_fences(comment: &str) -> String {
 
 /// True when `text` contains `@mew` or `@mewcli` on word boundaries: the
 /// character before `@` must not be alphanumeric (kills `user@mew.…`
-/// emails) and the character after the mention must not be alphanumeric or
-/// `.` (kills `@mewbot`, `@mew.example`).
+/// emails) and the character after the mention must not be alphanumeric,
+/// `.`, or `-` (kills `@mewbot`, `@mew.example`, `@mew-bot`,
+/// `@mewcli.example`, `@mewcli-bot`).
 fn has_complete_mention(text: &str) -> bool {
     let bytes = text.as_bytes();
     let mut i = 0;
@@ -190,7 +191,7 @@ fn has_complete_mention(text: &str) -> bool {
         };
         let after_ok = match bytes.get(after) {
             None => true,
-            Some(b) => !b.is_ascii_alphanumeric() && (after == i + 7 || *b != b'.'),
+            Some(b) => !b.is_ascii_alphanumeric() && !matches!(b, b'.' | b'-'),
         };
         if before_ok && after_ok {
             return true;
