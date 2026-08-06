@@ -94,8 +94,7 @@ pub struct GithubServerConfig {
 }
 
 impl GithubServerConfig {
-    /// All three app credentials present; a partial set disables the
-    /// webhook so deliveries never fail halfway through a review.
+    /// All three app credentials present; anything less disables the webhook.
     pub fn is_complete(&self) -> bool {
         self.webhook_secret.is_some() && self.app_id.is_some() && self.private_key_path.is_some()
     }

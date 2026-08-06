@@ -70,11 +70,9 @@ pub struct AppState {
     pub session_tokens: Arc<RwLock<HashMap<uuid::Uuid, u64>>>,
     /// Serializes mutations for each known session independently.
     pub session_operations: Arc<Mutex<HashMap<uuid::Uuid, Arc<Mutex<()>>>>>,
-    /// Reusable GitHub App client with token cache, built at startup when
-    /// the GitHub config is complete; `None` disables the webhook.
+    /// Reusable GitHub App client with token cache; `None` disables the webhook.
     pub github_client: Option<GithubClient>,
-    /// Recently processed `X-GitHub-Delivery` IDs with timestamps; guards
-    /// against GitHub redelivering a mention and double-reviewing.
+    /// Recently seen delivery IDs, so redeliveries don't double-review.
     pub webhook_deliveries: Arc<Mutex<HashMap<String, std::time::Instant>>>,
 }
 
