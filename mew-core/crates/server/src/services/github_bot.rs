@@ -71,9 +71,7 @@ pub fn diff_new_lines(
     let mut path: Option<&str> = None;
     for line in diff.lines() {
         if let Some(rest) = line.strip_prefix("+++ b/") {
-            // ponytail: assumes `+++ b/` lines are file headers, which
-            // holds for every diff git produces; a literal added line
-            // starting with "+++ b/" would misparse.
+            // `+++ b/` is always a file header in git diffs, never an added line.
             path = Some(rest);
             result.entry(rest.to_owned()).or_default();
             continue;
