@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/tripplen23/mew/compare/mew-core-v0.9.0...mew-core-v0.10.0) (2026-08-08)
+
+
+### Features
+
+* [@mewcli](https://github.com/mewcli) GitHub bot — webhook route, app auth, PR review posting ([#173](https://github.com/tripplen23/mew/issues/173)) ([#186](https://github.com/tripplen23/mew/issues/186)) ([4457e70](https://github.com/tripplen23/mew/commit/4457e70558dbe3de8d9bbacbf4e11cb81726cda3))
+
 ## [0.9.0](https://github.com/tripplen23/mew/compare/mew-core-v0.8.0...mew-core-v0.9.0) (2026-08-05)
 
 
