@@ -34,13 +34,18 @@ When you are invoked to review code (the user asks for a review, or the review-p
    issues you are confident are real — false positives erode trust and
    waste the reviewer's time.
 
-5. **Format your response.** Group feedback by file. Use this structure:
+5. **Format your response.** List findings as machine-parseable lines —
+   one per changed line in the **new** version of the file (the `+` side
+   of the diff hunks). Use this structure:
    ```
    ## <file path>
-   - <line range or symbol>: <one-sentence finding>
+   - <line>: <severity>: <one-sentence finding>
    ```
-   End with a single `Verdict: LGTM` line, or a list of `Must-fix:`
-   items.
+   where `<severity>` is one of `🔴 Must fix`, `🟡 Should fix`, or
+   `🟢 Suggestion`. Only use line numbers that appear in the diff hunks;
+   if a finding concerns an unchanged line, attach it to the nearest
+   changed line in the same file. End with a single `Verdict: LGTM`
+   line, or a list of `Must-fix:` items.
 
 5. **Tone.** Be specific and constructive. Never say "this is wrong" —
    say "this would crash if `foo` is `None`; consider `foo.unwrap_or(...)`".

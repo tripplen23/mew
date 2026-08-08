@@ -6,6 +6,7 @@
 pub mod config;
 pub mod credential;
 pub mod error;
+pub mod github;
 pub mod openapi;
 pub mod routes;
 pub mod services;
@@ -29,8 +30,9 @@ use http_body_util::BodyExt;
 use mewcode_engine::context::MemoryStore;
 use mewcode_engine::tools::ApprovalBroker;
 use mewcode_protocol::routes::{
-    CHAT, CHOICES, HEALTH, MEMORY_GET, MEMORY_POST, PROVIDER_CONNECT, PROVIDER_STATUS, PROVIDERS,
-    REVIEW, SESSION_BY_ID, SESSION_COMPACT, SESSIONS, SKILLS, STORAGE_STATUS,
+    CHAT, CHOICES, GITHUB_WEBHOOK, HEALTH, MEMORY_GET, MEMORY_POST, PROVIDER_CONNECT,
+    PROVIDER_STATUS, PROVIDERS, REVIEW, SESSION_BY_ID, SESSION_COMPACT, SESSIONS, SKILLS,
+    STORAGE_STATUS,
 };
 use serde_json::json;
 use tokio::sync::{Mutex, RwLock};
@@ -39,6 +41,7 @@ use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
 use crate::credential::CredentialStore;
+use crate::github::GithubClient;
 use crate::openapi::ApiDoc;
 use crate::store::{SessionStore, StoreError};
 
@@ -67,12 +70,17 @@ pub struct AppState {
     pub session_tokens: Arc<RwLock<HashMap<uuid::Uuid, u64>>>,
     /// Serializes mutations for each known session independently.
     pub session_operations: Arc<Mutex<HashMap<uuid::Uuid, Arc<Mutex<()>>>>>,
+    /// Reusable GitHub App client with token cache; `None` disables the webhook.
+    pub github_client: Option<GithubClient>,
+    /// Recently seen delivery IDs, so redeliveries don't double-review.
+    pub webhook_deliveries: Arc<Mutex<HashMap<String, std::time::Instant>>>,
 }
 
 impl AppState {
     /// Construct a new state over the given session store and memory store.
     pub fn new(config: ServerConfig, store: Arc<dyn SessionStore>, memory: MemoryStore) -> Self {
         let credentials = CredentialStore::load().unwrap_or_default();
+        let github_client = GithubClient::from_config(&config.github);
         Self {
             config,
             store,
@@ -81,6 +89,8 @@ impl AppState {
             approvals: ApprovalBroker::default(),
             session_tokens: Arc::new(RwLock::new(HashMap::new())),
             session_operations: Arc::new(Mutex::new(HashMap::new())),
+            github_client,
+            webhook_deliveries: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -220,6 +230,10 @@ pub fn build_app(state: AppState) -> Router {
         )
         .route(CHAT, axum::routing::post(routes::chat::chat_stream))
         .route(REVIEW, axum::routing::post(routes::review::review))
+        .route(
+            GITHUB_WEBHOOK,
+            axum::routing::post(routes::webhook::webhook),
+        )
         .route(CHOICES, axum::routing::post(routes::choices::respond))
         .route(STORAGE_STATUS, axum::routing::get(routes::storage::status))
         .route(MEMORY_GET, axum::routing::get(routes::memory::get_memory))

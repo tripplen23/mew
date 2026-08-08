@@ -32,6 +32,12 @@ pub async fn review(
     State(state): State<AppState>,
     Json(req): Json<ReviewRequest>,
 ) -> (StatusCode, Json<ReviewResponse>) {
+    run_review(state, req).await
+}
+
+/// Shared review entry point: run the `review-pr` skill headless and return
+/// the findings. Used by `POST /review` and the GitHub webhook bot.
+pub async fn run_review(state: AppState, req: ReviewRequest) -> (StatusCode, Json<ReviewResponse>) {
     let session = match state
         .store
         .create_session(crate::store::NewSession {

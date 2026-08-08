@@ -71,6 +71,33 @@ pub struct ServerConfig {
     /// Skill configuration.
     #[serde(default)]
     pub skills: SkillServerConfig,
+    /// GitHub App configuration (the @mewcli review bot).
+    #[serde(default)]
+    pub github: GithubServerConfig,
+}
+
+/// GitHub App subsection of [`ServerConfig`].
+///
+/// Loaded from `MEWCODE_GITHUB__*` env vars; leaving them unset disables
+/// the webhook endpoint.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct GithubServerConfig {
+    /// Webhook secret for `X-Hub-Signature-256` verification.
+    #[serde(default)]
+    pub webhook_secret: Option<String>,
+    /// GitHub App ID (JWT `iss` for installation tokens).
+    #[serde(default)]
+    pub app_id: Option<u64>,
+    /// Path to the GitHub App private key (`.pem`).
+    #[serde(default)]
+    pub private_key_path: Option<String>,
+}
+
+impl GithubServerConfig {
+    /// All three app credentials present; anything less disables the webhook.
+    pub fn is_complete(&self) -> bool {
+        self.webhook_secret.is_some() && self.app_id.is_some() && self.private_key_path.is_some()
+    }
 }
 
 /// Skills subsection of [`ServerConfig`].

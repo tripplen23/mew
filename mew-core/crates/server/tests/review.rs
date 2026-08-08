@@ -30,6 +30,7 @@ fn test_config() -> ServerConfig {
         default_model: None,
         log: "off".into(),
         skills: Default::default(),
+        github: Default::default(),
     }
 }
 

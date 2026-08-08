@@ -37,6 +37,11 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "str
 eventsource-stream = "0.2"
 http = "1"
 
+# GitHub App integration
+jsonwebtoken = "9"
+hmac = "0.12"
+sha2 = "0.10"
+
 # AI framework
 rig-core = { version = "0.40" }
 
