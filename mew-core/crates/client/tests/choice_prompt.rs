@@ -49,6 +49,7 @@ fn app_with_session(session_id: Uuid) -> App {
         messages: vec![],
         compaction_summary: None,
         compacted_up_to: None,
+        todos: vec![],
     }));
     app
 }

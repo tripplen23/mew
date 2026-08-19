@@ -133,6 +133,10 @@ pub struct Session {
     /// Message index already covered by `compaction_summary`.
     #[serde(default)]
     pub compacted_up_to: Option<usize>,
+    /// Todos loaded by the server from the per-session todo file. Empty when
+    /// the server predates this field or none exist.
+    #[serde(default)]
+    pub todos: Vec<mewcode_protocol::TodoItem>,
 }
 
 /// Request body for `POST /sessions`. Mirrors the server's

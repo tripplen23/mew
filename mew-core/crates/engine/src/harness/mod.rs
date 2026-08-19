@@ -27,7 +27,7 @@ use uuid::Uuid;
 
 use crate::agent::{Agent, AgentActivity, Provider, build_system_prompt};
 use crate::config::EngineConfig;
-use crate::context::{HistoryStrategy, MemoryStore};
+use crate::context::{HistoryStrategy, MemoryStore, TodoStore};
 use crate::error::EngineError;
 use crate::observability::langfuse;
 use crate::observability::langfuse::FIELD_LANGFUSE_SESSION_ID;
@@ -44,6 +44,7 @@ pub struct Harness {
     session_id: Option<Uuid>,
     history_strategy: HistoryStrategy,
     memory: Option<MemoryStore>,
+    todos: Option<TodoStore>,
     display_sink: Option<crate::tools::DisplaySink>,
     project_root: Option<PathBuf>,
     approval_broker: Option<ApprovalBroker>,
@@ -106,6 +107,7 @@ impl Harness {
             session_id: None,
             history_strategy: HistoryStrategy::default_raw(),
             memory: None,
+            todos: None,
             display_sink: None,
             project_root: None,
             approval_broker: None,
@@ -188,6 +190,14 @@ impl Harness {
         self
     }
 
+    /// Attach the per-session todo store. When set, the current task list is
+    /// loaded fresh from disk every turn and injected as a `<todos>` section,
+    /// so context compaction cannot erase the agent's remaining work.
+    pub fn with_todos(mut self, todos: TodoStore) -> Self {
+        self.todos = Some(todos);
+        self
+    }
+
     /// Override the engine config used for provider resolution.
     /// When set, this is used instead of calling `EngineConfig::from_env()`.
     pub fn with_engine_config(mut self, cfg: EngineConfig) -> Self {
@@ -208,11 +218,16 @@ impl Harness {
     }
 
     /// The exact system prompt sent this turn: static sections plus, when
-    /// present, the durable-memory section. Single source of truth so
-    /// `run_turn_inner` always sends what this returns.
-    fn compose_system_prompt(&self) -> String {
+    /// present, the durable-memory and todo-list sections. Single source of
+    /// truth so `run_turn_inner` always sends what this returns.
+    #[doc(hidden)]
+    pub fn compose_system_prompt(&self) -> String {
         let mut prompt = build_system_prompt(self.mode, &self.skills, &self.tools);
         if let Some(section) = self.memory.as_ref().and_then(|m| m.format()) {
+            prompt.push_str("\n\n");
+            prompt.push_str(&section);
+        }
+        if let Some(section) = self.todos.as_ref().and_then(|t| t.format()) {
             prompt.push_str("\n\n");
             prompt.push_str(&section);
         }
@@ -350,7 +365,9 @@ impl Harness {
             &self.tools
         };
         let tools = crate::tools::adapter::rig_tools(tools_registry);
-        let mut agent = Agent::new(provider.clone(), self.model, system_prompt).with_tools(tools);
+        let mut agent = Agent::new(provider.clone(), self.model, system_prompt)
+            .with_tools(tools)
+            .with_session_tokens(self.compaction.context_tokens);
         if let Some(max_tokens) = self.max_tokens {
             agent = agent.with_max_tokens(max_tokens);
         }

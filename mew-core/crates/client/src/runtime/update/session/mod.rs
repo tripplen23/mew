@@ -2,7 +2,7 @@
 //! per-feature handlers in the sibling modules (`composer`, `commands`,
 //! `choice`, `connect`, `picker`, `slash`, `streaming`).
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 
 use mewcode_protocol::event::ChoiceCancelReason;
 
@@ -32,6 +32,27 @@ pub(super) mod streaming;
 pub(super) use choice::submit_choice_response;
 pub(super) use composer::on_session_paste;
 pub(super) use streaming::apply_stream_event;
+
+/// Session screen: mouse events.
+/// - Wheel up/down scrolls the transcript (matching terminals that no longer
+///   translate the wheel into arrow keys now that mouse capture is on).
+/// - A left click on the todo dock header toggles expand/collapse so a long
+///   task list can be stowed when it crowds the transcript.
+pub(super) fn on_session_mouse(s: &mut SessionState, event: MouseEvent) -> Cmd {
+    match event.kind {
+        MouseEventKind::ScrollUp => scroll_by(s, -3),
+        MouseEventKind::ScrollDown => scroll_by(s, 3),
+        MouseEventKind::Down(MouseButton::Left) => {
+            if let Some(header) = s.dock_header {
+                if header.contains((event.column, event.row).into()) {
+                    s.todos_collapsed = !s.todos_collapsed;
+                }
+            }
+        }
+        _ => {}
+    }
+    Cmd::None
+}
 
 /// Session screen: composer editing, submit, slash commands.
 pub(super) fn on_session_key(

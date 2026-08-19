@@ -259,6 +259,7 @@ fn draw_session(messages: Vec<Message>) -> String {
         messages,
         compaction_summary: None,
         compacted_up_to: None,
+        todos: vec![],
     };
     let mut app = App::new();
     app.screen = Screen::Session(SessionState::new(session));

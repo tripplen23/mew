@@ -10,12 +10,14 @@ use crate::runtime::view::park_cursor_in_field;
 use crate::runtime::view::session::composer::{
     composer_height, queue_display_height, render_composer, render_message_queue,
 };
+use crate::runtime::view::session::dock::render_dock;
 use crate::runtime::view::session::overlay::{active_overlay_text_input, render_active_overlay};
 use crate::runtime::view::session::status::render_status;
 use crate::runtime::view::session::transcript::render_transcript;
 use crate::runtime::view::theme::Theme;
 
 mod composer;
+pub mod dock;
 pub(super) mod overlay;
 mod status;
 pub(super) mod transcript;
@@ -34,11 +36,13 @@ pub(super) fn render_session(frame: &mut Frame, area: Rect, s: &mut SessionState
     };
     let composer_height = composer_height(area, &composer_text);
     let queue_height = queue_display_height(s);
+    let dock_height = dock::dock_height(s);
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Min(1),                  // transcript
+            Constraint::Length(dock_height),     // todo dock (hidden when empty)
             Constraint::Length(queue_height),    // queue list, at least the dashed header row
             Constraint::Length(composer_height), // composer bar (grows with text)
             Constraint::Length(1),               // status bar
@@ -46,12 +50,13 @@ pub(super) fn render_session(frame: &mut Frame, area: Rect, s: &mut SessionState
         .split(area);
 
     render_transcript(frame, chunks[0], s, theme);
-    render_message_queue(frame, chunks[1], s, theme);
-    render_composer(frame, chunks[2], &composer_text, s.skills.as_deref(), theme);
-    render_status(frame, chunks[3], s, theme);
+    render_dock(frame, chunks[1], s, theme);
+    render_message_queue(frame, chunks[2], s, theme);
+    render_composer(frame, chunks[3], &composer_text, s.skills.as_deref(), theme);
+    render_status(frame, chunks[4], s, theme);
 
     if !active_overlay_text_input(s) {
-        park_cursor_in_field(frame, chunks[2], &s.composer);
+        park_cursor_in_field(frame, chunks[3], &s.composer);
     }
     render_active_overlay(frame, area, s);
 }

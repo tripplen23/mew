@@ -73,6 +73,17 @@ pub(crate) async fn run_chat_stream(api: ApiClient, req: ChatRequest, tx: mpsc::
                 pwd,
             },
             Ok(StreamEvent::TextDelta { delta }) => StreamMsg::Delta(delta),
+            Ok(StreamEvent::TokenUsage {
+                input_tokens,
+                output_tokens,
+                session_tokens,
+                context_limit,
+            }) => StreamMsg::TokenUsage {
+                input_tokens,
+                output_tokens,
+                session_tokens,
+                context_limit,
+            },
             Ok(StreamEvent::ToolInputAvailable {
                 tool_call_id,
                 tool_name,

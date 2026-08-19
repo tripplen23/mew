@@ -31,6 +31,7 @@ fn only_diff(sink: &DisplaySink) -> mewcode_protocol::DiffDisplay {
     assert_eq!(records.len(), 1, "expected exactly one display record");
     match &records[0].display {
         ToolDisplay::Diff(d) => d.clone(),
+        ToolDisplay::Todo(_) => panic!("expected a Diff display record"),
     }
 }
 

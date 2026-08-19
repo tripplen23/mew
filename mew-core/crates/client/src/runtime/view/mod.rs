@@ -34,6 +34,7 @@ mod theme;
 mod toast;
 mod tool_card;
 
+pub use session::dock::{DOCK_MAX_ROWS, dock_height};
 /// Re-exported for integration tests so they can assert on the row
 /// builder directly (e.g. "every model fits on one line"). The overlay
 /// module itself stays private; only these two line builders are part

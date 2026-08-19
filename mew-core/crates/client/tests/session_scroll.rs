@@ -39,6 +39,7 @@ fn app_with_long_transcript() -> App {
         messages,
         compaction_summary: None,
         compacted_up_to: None,
+        todos: vec![],
     };
     let mut app = App::new();
     app.screen = Screen::Session(SessionState::new(session));
@@ -224,6 +225,7 @@ fn opening_a_new_session_clears_the_old_transcript_cache() {
         }])],
         compaction_summary: None,
         compacted_up_to: None,
+        todos: vec![],
     };
     app.screen = Screen::Session(SessionState::new(fresh));
     draw(&mut app);

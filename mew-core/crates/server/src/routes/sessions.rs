@@ -69,7 +69,13 @@ pub async fn get_one(
     State(state): State<AppState>,
     Path(id): Path<uuid::Uuid>,
 ) -> Result<Json<Session>, AppError> {
-    let session = state.store.get_session(id).await?;
+    let mut session = state.store.get_session(id).await?;
+    // Hydrate the task list from its dedicated per-session file, so a client
+    // reopening the session (or resuming after compaction) sees the current
+    // todos without waiting for the next live `todo_write` event.
+    if let Some(todos) = crate::services::runtime::session_todos(&state.memory, &id) {
+        session.todos = todos.load();
+    }
     Ok(Json(session))
 }
 
@@ -161,7 +167,7 @@ pub async fn patch(
 ) -> Result<Json<Session>, AppError> {
     let operation_lock = state.existing_session_operation_lock(id).await?;
     let _operation_guard = operation_lock.lock().await;
-    let session = state
+    let mut session = state
         .store
         .patch_session(
             id,
@@ -173,5 +179,10 @@ pub async fn patch(
             },
         )
         .await?;
+    // Same hydration as `get_one`: a `/mode` switch must not wipe the dock,
+    // so the patched response carries the current task list too.
+    if let Some(todos) = crate::services::runtime::session_todos(&state.memory, &id) {
+        session.todos = todos.load();
+    }
     Ok(Json(session))
 }

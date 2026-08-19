@@ -10,6 +10,41 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Status of one item in the agent's per-session todo list. Mirrors the
+/// status vocabulary of Claude Code / OpenCode `todo_write`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum TodoStatus {
+    /// Wait — not started yet.
+    Pending,
+    /// Currently being worked on.
+    InProgress,
+    /// Finished and verified.
+    Completed,
+}
+
+/// One line in the agent's per-session todo list.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct TodoItem {
+    /// Stable id assigned on save.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// Short description of the task.
+    pub content: String,
+    /// Current status.
+    pub status: TodoStatus,
+}
+
+/// Task list for one session, as exchanged between the engine and client.
+pub type TodoList = Vec<TodoItem>;
+
+/// The render payload for a `todo_write`: the session's current task list.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct TodoDisplay {
+    /// The full task list after this write.
+    pub todos: TodoList,
+}
+
 /// A render-only payload attached to a tool call for the client UI.
 ///
 /// Tagged by `kind` so new display shapes (e.g. a rendered table or image
@@ -19,6 +54,8 @@ use serde::{Deserialize, Serialize};
 pub enum ToolDisplay {
     /// A before/after code diff for a file-mutating tool.
     Diff(DiffDisplay),
+    /// The current per-session todo list.
+    Todo(TodoDisplay),
 }
 
 /// The data needed to render a unified diff for a single file edit.

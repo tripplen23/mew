@@ -25,7 +25,9 @@ use session::picker::{
     clamp_file_picker_scroll, clamp_model_picker_scroll, clamp_session_list_scroll,
     clamp_skills_picker_scroll,
 };
-use session::{apply_stream_event, on_session_key, on_session_paste, submit_choice_response};
+use session::{
+    apply_stream_event, on_session_key, on_session_mouse, on_session_paste, submit_choice_response,
+};
 
 /// Apply a [`Msg`] to the model, returning the side effect to run next.
 ///
@@ -38,6 +40,8 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
 
     match msg {
         Msg::Key(key) => on_session_key(s, toast, key),
+
+        Msg::Mouse(event) => on_session_mouse(s, event),
 
         Msg::ChoiceRequested(request) => {
             s.pending_choice = Some(super::model::ChoicePromptState::new(request));
@@ -88,7 +92,7 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
                 // Adopt the new session. If the user already typed a
                 // message -> commit it as the first turn.
                 let pending = s.creation.pending_chat.take();
-                s.session = Some(session.clone());
+                s.set_session(session);
                 s.creation.creating = false;
                 s.creation.creation_started_at = None;
                 s.creation.pending_model = None;
@@ -269,7 +273,7 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
             // (`from_rename: false`) only adopt the refreshed session.
             match result {
                 Ok(session) => {
-                    s.session = Some(session);
+                    s.set_session(session);
                     s.overlay = Overlay::None;
                     if from_rename {
                         s.clear_composer();
@@ -290,7 +294,7 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
             match result {
                 Ok(session) => {
                     if was_session_list {
-                        s.session = Some(session);
+                        s.set_session(session);
                         s.overlay = Overlay::None;
                         s.follow = true;
                     }

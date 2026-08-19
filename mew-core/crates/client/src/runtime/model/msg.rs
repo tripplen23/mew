@@ -3,7 +3,7 @@
 
 use uuid::Uuid;
 
-use crossterm::event::KeyEvent;
+use crossterm::event::{KeyEvent, MouseEvent};
 
 use super::FileEntry;
 use crate::net::{ModelEntry, Session, SessionSummary, SkillEntry};
@@ -17,6 +17,8 @@ pub enum Msg {
     Key(KeyEvent),
     /// Text pasted into the terminal.
     Paste(String),
+    /// A mouse event (click on the todo dock header, etc.).
+    Mouse(MouseEvent),
     /// A periodic tick (for animations / elapsed time).
     Tick,
     /// A new session finished being created.
@@ -68,6 +70,17 @@ pub enum StreamMsg {
     Started { id: Uuid, pwd: Option<String> },
     /// A chunk of assistant text.
     Delta(String),
+    /// Mid-turn token accounting from the engine (one per tool round-trip).
+    TokenUsage {
+        /// Input tokens consumed by the turn so far.
+        input_tokens: u64,
+        /// Output tokens produced by the turn so far.
+        output_tokens: u64,
+        /// Estimated session context size so far.
+        session_tokens: u64,
+        /// The model's context limit.
+        context_limit: u64,
+    },
     /// The model is calling a tool.
     ToolInput {
         /// Stable id of the call.

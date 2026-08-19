@@ -6,7 +6,7 @@ use mewcode_engine::{
     Harness,
     error::{EngineError, engine_error_parts},
     skills::SkillRegistry,
-    tools::{ProjectContext, default_registry},
+    tools::{ProjectContext, default_registry_with_todos},
 };
 use mewcode_protocol::event::{ChatRequest, ErrorCode};
 use mewcode_protocol::{Message, MessagePart, Role, StreamEvent};
@@ -15,7 +15,7 @@ use tokio::sync::mpsc;
 use crate::AppState;
 
 use super::SESSION_NOT_FOUND;
-use super::runtime::{project_memory, project_root};
+use super::runtime::{project_memory, project_root, session_todos};
 
 /// Client-facing message for unexpected chat-turn failures. Deliberately
 /// generic: the specific cause goes to the server logs, not the client.
@@ -268,10 +268,12 @@ pub(crate) async fn start_chat_stream(
             Arc::new(std::sync::Mutex::new(Vec::new()));
         let ctx = ProjectContext::new(root.clone()).with_display(display_sink.clone());
         let memory = project_memory(&state.memory, &root);
-        let tools = Arc::new(default_registry(
+        let todos = session_todos(&state.memory, &session_id);
+        let tools = Arc::new(default_registry_with_todos(
             ctx,
             skills.clone(),
             Some(memory.clone()),
+            todos.clone(),
             req.mode,
         ));
         let prior_tokens = state
@@ -294,6 +296,9 @@ pub(crate) async fn start_chat_stream(
                 session.compacted_up_to.unwrap_or(0),
                 session.compacted_up_to_message_id,
             );
+        if let Some(store) = todos {
+            harness = harness.with_todos(store);
+        }
 
         let (htx, mut hrx) = mpsc::channel::<StreamEvent>(64);
         let worker = tokio::spawn(async move {

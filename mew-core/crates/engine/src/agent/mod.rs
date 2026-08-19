@@ -40,6 +40,7 @@ pub struct Agent {
     max_tokens: u64,
     max_turns: usize,
     display_sink: Option<crate::tools::DisplaySink>,
+    session_tokens_base: u64,
 }
 
 impl Agent {
@@ -53,6 +54,7 @@ impl Agent {
             max_tokens: DEFAULT_MAX_TOKENS,
             max_turns: DEFAULT_MAX_TURNS,
             display_sink: None,
+            session_tokens_base: 0,
         }
     }
 
@@ -77,6 +79,13 @@ impl Agent {
     /// Cap internal agent turns for this turn.
     pub fn with_max_turns(mut self, max_turns: usize) -> Self {
         self.max_turns = max_turns;
+        self
+    }
+
+    /// Seed the session context size from before this turn, so mid-turn
+    /// `TokenUsage` events can report a running total.
+    pub fn with_session_tokens(mut self, tokens: u64) -> Self {
+        self.session_tokens_base = tokens;
         self
     }
 

@@ -40,8 +40,9 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use crossterm::event::{
-    self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyEventKind,
-    KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+    self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+    Event, KeyEventKind, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
+    PushKeyboardEnhancementFlags,
 };
 use crossterm::execute;
 use crossterm::terminal::{
@@ -82,6 +83,7 @@ impl TerminalGuard {
         let _ = execute!(
             stdout,
             EnableBracketedPaste,
+            EnableMouseCapture,
             PushKeyboardEnhancementFlags(
                 KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES
                     | KeyboardEnhancementFlags::REPORT_EVENT_TYPES
@@ -95,6 +97,7 @@ impl TerminalGuard {
                 let _ = execute!(
                     io::stdout(),
                     DisableBracketedPaste,
+                    DisableMouseCapture,
                     PopKeyboardEnhancementFlags
                 );
                 let _ = disable_raw_mode();
@@ -112,6 +115,7 @@ impl Drop for TerminalGuard {
     fn drop(&mut self) {
         let _ = execute!(io::stdout(), PopKeyboardEnhancementFlags);
         let _ = execute!(io::stdout(), DisableBracketedPaste);
+        let _ = execute!(io::stdout(), DisableMouseCapture);
         let _ = disable_raw_mode();
         let _ = execute!(io::stdout(), LeaveAlternateScreen);
         let _ = self.terminal.show_cursor();
@@ -173,7 +177,26 @@ fn spawn_input_reader(tx: mpsc::Sender<Msg>) {
                             break; // loop gone
                         }
                     }
-                    Ok(_) => {} // resize, mouse, focus, repeat, release: ignored
+                    Ok(Event::Mouse(event)) => {
+                        // Drop motion/drag: they arrive at the report rate,
+                        // carry no click or scroll, and would flood the channel
+                        // behind per-message redraws.
+                        let actionable = matches!(
+                            event.kind,
+                            crossterm::event::MouseEventKind::Down(_)
+                                | crossterm::event::MouseEventKind::ScrollUp
+                                | crossterm::event::MouseEventKind::ScrollDown
+                        );
+                        if !actionable {
+                            continue;
+                        }
+                        // `try_send`: a dropped click/scroll is harmless — the next one lands.
+                        // Only a channel close ends the reader.
+                        if tx.try_send(Msg::Mouse(event)).is_err() && tx.is_closed() {
+                            break; // loop gone
+                        }
+                    }
+                    Ok(_) => {} // resize, focus, repeat, release: ignored
                     Err(_) => break,
                 },
                 // Timed out with no event: stop if the loop has shut down.

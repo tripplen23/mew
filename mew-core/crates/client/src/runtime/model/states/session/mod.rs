@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use tui_textarea::TextArea;
 
-use mewcode_protocol::{Mode, ModelId};
+use mewcode_protocol::{Mode, ModelId, TodoItem};
 
 use crate::net::{Session, SkillEntry};
 
@@ -94,6 +94,15 @@ pub struct CompactionUiState {
 pub struct SessionState {
     /// The hydrated session, including history.
     pub session: Option<Session>,
+    /// The session's live task list. Folded from `ToolDisplay::Todo` events
+    /// during a turn and hydrated from the session on open/create.
+    pub todos: Vec<TodoItem>,
+    /// Whether the todo dock is collapsed to its header row. Toggled by
+    /// clicking the dock header.
+    pub todos_collapsed: bool,
+    /// Absolute rect of the dock header row from the last render, so
+    /// `update` can route mouse clicks. `None` when the dock is hidden.
+    pub dock_header: Option<ratatui::layout::Rect>,
     /// The message composer.
     pub composer: TextArea<'static>,
     /// Full pasted bodies hidden behind short composer markers.
@@ -153,6 +162,9 @@ impl SessionState {
     pub fn empty() -> Self {
         Self {
             session: None,
+            todos: Vec::new(),
+            todos_collapsed: false,
+            dock_header: None,
             composer: TextArea::default(),
             pasted: Vec::new(),
             creation: CreationState::default(),
@@ -181,12 +193,26 @@ impl SessionState {
         }
     }
 
-    /// Open a session view for an already-hydrated [`Session`].
+    /// Open a session view for an already-hydrated [`Session`], seeding the
+    /// dock from the session's persisted task list.
     pub fn new(session: Session) -> Self {
+        let todos = session.todos.clone();
+        let context_limit = session.model.context_limit();
         Self {
             session: Some(session),
+            todos,
+            context_limit,
             ..Self::empty()
         }
+    }
+
+    /// Swap the active session, seeding the todo dock from its persisted
+    /// task list and the context indicator from the model's limit. Used by
+    /// create/open flows that keep the same screen state.
+    pub fn set_session(&mut self, session: Session) {
+        self.todos = session.todos.clone();
+        self.context_limit = session.model.context_limit();
+        self.session = Some(session);
     }
 
     /// The composer's visible text, joined as it renders.

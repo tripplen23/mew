@@ -83,6 +83,7 @@ fn session_with(message_count: usize) -> Session {
         messages,
         compaction_summary: None,
         compacted_up_to: None,
+        todos: vec![],
     }
 }
 
