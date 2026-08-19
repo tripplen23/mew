@@ -121,6 +121,15 @@ pub(crate) fn dispatch(cmd: Cmd, api: &ApiClient, tx: &mpsc::Sender<Msg>) {
             let tx = tx.clone();
             tokio::spawn(run_compact_stream(api, id, tx));
         }
+        Cmd::AbortSession(id) => {
+            // Fire and forget: the terminal `Aborted` SSE event is the source
+            // of truth for the client, so a dropped abort request is handled
+            // by the stream's natural end (or the next Esc).
+            let api = api.clone();
+            tokio::spawn(async move {
+                let _ = api.abort_session(id).await;
+            });
+        }
         Cmd::ConnectProvider(req, attempt) => {
             let api = api.clone();
             let tx = tx.clone();

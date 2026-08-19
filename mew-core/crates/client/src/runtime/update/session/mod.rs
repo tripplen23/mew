@@ -96,6 +96,14 @@ pub(super) fn on_session_key(
                 s.connect_provider.attempt = prev_attempt.wrapping_add(1);
             }
         }
+        if s.overlay == Overlay::None {
+            // No overlay to close: Esc during a live turn aborts it
+            if s.streaming.is_some() {
+                if let Some(session) = s.session.as_ref() {
+                    return Cmd::AbortSession(session.id);
+                }
+            }
+        }
         return Cmd::None;
     }
 

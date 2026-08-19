@@ -19,6 +19,7 @@ pub use error::AppError;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use axum::Json;
 use axum::Router;
@@ -31,8 +32,8 @@ use mewcode_engine::context::MemoryStore;
 use mewcode_engine::tools::ApprovalBroker;
 use mewcode_protocol::routes::{
     CHAT, CHOICES, GITHUB_WEBHOOK, HEALTH, MEMORY_GET, MEMORY_POST, PROVIDER_CONNECT,
-    PROVIDER_STATUS, PROVIDERS, REVIEW, SESSION_BY_ID, SESSION_COMPACT, SESSIONS, SKILLS,
-    STORAGE_STATUS,
+    PROVIDER_STATUS, PROVIDERS, REVIEW, SESSION_ABORT, SESSION_BY_ID, SESSION_COMPACT, SESSIONS,
+    SKILLS, STORAGE_STATUS,
 };
 use serde_json::json;
 use tokio::sync::{Mutex, RwLock};
@@ -70,6 +71,9 @@ pub struct AppState {
     pub session_tokens: Arc<RwLock<HashMap<uuid::Uuid, u64>>>,
     /// Serializes mutations for each known session independently.
     pub session_operations: Arc<Mutex<HashMap<uuid::Uuid, Arc<Mutex<()>>>>>,
+    /// Per-session abort flags: set by `POST /sessions/{id}/abort`, polled by
+    /// the chat worker so a turn can be cancelled mid-flight.
+    pub aborts: Arc<Mutex<HashMap<uuid::Uuid, Arc<AtomicBool>>>>,
     /// Reusable GitHub App client with token cache; `None` disables the webhook.
     pub github_client: Option<GithubClient>,
     /// Recently seen delivery IDs, so redeliveries don't double-review.
@@ -89,9 +93,35 @@ impl AppState {
             approvals: ApprovalBroker::default(),
             session_tokens: Arc::new(RwLock::new(HashMap::new())),
             session_operations: Arc::new(Mutex::new(HashMap::new())),
+            aborts: Arc::new(Mutex::new(HashMap::new())),
             github_client,
             webhook_deliveries: Arc::new(Mutex::new(HashMap::new())),
         }
+    }
+
+    /// Register the chat turn's abort flag for `session_id` and return it.
+    /// The worker polls the flag; `request_abort` sets it.
+    pub async fn register_abort(&self, session_id: uuid::Uuid) -> Arc<AtomicBool> {
+        let mut aborts = self.aborts.lock().await;
+        let flag = Arc::new(AtomicBool::new(false));
+        aborts.insert(session_id, flag.clone());
+        flag
+    }
+
+    /// Raise the abort flag for a session with a live turn. Returns `false`
+    /// when no turn is registered (abort is a no-op).
+    pub async fn request_abort(&self, session_id: uuid::Uuid) -> bool {
+        let aborts = self.aborts.lock().await;
+        aborts.get(&session_id).is_some_and(|flag| {
+            flag.store(true, Ordering::Release);
+            true
+        })
+    }
+
+    /// Remove the abort flag once the turn has ended (either way).
+    pub async fn unregister_abort(&self, session_id: uuid::Uuid) {
+        let mut aborts = self.aborts.lock().await;
+        aborts.remove(&session_id);
     }
 
     pub async fn session_operation_lock(&self, session_id: uuid::Uuid) -> Arc<Mutex<()>> {
@@ -228,6 +258,7 @@ pub fn build_app(state: AppState) -> Router {
             SESSION_COMPACT,
             axum::routing::post(routes::compact::compact_session),
         )
+        .route(SESSION_ABORT, axum::routing::post(routes::sessions::abort))
         .route(CHAT, axum::routing::post(routes::chat::chat_stream))
         .route(REVIEW, axum::routing::post(routes::review::review))
         .route(

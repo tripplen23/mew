@@ -186,3 +186,26 @@ pub async fn patch(
     }
     Ok(Json(session))
 }
+
+/// `POST /sessions/{id}/abort` — best-effort cancel of the in-flight chat
+/// turn. `202` when a turn was registered and the flag was raised; `404`
+/// when the session has no live turn (abort after the fact is a no-op).
+#[utoipa::path(
+    post,
+    path = "/sessions/{id}/abort",
+    tag = "sessions",
+    params(
+        ("id" = uuid::Uuid, Path, description = "Session id"),
+    ),
+    responses(
+        (status = 202, description = "Abort signal delivered"),
+        (status = 404, description = "No in-flight turn for this session"),
+    ),
+)]
+pub async fn abort(State(state): State<AppState>, Path(id): Path<uuid::Uuid>) -> StatusCode {
+    if state.request_abort(id).await {
+        StatusCode::ACCEPTED
+    } else {
+        StatusCode::NOT_FOUND
+    }
+}

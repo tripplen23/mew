@@ -76,6 +76,39 @@ pub fn try_forward_event(client: &mut Option<mpsc::Sender<StreamEvent>>, event: 
     }
 }
 
+/// Poll interval for the abort flag while a turn runs.
+const ABORT_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(50);
+
+/// Race a chat turn against the session's abort flag. Returns `None` when the
+/// abort won (after forwarding a terminal [`StreamEvent::Aborted`]); returns
+/// `Some(result)` when the turn finished on its own.
+#[doc(hidden)]
+pub async fn run_turn_abortable(
+    abort_flag: Arc<std::sync::atomic::AtomicBool>,
+    tx: mpsc::Sender<StreamEvent>,
+    turn: impl std::future::Future<Output = Result<(), EngineError>> + Send,
+) -> Option<Result<(), EngineError>> {
+    tokio::select! {
+        biased;
+        result = turn => Some(result),
+        _ = wait_for_abort(&abort_flag) => {
+            // The abort branch drops `turn`, cancelling the in-flight
+            // upstream request. The client learns via the wire, not a log.
+            let _ = tx.send(StreamEvent::Aborted).await;
+            None
+        }
+    }
+}
+
+async fn wait_for_abort(flag: &std::sync::atomic::AtomicBool) {
+    loop {
+        if flag.load(std::sync::atomic::Ordering::Acquire) {
+            return;
+        }
+        tokio::time::sleep(ABORT_POLL_INTERVAL).await;
+    }
+}
+
 /// Forward a structured [`StreamEvent::Error`] with a stable code, sanitised
 /// message, and server-determined retryability.
 #[doc(hidden)]
@@ -301,9 +334,20 @@ pub(crate) async fn start_chat_stream(
         }
 
         let (htx, mut hrx) = mpsc::channel::<StreamEvent>(64);
-        let worker = tokio::spawn(async move {
-            let result = harness.run_turn(&messages, htx).await;
-            (result, harness)
+        // Best-effort Esc-interrupt (OpenCode/Claude Code parity): the abort
+        // route raises this flag; the worker races the turn against it and,
+        // on abort, drops the harness future (cancelling the upstream HTTP
+        // request) and emits the terminal `Aborted` event instead.
+        let abort_flag = state.register_abort(session_id).await;
+        let worker = tokio::spawn({
+            let abort_flag = abort_flag.clone();
+            let abort_tx = htx.clone();
+            async move {
+                let outcome =
+                    run_turn_abortable(abort_flag, abort_tx, harness.run_turn(&messages, htx))
+                        .await;
+                (outcome, harness)
+            }
         });
 
         let mut reply = String::new();
@@ -322,7 +366,7 @@ pub(crate) async fn start_chat_stream(
             );
         }
 
-        let (result, harness) = match worker.await {
+        let (outcome, harness) = match worker.await {
             Ok(outcome) => outcome,
             Err(error) => {
                 tracing::error!(%error, %session_id, "chat worker failed");
@@ -335,6 +379,13 @@ pub(crate) async fn start_chat_stream(
                 );
                 return;
             }
+        };
+        state.unregister_abort(session_id).await;
+
+        // Aborted: `run_turn_abortable` already forwarded `Aborted`; there is
+        // nothing to commit and nothing failed.
+        let Some(result) = outcome else {
+            return;
         };
 
         if let Err(error) = result {

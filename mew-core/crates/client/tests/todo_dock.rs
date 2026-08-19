@@ -308,8 +308,35 @@ fn mouse_motion_is_not_actionable() {
     assert_eq!((state.scroll, state.todos_collapsed), before);
 }
 
-/// Mid-turn `TokenUsage` events fold into the status-bar fields immediately,
-/// not only at `Finished`.
+/// Esc during a live turn aborts it (OpenCode / Claude Code parity); Esc
+/// with no live turn is a no-op.
+#[test]
+fn esc_during_streaming_requests_abort() {
+    use crossterm::event::{KeyCode, KeyEvent};
+    use mewcode_client::runtime::model::{Cmd, StreamingState};
+
+    let mut app = App::new();
+    let id = uuid::Uuid::new_v4();
+    app.screen = Screen::Session(SessionState::new(session_at(id, vec![])));
+    {
+        let Screen::Session(state) = &mut app.screen;
+        state.streaming = Some(StreamingState::new(uuid::Uuid::nil()));
+    }
+
+    let cmd = update(&mut app, Msg::Key(KeyEvent::from(KeyCode::Esc)));
+    assert!(matches!(cmd, Cmd::AbortSession(sid) if sid == id));
+
+    let Screen::Session(state) = &mut app.screen;
+    state.streaming = None;
+    let cmd = update(&mut app, Msg::Key(KeyEvent::from(KeyCode::Esc)));
+    assert!(matches!(cmd, Cmd::None));
+}
+
+fn session_at(id: uuid::Uuid, todos: Vec<TodoItem>) -> Session {
+    let mut s = session(todos);
+    s.id = id;
+    s
+}
 #[test]
 fn token_usage_event_updates_context_live() {
     let mut app = App::new();
