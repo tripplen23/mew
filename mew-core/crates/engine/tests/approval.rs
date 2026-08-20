@@ -35,7 +35,8 @@ async fn always_allow_choice_persists_scope_and_skips_future_prompts() {
                 .lock()
                 .unwrap()
                 .push((tool, scope.map(str::to_string)));
-        }) as Arc<dyn Fn(&'static str, Option<&str>) + Send + Sync>
+            Ok(())
+        }) as Arc<dyn Fn(&'static str, Option<&str>) -> Result<(), String> + Send + Sync>
     };
     let broker = ApprovalBroker::default().with_persist_always_allow(persist_hook);
     let session = Uuid::new_v4();
@@ -125,4 +126,64 @@ async fn always_allow_choice_persists_scope_and_skips_future_prompts() {
     );
     assert!(delivered);
     assert!(other.await.unwrap().is_err(), "deny rejects the tool call");
+}
+
+#[tokio::test]
+async fn always_allow_persist_failure_rejects_and_grants_nothing() {
+    use tokio::sync::mpsc;
+
+    let broker = ApprovalBroker::default().with_persist_always_allow(Arc::new(
+        move |_tool: &'static str, _scope: Option<&str>| Err("disk full".to_string()),
+    ));
+    let session = Uuid::new_v4();
+    let (tx, mut rx) = mpsc::channel::<StreamEvent>(8);
+
+    let approval = tokio::spawn({
+        let broker = broker.clone();
+        let tx = tx.clone();
+        async move {
+            broker
+                .approve_tool(session, names::BASH, &json!({"command": "ls"}), &tx)
+                .await
+        }
+    });
+    let request = match rx.recv().await.unwrap() {
+        StreamEvent::ChoiceRequest(request) => request,
+        other => panic!("unexpected event: {other:?}"),
+    };
+    assert_eq!(
+        request.options.len(),
+        4,
+        "deny + allow_once + session + always_allow"
+    );
+
+    // Always-allow chosen, but persistence fails.
+    let delivered = broker.answer(
+        session,
+        ChoiceResponse::Selected {
+            request_id: request.request_id.clone(),
+            option_id: "always_allow".into(),
+        },
+    );
+    assert!(delivered, "response was for the pending session");
+    assert!(
+        approval.await.unwrap().is_err(),
+        "approval must fail when persistence fails"
+    );
+
+    // The rule must NOT have been granted: a fresh same-scope call prompts.
+    let retry = tokio::spawn({
+        let broker = broker.clone();
+        let tx = tx.clone();
+        async move {
+            broker
+                .approve_tool(session, names::BASH, &json!({"command": "ls"}), &tx)
+                .await
+        }
+    });
+    let _ = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+        .await
+        .expect("failed persistence must not grant: same scope prompts again")
+        .expect("retry prompts");
+    retry.abort();
 }

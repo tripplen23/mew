@@ -20,8 +20,11 @@ use uuid::Uuid;
 const APPROVAL_TIMEOUT_MS: u64 = 120_000;
 
 /// Host-side callback that persists an always-allow rule: `(tool, scope)`
-/// with `None` granting the whole tool.
-pub type PersistAlwaysAllow = Arc<dyn Fn(&'static str, Option<&str>) + Send + Sync>;
+/// with `None` granting the whole tool. Returns `Err` when persistence
+/// fails, so the broker can refuse to grant the rule instead of granting a
+/// phantom always-allow that vanishes on restart.
+pub type PersistAlwaysAllow =
+    Arc<dyn Fn(&'static str, Option<&str>) -> Result<(), String> + Send + Sync>;
 
 /// Coordinates pending tool approvals, in-memory session allow rules, and
 /// persistent (cross-session) "always allow" tool rules.
@@ -202,17 +205,23 @@ impl ApprovalBroker {
                 let scope_display = approval_display(tool_name, input);
                 let scope_display = (!scope_display.is_empty()).then_some(scope_display);
                 let scope_key = scope_display.as_deref().map(|d| scope_key_of(tool_name, d));
-                let hook = if let Ok(mut state) = self.state.lock() {
+                let hook = self
+                    .state
+                    .lock()
+                    .ok()
+                    .and_then(|state| state.persist_always_allow.clone());
+                // Persist first: a failed write must not grant a phantom rule
+                // that suppresses prompts now and vanishes on restart.
+                if let Some(hook) = hook {
+                    if let Err(message) = hook(tool_name, scope_display.as_deref()) {
+                        return Err(rejected(tool_name, &message));
+                    }
+                }
+                if let Ok(mut state) = self.state.lock() {
                     state.always_allowed.insert(PersistentRule {
                         tool_name,
                         scope_key,
                     });
-                    state.persist_always_allow.clone()
-                } else {
-                    None
-                };
-                if let Some(hook) = hook {
-                    hook(tool_name, scope_display.as_deref());
                 }
                 Ok(())
             }

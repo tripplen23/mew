@@ -68,3 +68,21 @@ fn allow_forever_persists_scoped_rules_and_reloads() {
         "rules survive a reload (restart parity)"
     );
 }
+
+#[test]
+fn allow_forever_write_failure_does_not_commit_in_memory() {
+    let dir = fresh_dir();
+    // A file where the parent dir should be: create_dir_all on it fails.
+    let blocker = dir.join("blocker");
+    std::fs::write(&blocker, "not a dir").unwrap();
+    let path = blocker.join("permissions.yaml");
+
+    let mut store = PermissionStore::load_from(&path).unwrap();
+    let result = store.allow_forever_to(&path, "bash", Some("ls"));
+
+    assert!(result.is_err(), "write into a file-backed path must fail");
+    assert!(
+        store.as_seed().is_empty(),
+        "failed persistence must not leave a phantom always-allow rule"
+    );
+}

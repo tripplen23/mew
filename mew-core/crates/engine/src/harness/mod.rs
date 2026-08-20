@@ -387,7 +387,7 @@ impl Harness {
         langfuse::record_turn_output(&tracing::Span::current(), &reply);
 
         if !usage.is_empty() {
-            self.record_context_usage(usage.total());
+            self.record_context_usage(self.compaction.context_tokens.saturating_add(usage.total()));
         }
 
         tx.send(StreamEvent::Finish {

@@ -19,11 +19,12 @@ use mewcode_protocol::tool::ToolName;
 /// File name inside the Mew config directory.
 const PERMISSIONS_FILE: &str = "permissions.yaml";
 
-/// Where Mew stores its configuration.
-fn config_dir() -> PathBuf {
-    dirs::config_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("mew")
+/// Where Mew stores its configuration. `None` when the platform has no
+/// user config directory — a caller must not fall back to the working
+/// directory, or an untrusted checkout could pre-authorize tools via a
+/// relative `mew/permissions.yaml`.
+fn config_dir() -> Option<PathBuf> {
+    dirs::config_dir().map(|dir| dir.join("mew"))
 }
 
 /// In-memory view of the persistent always-allow rules. Each entry is a
@@ -36,9 +37,15 @@ pub struct PermissionStore {
 
 impl PermissionStore {
     /// Load from the default config path. Missing or unparsable files load
-    /// as empty — a broken permissions file must not brick tool runs.
+    /// as empty — a broken permissions file must not brick tool runs. No
+    /// user config dir means no persistent rules.
     pub fn load() -> Self {
-        Self::load_from(&config_dir().join(PERMISSIONS_FILE)).unwrap_or_else(|_| Self::default())
+        match config_dir() {
+            Some(dir) => {
+                Self::load_from(&dir.join(PERMISSIONS_FILE)).unwrap_or_else(|_| Self::default())
+            }
+            None => Self::default(),
+        }
     }
 
     /// Load rules from `path` (also the test seam). An entry is `"<tool>"`
@@ -80,14 +87,22 @@ impl PermissionStore {
     }
 
     /// Persist one more always-allow rule to the default config path.
-    /// Missing parent dirs are created on first use; failures are returned to
-    /// the caller (`allow_forever` treats them as best-effort).
+    /// Missing parent dirs are created on first use; failures are returned
+    /// to the caller (`allow_forever` treats them as best-effort).
     pub fn allow_forever(&mut self, tool: &str, scope: Option<&str>) -> Result<(), std::io::Error> {
-        self.allow_forever_to(&config_dir().join(PERMISSIONS_FILE), tool, scope)
+        let Some(dir) = config_dir() else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "no user config directory",
+            ));
+        };
+        self.allow_forever_to(&dir.join(PERMISSIONS_FILE), tool, scope)
     }
 
     /// Persist to an explicit path (also the test seam, so tests never touch
-    /// the user's real config directory).
+    /// the user's real config directory). The file is written before the
+    /// in-memory rule commits, so a failed write never leaves a phantom
+    /// always-allow grant that vanishes on restart.
     pub fn allow_forever_to(
         &mut self,
         path: &Path,
@@ -99,22 +114,24 @@ impl PermissionStore {
             scope.filter(|s| !s.is_empty()).map(str::to_string),
         );
         if !self.allowed.contains(&entry) {
-            self.allowed.push(entry);
+            let mut allowed = self.allowed.clone();
+            allowed.push(entry);
+            let mut lines: Vec<String> = allowed
+                .iter()
+                .map(|(tool, scope)| match scope {
+                    Some(scope) => format!("{tool}: {scope}"),
+                    None => tool.clone(),
+                })
+                .collect();
+            lines.sort();
+            let body = serde_yaml::to_string(&lines).unwrap_or_default();
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::write(path, body)?;
+            self.allowed = allowed;
         }
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        let mut lines: Vec<String> = self
-            .allowed
-            .iter()
-            .map(|(tool, scope)| match scope {
-                Some(scope) => format!("{tool}: {scope}"),
-                None => tool.clone(),
-            })
-            .collect();
-        lines.sort();
-        let body = serde_yaml::to_string(&lines).unwrap_or_default();
-        fs::write(path, body)
+        Ok(())
     }
 
     /// Loaded rules as `(tool, scope)` seeds for the approval broker.

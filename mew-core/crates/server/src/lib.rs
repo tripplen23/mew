@@ -106,9 +106,14 @@ impl AppState {
             .with_persist_always_allow({
                 let permissions = permissions.clone();
                 Arc::new(move |tool: &'static str, scope: Option<&str>| {
-                    if let Ok(mut store) = permissions.lock() {
-                        let _ = store.allow_forever(tool, scope);
-                    }
+                    permissions
+                        .lock()
+                        .map_err(|_| "permission store unavailable".to_string())
+                        .and_then(|mut store| {
+                            store
+                                .allow_forever(tool, scope)
+                                .map_err(|error| error.to_string())
+                        })
                 })
             });
 
