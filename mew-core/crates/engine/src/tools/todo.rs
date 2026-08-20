@@ -184,16 +184,17 @@ impl ToolContracts for TodoWriteTool {
 
     async fn execute(&self, input: Value) -> Result<ToolOutput, ToolError> {
         let todos = parse_list(&input)?;
-        self.store.save(&todos)?;
+        let saved = self.store.save(&todos)?;
         // Render-only payload to the client dock, via the display sink. Never
-        // enters the model's context window.
+        // enters the model's context window. Carries the *persisted* list
+        // (ids assigned) so the dock matches `todo_read` and session hydrate.
         self.ctx.push_display(
             input,
             ToolDisplay::Todo(TodoDisplay {
-                todos: todos.clone(),
+                todos: saved.clone(),
             }),
         );
-        Ok(ToolOutput::text(self.summarize(&todos)))
+        Ok(ToolOutput::text(self.summarize(&saved)))
     }
 }
 

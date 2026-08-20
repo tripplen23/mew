@@ -95,13 +95,16 @@ pub(super) fn on_session_key(
                 s.connect_provider = ConnectProviderState::default();
                 s.connect_provider.attempt = prev_attempt.wrapping_add(1);
             }
+            // Closing the overlay consumed this Esc: it must not also abort
+            // the live turn underneath.
+            return Cmd::None;
         }
-        if s.overlay == Overlay::None {
-            // No overlay to close: Esc during a live turn aborts it
-            if s.streaming.is_some() {
-                if let Some(session) = s.session.as_ref() {
-                    return Cmd::AbortSession(session.id);
-                }
+        // No overlay open: Esc during a live turn aborts it
+        // (OpenCode / Claude Code parity). The server cancels the
+        // harness; the terminal `Aborted` event clears the buffer.
+        if s.streaming.is_some() {
+            if let Some(session) = s.session.as_ref() {
+                return Cmd::AbortSession(session.id);
             }
         }
         return Cmd::None;

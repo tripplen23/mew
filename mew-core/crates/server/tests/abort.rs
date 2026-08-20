@@ -111,5 +111,8 @@ async fn abortable_turn_completes_when_flag_is_never_raised() {
         matches!(outcome.unwrap(), Ok(())),
         "finished turn returns Ok"
     );
-    let _ = rx.try_recv(); // no events expected; drain is fine
+    assert!(
+        rx.try_recv().is_err(),
+        "a completed turn must not emit any event"
+    );
 }

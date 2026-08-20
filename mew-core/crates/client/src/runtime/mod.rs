@@ -181,18 +181,28 @@ fn spawn_input_reader(tx: mpsc::Sender<Msg>) {
                         // Drop motion/drag: they arrive at the report rate,
                         // carry no click or scroll, and would flood the channel
                         // behind per-message redraws.
-                        let actionable = matches!(
+                        let is_click = matches!(
                             event.kind,
                             crossterm::event::MouseEventKind::Down(_)
-                                | crossterm::event::MouseEventKind::ScrollUp
-                                | crossterm::event::MouseEventKind::ScrollDown
                         );
+                        let actionable = is_click
+                            || matches!(
+                                event.kind,
+                                crossterm::event::MouseEventKind::ScrollUp
+                                    | crossterm::event::MouseEventKind::ScrollDown
+                            );
                         if !actionable {
                             continue;
                         }
-                        // `try_send`: a dropped click/scroll is harmless — the next one lands.
-                        // Only a channel close ends the reader.
-                        if tx.try_send(Msg::Mouse(event)).is_err() && tx.is_closed() {
+                        // Clicks are rare and must never be lost — a dropped
+                        // button-down makes the dock look unresponsive, so
+                        // deliver with backpressure. Scroll ticks are
+                        // coalescible noise: drop them when the UI is busy.
+                        if is_click {
+                            if tx.blocking_send(Msg::Mouse(event)).is_err() {
+                                break; // loop gone
+                            }
+                        } else if tx.try_send(Msg::Mouse(event)).is_err() && tx.is_closed() {
                             break; // loop gone
                         }
                     }

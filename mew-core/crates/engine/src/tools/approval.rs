@@ -9,8 +9,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use mewcode_protocol::event::{
-    CHOICE_ALLOW_ONCE, CHOICE_ALLOW_SESSION, CHOICE_DENY, ChoiceOption, ChoiceRequest,
-    ChoiceResponse,
+    CHOICE_ALLOW_ONCE, CHOICE_ALLOW_SESSION, CHOICE_ALWAYS_ALLOW, CHOICE_DENY, ChoiceOption,
+    ChoiceRequest, ChoiceResponse,
 };
 use mewcode_protocol::{StreamEvent, ToolError};
 use serde_json::Value;
@@ -19,7 +19,8 @@ use uuid::Uuid;
 
 const APPROVAL_TIMEOUT_MS: u64 = 120_000;
 
-/// Coordinates pending tool approvals and in-memory session allow rules.
+/// Coordinates pending tool approvals, in-memory session allow rules, and
+/// persistent (cross-session) "always allow" tool rules.
 #[derive(Clone, Default)]
 pub struct ApprovalBroker {
     state: Arc<Mutex<ApprovalState>>,
@@ -29,6 +30,8 @@ pub struct ApprovalBroker {
 struct ApprovalState {
     pending: HashMap<String, PendingApproval>,
     allowed: HashSet<ApprovalRule>,
+    always_allowed: HashSet<&'static str>,
+    persist_always_allow: Option<Arc<dyn Fn(&'static str) + Send + Sync>>,
 }
 
 struct PendingApproval {
@@ -44,6 +47,22 @@ struct ApprovalRule {
 }
 
 impl ApprovalBroker {
+    /// Preload persistent always-allow rules (from the host's settings).
+    pub fn with_always_allowed(self, tools: Vec<&'static str>) -> Self {
+        if let Ok(mut state) = self.state.lock() {
+            state.always_allowed.extend(tools);
+        }
+        self
+    }
+
+    /// Attach the hook that persists an always-allow rule (host-owned).
+    pub fn with_persist_always_allow(self, hook: Arc<dyn Fn(&'static str) + Send + Sync>) -> Self {
+        if let Ok(mut state) = self.state.lock() {
+            state.persist_always_allow = Some(hook);
+        }
+        self
+    }
+
     /// Ask the interactive client to approve a tool call before execution.
     pub async fn approve_tool(
         &self,
@@ -61,7 +80,7 @@ impl ApprovalBroker {
         if self
             .state
             .lock()
-            .map(|state| state.allowed.contains(&rule))
+            .map(|state| state.allowed.contains(&rule) || state.always_allowed.contains(tool_name))
             .unwrap_or(false)
         {
             return Ok(());
@@ -91,6 +110,14 @@ impl ApprovalBroker {
                     id: CHOICE_ALLOW_SESSION.into(),
                     label: "Allow this session".into(),
                     description: Some("Run matching calls in this chat session.".into()),
+                },
+                ChoiceOption {
+                    id: CHOICE_ALWAYS_ALLOW.into(),
+                    label: "Always allow".into(),
+                    description: Some(
+                        "Never ask for this tool again, across sessions (saved to Mew settings)."
+                            .into(),
+                    ),
                 },
                 ChoiceOption {
                     id: CHOICE_DENY.into(),
@@ -130,6 +157,21 @@ impl ApprovalBroker {
             } if id == request_id && option_id == CHOICE_ALLOW_SESSION => {
                 if let Ok(mut state) = self.state.lock() {
                     state.allowed.insert(rule);
+                }
+                Ok(())
+            }
+            ChoiceResponse::Selected {
+                request_id: id,
+                option_id,
+            } if id == request_id && option_id == CHOICE_ALWAYS_ALLOW => {
+                let hook = if let Ok(mut state) = self.state.lock() {
+                    state.always_allowed.insert(tool_name);
+                    state.persist_always_allow.clone()
+                } else {
+                    None
+                };
+                if let Some(hook) = hook {
+                    hook(tool_name);
                 }
                 Ok(())
             }

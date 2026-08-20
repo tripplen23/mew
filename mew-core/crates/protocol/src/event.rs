@@ -16,6 +16,8 @@ pub enum CompactionPhase {
 pub const CHOICE_ALLOW_ONCE: &str = "allow_once";
 /// Choice option id for approving matching calls in the current session.
 pub const CHOICE_ALLOW_SESSION: &str = "allow_session";
+/// Choice option id for always allowing this tool.
+pub const CHOICE_ALWAYS_ALLOW: &str = "always_allow";
 /// Choice option id for rejecting the pending request.
 pub const CHOICE_DENY: &str = "deny";
 

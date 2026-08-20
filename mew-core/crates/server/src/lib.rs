@@ -8,6 +8,7 @@ pub mod credential;
 pub mod error;
 pub mod github;
 pub mod openapi;
+pub mod permission;
 pub mod routes;
 pub mod services;
 pub mod sse;
@@ -44,6 +45,7 @@ use utoipa_swagger_ui::SwaggerUi;
 use crate::credential::CredentialStore;
 use crate::github::GithubClient;
 use crate::openapi::ApiDoc;
+use crate::permission::PermissionStore;
 use crate::store::{SessionStore, StoreError};
 
 #[doc(hidden)]
@@ -85,12 +87,33 @@ impl AppState {
     pub fn new(config: ServerConfig, store: Arc<dyn SessionStore>, memory: MemoryStore) -> Self {
         let credentials = CredentialStore::load().unwrap_or_default();
         let github_client = GithubClient::from_config(&config.github);
+
+        // Approval broker with persistent always-allow rules: preloaded from
+        // `permissions.yaml`, and the dialog's "Always allow" choice writes
+        // back through the hook.
+        let permissions = Arc::new(std::sync::Mutex::new(PermissionStore::load()));
+        let approvals = ApprovalBroker::default()
+            .with_always_allowed(
+                permissions
+                    .lock()
+                    .map(|p| p.as_static_names())
+                    .unwrap_or_default(),
+            )
+            .with_persist_always_allow({
+                let permissions = permissions.clone();
+                Arc::new(move |tool: &'static str| {
+                    if let Ok(mut store) = permissions.lock() {
+                        let _ = store.allow_forever(tool);
+                    }
+                })
+            });
+
         Self {
             config,
             store,
             memory,
             credentials: Arc::new(tokio::sync::Mutex::new(credentials)),
-            approvals: ApprovalBroker::default(),
+            approvals,
             session_tokens: Arc::new(RwLock::new(HashMap::new())),
             session_operations: Arc::new(Mutex::new(HashMap::new())),
             aborts: Arc::new(Mutex::new(HashMap::new())),

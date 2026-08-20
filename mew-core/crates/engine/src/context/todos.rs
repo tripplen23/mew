@@ -51,7 +51,10 @@ impl TodoStore {
     /// Replace the whole list, atomically (temp file + rename, so a reader
     /// sees either the old list or the new, never a partial write). Missing
     /// ids become stable position-based ids ("1", "2", …) at save time.
-    pub fn save(&self, todos: &TodoList) -> std::io::Result<()> {
+    ///
+    /// Returns the canonical persisted list (ids assigned), so callers that
+    /// echo the list back to the client send exactly what was saved.
+    pub fn save(&self, todos: &TodoList) -> std::io::Result<TodoList> {
         let assigned: TodoList = todos
             .iter()
             .enumerate()
@@ -67,9 +70,14 @@ impl TodoStore {
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent)?;
         }
-        let tmp = self.path.with_extension("json.tmp");
+        // Unique temp path per save: two racing writes must never share a
+        // staging file, or one can rename the other's half-written data.
+        let tmp = self
+            .path
+            .with_extension(format!("json.tmp.{}", uuid::Uuid::new_v4()));
         fs::write(&tmp, serialized)?;
-        fs::rename(&tmp, &self.path)
+        fs::rename(&tmp, &self.path)?;
+        Ok(assigned)
     }
 
     /// Format the current list as a system-prompt `<todos>` section. `None`
