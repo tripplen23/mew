@@ -153,7 +153,7 @@ impl ApprovalBroker {
                     id: CHOICE_ALWAYS_ALLOW.into(),
                     label: "Always allow".into(),
                     description: Some(
-                        "Never ask for this specific command or path again, across sessions (saved to Mew settings)."
+                        "Never ask for this specific command, path, or action again, across sessions (saved to Mew settings)."
                             .into(),
                     ),
                 },
@@ -258,22 +258,33 @@ impl ApprovalBroker {
     }
 }
 
-/// The scope string a tool call is granted against: the bash command, or the
-/// file path for file tools. Empty when the input carries no scope.
+/// The scope string a tool call is granted against: the bash command, the
+/// file path for file tools, or `action[@profile]` for the memory tool.
+/// Empty when the input carries no scope.
 fn approval_display(tool_name: &str, input: &Value) -> String {
     if tool_name == mewcode_protocol::tool::names::BASH {
-        input
+        return input
             .get("command")
             .and_then(Value::as_str)
             .unwrap_or("")
-            .to_string()
-    } else {
-        input
-            .get("path")
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .to_string()
+            .to_string();
     }
+    if tool_name == mewcode_protocol::tool::names::MEMORY {
+        // Memory is approval-gated (WRITE_LOCAL) but takes `action` +
+        // optional `profile`, not `path`. Scope it so an always-allow grant
+        // covers one operation on one profile instead of every action.
+        let action = input.get("action").and_then(Value::as_str).unwrap_or("");
+        let profile = input.get("profile").and_then(Value::as_str);
+        return match profile.filter(|p| *p != "default") {
+            Some(profile) => format!("{action}@{profile}"),
+            None => action.to_string(),
+        };
+    }
+    input
+        .get("path")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string()
 }
 
 /// Stable scope key for `(tool, scope)` used by session and persistent rules.

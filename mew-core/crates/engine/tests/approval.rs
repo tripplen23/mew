@@ -187,3 +187,83 @@ async fn always_allow_persist_failure_rejects_and_grants_nothing() {
         .expect("retry prompts");
     retry.abort();
 }
+
+#[tokio::test]
+async fn memory_always_allow_is_scoped_by_action_and_profile() {
+    use mewcode_protocol::event::ChoiceResponse;
+
+    type Rule = (String, Option<String>);
+    let persisted: Arc<Mutex<Vec<Rule>>> = Arc::new(Mutex::new(Vec::new()));
+    let persist_hook = {
+        let persisted = persisted.clone();
+        Arc::new(move |tool: &'static str, scope: Option<&str>| {
+            persisted
+                .lock()
+                .unwrap()
+                .push((tool.to_string(), scope.map(str::to_string)));
+            Ok(())
+        })
+    };
+    let broker = ApprovalBroker::default().with_persist_always_allow(persist_hook);
+    let session = Uuid::new_v4();
+    let (tx, mut rx) = mpsc::channel::<StreamEvent>(8);
+
+    // Always-allow `mewcode_memory` write on the "work" profile.
+    let approval = tokio::spawn({
+        let broker = broker.clone();
+        let tx = tx.clone();
+        async move {
+            broker
+                .approve_tool(
+                    session,
+                    names::MEMORY,
+                    &json!({"action": "write", "profile": "work", "content": "x"}),
+                    &tx,
+                )
+                .await
+        }
+    });
+    let request = match rx.recv().await.unwrap() {
+        StreamEvent::ChoiceRequest(request) => request,
+        other => panic!("unexpected event: {other:?}"),
+    };
+    let delivered = broker.answer(
+        session,
+        ChoiceResponse::Selected {
+            request_id: request.request_id.clone(),
+            option_id: CHOICE_ALWAYS_ALLOW.into(),
+        },
+    );
+    assert!(delivered);
+    assert!(approval.await.unwrap().is_ok());
+
+    {
+        let snapshot = persisted.lock().unwrap().clone();
+        assert_eq!(
+            snapshot.as_slice(),
+            [(names::MEMORY.to_string(), Some("write@work".to_string()))],
+            "memory grant scoped to one action@profile"
+        );
+    }
+
+    // A different action (`read`) is NOT covered: it must prompt again.
+    let other = tokio::spawn({
+        let broker = broker.clone();
+        let tx = tx.clone();
+        async move {
+            broker
+                .approve_tool(
+                    session,
+                    names::MEMORY,
+                    &json!({"action": "read", "profile": "work"}),
+                    &tx,
+                )
+                .await
+        }
+    });
+    let _ = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+        .await
+        .expect("different memory action must re-prompt")
+        .expect("retry prompts");
+    other.abort();
+}
