@@ -67,7 +67,7 @@ struct ApprovalRule {
 
 impl ApprovalBroker {
     /// Preload cross-session always-allow rules from host settings.
-    /// Each seed is `(tool, scope)` — semantics on [`PersistentRule`].
+    /// Each seed is `(tool, scope)`; `None` scope grants the whole tool.
     pub fn with_always_allowed(self, seeds: Vec<(&'static str, Option<&str>)>) -> Self {
         let rules = seeds
             .into_iter()
