@@ -7,8 +7,8 @@ use mewcode_protocol::credential::{
 };
 use mewcode_protocol::event::{ChatRequest, ChoiceResponseRequest};
 use mewcode_protocol::routes::{
-    CHAT, CHOICES, HEALTH, PROVIDER_CONNECT, PROVIDER_STATUS, PROVIDERS, SESSION_BY_ID,
-    SESSION_COMPACT, SESSIONS, SKILLS,
+    CHAT, CHOICES, HEALTH, PROVIDER_CONNECT, PROVIDER_STATUS, PROVIDERS, SESSION_ABORT,
+    SESSION_BY_ID, SESSION_COMPACT, SESSIONS, SKILLS,
 };
 use mewcode_protocol::{Message, Mode, ModelId, ModelKind, ProviderId, StreamEvent};
 use serde::{Deserialize, Serialize};
@@ -133,6 +133,10 @@ pub struct Session {
     /// Message index already covered by `compaction_summary`.
     #[serde(default)]
     pub compacted_up_to: Option<usize>,
+    /// Todos loaded by the server from the per-session todo file. Empty when
+    /// the server predates this field or none exist.
+    #[serde(default)]
+    pub todos: Vec<mewcode_protocol::TodoItem>,
 }
 
 /// Request body for `POST /sessions`. Mirrors the server's
@@ -283,6 +287,24 @@ impl ApiClient {
             .timeout(Duration::from_secs(10))
             .send()
             .await?;
+        let _ = ensure_success(resp)?.bytes().await?;
+        Ok(())
+    }
+
+    /// `POST /sessions/{id}/abort` — best-effort cancel of the in-flight
+    /// turn. A 404 (no live turn) is treated as success: racing an abort
+    /// against the turn's natural end is expected and self-heals.
+    pub async fn abort_session(&self, id: uuid::Uuid) -> Result<(), NetError> {
+        let path = SESSION_ABORT.replace("{id}", &id.to_string());
+        let resp = self
+            .inner
+            .post(format!("{}{}", self.base_url, path))
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await?;
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(());
+        }
         let _ = ensure_success(resp)?.bytes().await?;
         Ok(())
     }

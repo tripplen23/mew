@@ -86,9 +86,9 @@ pub(super) fn theme_lines() -> Vec<Line<'static>> {
     ]
 }
 
-pub(super) fn choice_lines(s: &SessionState) -> Vec<Line<'static>> {
+pub(super) fn choice_lines(s: &SessionState) -> (Vec<Line<'static>>, usize) {
     let Some(choice) = s.pending_choice.as_ref() else {
-        return vec![Line::from("No pending choice.")];
+        return (vec![Line::from("No pending choice.")], 0);
     };
     let mut lines = vec![
         Line::from(Span::styled(
@@ -98,7 +98,11 @@ pub(super) fn choice_lines(s: &SessionState) -> Vec<Line<'static>> {
         Line::from(choice.request.prompt.clone()),
         Line::from(""),
     ];
+    let mut cursor_line = 0;
     for (i, option) in choice.request.options.iter().enumerate() {
+        if i == choice.picker.cursor {
+            cursor_line = lines.len();
+        }
         let marker = if i == choice.picker.cursor {
             "›"
         } else {
@@ -124,7 +128,7 @@ pub(super) fn choice_lines(s: &SessionState) -> Vec<Line<'static>> {
         "↑↓ move, Enter select, Esc cancel",
         Style::default().fg(Color::DarkGray),
     )));
-    lines
+    (lines, cursor_line)
 }
 
 pub(super) fn render_slash_picker(frame: &mut Frame, area: Rect, s: &SessionState) {

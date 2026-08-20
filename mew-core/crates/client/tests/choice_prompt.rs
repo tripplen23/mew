@@ -1,8 +1,12 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
+use ratatui::Terminal;
+use ratatui::backend::TestBackend;
+
 use mewcode_client::net::Session;
 use mewcode_client::runtime::model::{App, Cmd, Msg, Overlay, Screen, SessionState};
 use mewcode_client::runtime::update;
+use mewcode_client::runtime::view::render;
 use mewcode_protocol::event::{ChoiceCancelReason, ChoiceOption, ChoiceRequest, ChoiceResponse};
 use mewcode_protocol::{Mode, ModelId};
 use uuid::Uuid;
@@ -49,6 +53,7 @@ fn app_with_session(session_id: Uuid) -> App {
         messages: vec![],
         compaction_summary: None,
         compacted_up_to: None,
+        todos: vec![],
     }));
     app
 }
@@ -129,4 +134,36 @@ fn choice_enter_submits_response_for_session() {
         }
         other => panic!("unexpected cmd: {other:?}"),
     }
+}
+
+#[test]
+fn choice_overlay_follow_scrolls_cursor_on_small_terminal() {
+    let mut app = app_with_session(Uuid::new_v4());
+    let mut request = choice();
+    request.options = (0..8)
+        .map(|i| ChoiceOption {
+            id: format!("o{i}"),
+            label: format!("Option {i}"),
+            description: Some("Second line".into()),
+        })
+        .collect();
+    update(&mut app, Msg::ChoiceRequested(request));
+    for _ in 0..7 {
+        update(&mut app, key(KeyCode::Down));
+    }
+
+    let mut terminal = Terminal::new(TestBackend::new(80, 15)).unwrap();
+    terminal
+        .draw(|frame| render(frame, &mut app))
+        .expect("draw");
+
+    let text: String = terminal
+        .backend()
+        .buffer()
+        .content
+        .iter()
+        .map(|cell| cell.symbol())
+        .collect();
+    assert!(text.contains("Option 7"), "cursor row scrolls into view");
+    assert!(!text.contains("Option 0"), "top rows scroll out");
 }

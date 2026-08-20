@@ -213,6 +213,7 @@ pub(super) fn render_transcript(
                     lines.push(render_tool_call_header(&call));
                     match &view.display {
                         Some(ToolDisplay::Diff(diff)) => lines.extend(render_diff(diff)),
+                        Some(ToolDisplay::Todo(_)) => {}
                         None => {
                             if let Some(output) = &view.output {
                                 let res = ToolResult {
@@ -316,6 +317,7 @@ fn render_message(msg: &mewcode_protocol::Message, theme: Theme) -> Vec<Line<'st
                 // tools keep the existing body.
                 match &res.display {
                     Some(ToolDisplay::Diff(diff)) => out.extend(render_diff(diff)),
+                    Some(ToolDisplay::Todo(_)) => {}
                     None => out.extend(render_tool_result_body(res)),
                 }
             }

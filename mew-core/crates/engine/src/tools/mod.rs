@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use mewcode_protocol::Mode;
 
-use crate::context::MemoryStore;
+use crate::context::{MemoryStore, TodoStore};
 use crate::skills::SkillRegistry;
 
 pub mod adapter;
@@ -28,6 +28,7 @@ mod registry;
 mod search;
 mod shell;
 mod skills;
+mod todo;
 
 pub use approval::ApprovalBroker;
 pub use context::{DisplayRecord, DisplaySink, ProjectContext};
@@ -38,6 +39,7 @@ pub use registry::ToolRegistry;
 pub use search::GrepTool;
 pub use shell::BashTool;
 pub use skills::{SkillViewTool, SkillsListTool};
+pub use todo::{TodoReadTool, TodoWriteTool};
 
 /// Engine-local alias for the shared skill registry. We keep the
 /// engine's [`SkillRegistry`] in [`crate::skills`] and pass it in to
@@ -55,6 +57,21 @@ pub fn default_registry(
     memory: Option<MemoryStore>,
     mode: Mode,
 ) -> ToolRegistry {
+    default_registry_with_todos(ctx, skills, memory, None, mode)
+}
+
+/// Build the default tool registry, with an optional per-session [`TodoStore`].
+///
+/// When a store is present the scratch `todo_write`/`todo_read` tools are
+/// registered in BOTH modes (they never touch project state). `default_registry`
+/// without a store omits them entirely — headless paths that have no session.
+pub fn default_registry_with_todos(
+    ctx: ProjectContext,
+    skills: Skills,
+    memory: Option<MemoryStore>,
+    todos: Option<TodoStore>,
+    mode: Mode,
+) -> ToolRegistry {
     let mut reg = ToolRegistry::new();
 
     // Read-only tools — always available.
@@ -64,6 +81,12 @@ pub fn default_registry(
     reg.register(Arc::new(GrepTool::new(ctx.clone())));
     reg.register(Arc::new(SkillsListTool::new(skills.clone())));
     reg.register(Arc::new(SkillViewTool::new(skills)));
+
+    // Session-scratch todo tools — both modes, never approval-gated.
+    if let Some(store) = todos {
+        reg.register(Arc::new(TodoWriteTool::new(store.clone(), ctx.clone())));
+        reg.register(Arc::new(TodoReadTool::new(store)));
+    }
 
     // `mewcode_memory` persists to disk (WRITE_LOCAL) — gate it with the writers.
     if mode.allows_writes() {

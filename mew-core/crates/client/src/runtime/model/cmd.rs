@@ -45,6 +45,8 @@ pub enum Cmd {
     PlayNotificationSound,
     /// Trigger manual context compaction for the current session.
     Compact(uuid::Uuid),
+    /// Best-effort cancel of the session's in-flight turn (`Esc` interrupt).
+    AbortSession(uuid::Uuid),
     /// Validate and store a provider API key.
     ConnectProvider(ConnectProviderRequest, u64),
     /// Run multiple commands.

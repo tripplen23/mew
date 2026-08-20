@@ -41,6 +41,7 @@ fn session_with_messages(messages: Vec<mewcode_protocol::Message>) -> Session {
         messages,
         compaction_summary: None,
         compacted_up_to: None,
+        todos: vec![],
     }
 }
 

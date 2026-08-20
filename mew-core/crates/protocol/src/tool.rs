@@ -30,6 +30,10 @@ pub mod names {
     pub const BASH: &str = "bash";
     /// Read, write, and list mewcode memory profiles.
     pub const MEMORY: &str = "mewcode_memory";
+    /// Replace the session's todo list.
+    pub const TODO_WRITE: &str = "todo_write";
+    /// Read the session's todo list.
+    pub const TODO_READ: &str = "todo_read";
 }
 
 /// Read-only tool set, available in both `Build` and `Plan` modes.
@@ -51,13 +55,34 @@ pub const ALL_TOOLS: &[&str] = &[
     names::BASH,
 ];
 
+/// Session-scratch tools, available in both modes and never approval-gated.
+/// They mutate Mew's session state (the todo list), not the project.
+pub const SCRATCH_TOOLS: &[&str] = &[names::TODO_WRITE, names::TODO_READ];
+
 /// Return the list of tool names allowed to execute in the given mode.
 pub fn allowed_tools_for_mode(mode: Mode) -> &'static [&'static str] {
     if mode.allows_writes() {
-        ALL_TOOLS
-    } else {
-        READ_ONLY_TOOLS
+        // Concat-free: scratch tools are always present regardless of mode.
+        return &[
+            names::READ_FILE,
+            names::LIST_DIRECTORY,
+            names::GLOB,
+            names::GREP,
+            names::WRITE_FILE,
+            names::EDIT_FILE,
+            names::BASH,
+            names::TODO_WRITE,
+            names::TODO_READ,
+        ];
     }
+    &[
+        names::READ_FILE,
+        names::LIST_DIRECTORY,
+        names::GLOB,
+        names::GREP,
+        names::TODO_WRITE,
+        names::TODO_READ,
+    ]
 }
 
 /// Default cap on a single tool response, in characters (a tokenizer-free
@@ -108,6 +133,9 @@ pub struct ToolAnnotations {
     /// Repeated calls with the same input have the same effect as one.
     #[serde(default)]
     pub idempotent: bool,
+    /// Exempt from the interactive approval gate.
+    #[serde(default)]
+    pub approval_exempt: bool,
 }
 
 impl ToolAnnotations {
@@ -117,6 +145,7 @@ impl ToolAnnotations {
         destructive: false,
         open_world: false,
         idempotent: true,
+        approval_exempt: false,
     };
 
     /// Read-only, sandboxed but not necessarily idempotent.
@@ -125,6 +154,7 @@ impl ToolAnnotations {
         destructive: false,
         open_world: false,
         idempotent: false,
+        approval_exempt: false,
     };
 
     /// Mutates the project filesystem.
@@ -133,6 +163,7 @@ impl ToolAnnotations {
         destructive: false,
         open_world: false,
         idempotent: false,
+        approval_exempt: false,
     };
 
     /// Runs a shell command. May have any side-effects.
@@ -141,6 +172,17 @@ impl ToolAnnotations {
         destructive: true,
         open_world: false,
         idempotent: false,
+        approval_exempt: false,
+    };
+
+    /// Mutates Mew's session-scoped task list, never the project. Always
+    /// available and never approval-gated.
+    pub const SCRATCH: Self = Self {
+        read_only: false,
+        destructive: false,
+        open_world: false,
+        idempotent: true,
+        approval_exempt: true,
     };
 }
 
@@ -224,6 +266,8 @@ impl ToolName {
         ToolName(names::EDIT_FILE),
         ToolName(names::BASH),
         ToolName(names::MEMORY),
+        ToolName(names::TODO_WRITE),
+        ToolName(names::TODO_READ),
     ];
 
     /// Parse a tool name from a string the model emitted.

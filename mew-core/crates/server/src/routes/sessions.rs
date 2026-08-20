@@ -69,7 +69,13 @@ pub async fn get_one(
     State(state): State<AppState>,
     Path(id): Path<uuid::Uuid>,
 ) -> Result<Json<Session>, AppError> {
-    let session = state.store.get_session(id).await?;
+    let mut session = state.store.get_session(id).await?;
+    // Hydrate the task list from its dedicated per-session file, so a client
+    // reopening the session (or resuming after compaction) sees the current
+    // todos without waiting for the next live `todo_write` event.
+    if let Some(todos) = crate::services::runtime::session_todos(&state.memory, &id) {
+        session.todos = todos.load();
+    }
     Ok(Json(session))
 }
 
@@ -161,7 +167,7 @@ pub async fn patch(
 ) -> Result<Json<Session>, AppError> {
     let operation_lock = state.existing_session_operation_lock(id).await?;
     let _operation_guard = operation_lock.lock().await;
-    let session = state
+    let mut session = state
         .store
         .patch_session(
             id,
@@ -173,5 +179,33 @@ pub async fn patch(
             },
         )
         .await?;
+    // Same hydration as `get_one`: a `/mode` switch must not wipe the dock,
+    // so the patched response carries the current task list too.
+    if let Some(todos) = crate::services::runtime::session_todos(&state.memory, &id) {
+        session.todos = todos.load();
+    }
     Ok(Json(session))
+}
+
+/// `POST /sessions/{id}/abort` — best-effort cancel of the in-flight chat
+/// turn. `202` when a turn was registered and the flag was raised; `404`
+/// when the session has no live turn (abort after the fact is a no-op).
+#[utoipa::path(
+    post,
+    path = "/sessions/{id}/abort",
+    tag = "sessions",
+    params(
+        ("id" = uuid::Uuid, Path, description = "Session id"),
+    ),
+    responses(
+        (status = 202, description = "Abort signal delivered"),
+        (status = 404, description = "No in-flight turn for this session"),
+    ),
+)]
+pub async fn abort(State(state): State<AppState>, Path(id): Path<uuid::Uuid>) -> StatusCode {
+    if state.request_abort(id).await {
+        StatusCode::ACCEPTED
+    } else {
+        StatusCode::NOT_FOUND
+    }
 }

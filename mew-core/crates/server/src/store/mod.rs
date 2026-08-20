@@ -81,6 +81,11 @@ pub struct Session {
     pub updated_at: DateTime<Utc>,
     /// Ordered message history.
     pub messages: Vec<Message>,
+    /// The session's task list, hydrated by the server from
+    /// `<data_dir>/todos/<id>.json`. Usually empty at store layer; the
+    /// sessions route fills it from the dedicated todo file.
+    #[serde(default)]
+    pub todos: Vec<mewcode_protocol::TodoItem>,
     /// Optional compaction summary from the last manual or automatic compaction.
     /// Injected as a clearly delimited synthetic user/assistant history pair.
     #[serde(default, skip_serializing_if = "Option::is_none")]

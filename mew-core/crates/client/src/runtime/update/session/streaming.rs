@@ -85,6 +85,17 @@ pub(crate) fn apply_stream_event(s: &mut SessionState, ev: StreamMsg) -> Option<
             }
             None
         }
+        StreamMsg::TokenUsage {
+            session_tokens,
+            context_limit,
+            ..
+        } => {
+            s.session_tokens = session_tokens;
+            if context_limit > 0 {
+                s.context_limit = context_limit;
+            }
+            None
+        }
         StreamMsg::ToolInput { id, name, input } => {
             if let Some(st) = &mut s.streaming {
                 st.push_tool_call(ToolCallView {
@@ -108,8 +119,11 @@ pub(crate) fn apply_stream_event(s: &mut SessionState, ev: StreamMsg) -> Option<
         StreamMsg::ToolDisplay { id, display } => {
             if let Some(st) = &mut s.streaming {
                 if let Some(call) = st.tool_mut(&id) {
-                    call.display = Some(display);
+                    call.display = Some(display.clone());
                 }
+            }
+            if let mewcode_protocol::ToolDisplay::Todo(display) = &display {
+                s.todos = display.todos.clone();
             }
             None
         }

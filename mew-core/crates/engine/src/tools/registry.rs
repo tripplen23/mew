@@ -74,15 +74,16 @@ impl ToolRegistry {
     ) -> Self {
         let mut reg = ToolRegistry::new();
         for tool in self.inner.values() {
-            if !tool.descriptor().annotations.read_only {
+            let annotations = tool.descriptor().annotations;
+            if annotations.approval_exempt || annotations.read_only {
+                reg.register(tool.clone());
+            } else {
                 reg.register(Arc::new(ApprovalTool {
                     inner: tool.clone(),
                     session_id,
                     broker: broker.clone(),
                     events: events.clone(),
                 }));
-            } else {
-                reg.register(tool.clone());
             }
         }
         reg

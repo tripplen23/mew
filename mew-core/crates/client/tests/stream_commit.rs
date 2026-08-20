@@ -30,6 +30,7 @@ fn session_app() -> App {
         messages: vec![],
         compaction_summary: None,
         compacted_up_to: None,
+        todos: vec![],
     }));
     app
 }

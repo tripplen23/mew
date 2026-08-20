@@ -36,6 +36,7 @@ pub(super) async fn run_turn(
                 tx,
                 agent.display_sink,
                 activity,
+                agent.session_tokens_base,
             )
             .await
         }
@@ -57,6 +58,7 @@ pub(super) async fn run_turn(
                 tx,
                 agent.display_sink,
                 activity,
+                agent.session_tokens_base,
             )
             .await
         }

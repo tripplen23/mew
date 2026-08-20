@@ -86,6 +86,7 @@ impl MetaJson {
             created_at: self.created_at,
             updated_at: self.updated_at,
             messages,
+            todos: Vec::new(),
             compaction_summary: self.compaction_summary.clone(),
             compacted_up_to: self.compacted_up_to,
             compacted_up_to_message_id: self.compacted_up_to_message_id,

@@ -32,6 +32,7 @@ fn session() -> mewcode_client::net::Session {
         messages: vec![],
         compaction_summary: None,
         compacted_up_to: None,
+        todos: vec![],
     }
 }
 
@@ -843,6 +844,7 @@ fn session_patched_after_overlay_closed_does_not_clear_composer() {
         updated_at: chrono::Utc::now(),
         compaction_summary: None,
         compacted_up_to: None,
+        todos: vec![],
     };
     let _ = update(
         &mut app,
@@ -901,6 +903,7 @@ fn session_patched_from_rename_clears_draft_even_if_overlay_already_closed() {
         updated_at: chrono::Utc::now(),
         compaction_summary: None,
         compacted_up_to: None,
+        todos: vec![],
     };
     let _ = update(&mut app, Msg::SessionPatched(Ok(new_session), true));
 
@@ -939,6 +942,7 @@ fn session_opened_after_overlay_closed_does_not_adopt_session() {
         updated_at: chrono::Utc::now(),
         compaction_summary: None,
         compacted_up_to: None,
+        todos: vec![],
     };
     let _ = update(&mut app, Msg::SessionOpened(Ok(other)));
 

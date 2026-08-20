@@ -202,3 +202,45 @@ async fn missing_id_get_and_delete_return_not_found() {
     .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
+
+/// `I007`: `GET /sessions/{id}` hydrates `todos` from the per-session todo
+/// file so reopening a session shows the current task list.
+#[tokio::test]
+async fn get_session_hydrates_todos_from_todo_file() {
+    let fact_dir = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+    let fact_store = FactStore::new(fact_dir.clone());
+    let state = AppState::new(test_config(), Arc::new(MemoryStore::default()), fact_store);
+    let app = build_app(state);
+
+    let (status, bytes) = send(app.clone(), post_session(json!({ "title": "Todo" }))).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let created: Session = serde_json::from_slice(&bytes).unwrap();
+
+    // Seed the todo file directly (as `todo_write` would).
+    mewcode_engine::context::TodoStore::for_session(fact_dir.clone(), &created.id)
+        .save(&vec![mewcode_protocol::TodoItem {
+            id: None,
+            content: "finish the dock".into(),
+            status: mewcode_protocol::TodoStatus::InProgress,
+        }])
+        .unwrap();
+
+    let (status, bytes) = send(
+        app,
+        Request::builder()
+            .uri(session_path(&created.id))
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let fetched: Session = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(fetched.todos.len(), 1);
+    assert_eq!(fetched.todos[0].content, "finish the dock");
+    assert_eq!(
+        fetched.todos[0].status,
+        mewcode_protocol::TodoStatus::InProgress
+    );
+
+    let _ = std::fs::remove_dir_all(fact_dir);
+}

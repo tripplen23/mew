@@ -16,6 +16,8 @@ pub enum CompactionPhase {
 pub const CHOICE_ALLOW_ONCE: &str = "allow_once";
 /// Choice option id for approving matching calls in the current session.
 pub const CHOICE_ALLOW_SESSION: &str = "allow_session";
+/// Choice option id for always allowing this tool.
+pub const CHOICE_ALWAYS_ALLOW: &str = "always_allow";
 /// Choice option id for rejecting the pending request.
 pub const CHOICE_DENY: &str = "deny";
 
@@ -40,6 +42,21 @@ pub enum StreamEvent {
     TextDelta {
         /// Text to append.
         delta: String,
+    },
+    /// Mid-turn token accounting: emitted every time a completion call
+    /// inside the turn finishes (there is one per agent/tool round-trip), so
+    /// the client's context indicator tracks usage live instead of jumping
+    /// only at [`StreamEvent::Finish`]. Providers report usage only when a
+    /// completion ends, so this is the finest honest cadence available.
+    TokenUsage {
+        /// Input tokens consumed by the turn so far.
+        input_tokens: u64,
+        /// Output tokens produced by the turn so far.
+        output_tokens: u64,
+        /// Estimated session context size after this turn's calls so far.
+        session_tokens: u64,
+        /// The model's context limit.
+        context_limit: u64,
     },
     /// The model is about to call a tool.
     ToolInputAvailable {

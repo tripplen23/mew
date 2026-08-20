@@ -43,6 +43,10 @@ pub const MEMORY_POST: &str = "/memory";
 /// `POST /sessions/{id}/compact` — manually trigger context compaction.
 pub const SESSION_COMPACT: &str = "/sessions/{id}/compact";
 
+/// `POST /sessions/{id}/abort` — best-effort cancel of the session's
+/// in-flight chat turn (OpenCode / Claude Code Esc-interrupt parity).
+pub const SESSION_ABORT: &str = "/sessions/{id}/abort";
+
 /// `POST /providers/connect` — validate and store a provider API key.
 pub const PROVIDER_CONNECT: &str = "/providers/connect";
 

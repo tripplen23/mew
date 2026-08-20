@@ -360,3 +360,31 @@ async fn patch_and_delete_wait_for_session_operation_lock() {
     drop(guard);
     assert_eq!(delete_future.await.unwrap(), StatusCode::NO_CONTENT);
 }
+
+/// `PATCH /sessions/{id}` hydrates `todos` like `GET`, so a `/mode` switch
+/// does not wipe the client's todo dock.
+#[tokio::test]
+async fn patch_preserves_todos_hydration() {
+    let fact_dir = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+    let fact_store = FactStore::new(fact_dir.clone());
+    let state = AppState::new(test_config(), Arc::new(MemoryStore::default()), fact_store);
+    let app = build_app(state);
+
+    let created = create_session_on(&app).await;
+    mewcode_engine::context::TodoStore::for_session(fact_dir.clone(), &created.id)
+        .save(&vec![mewcode_protocol::TodoItem {
+            id: None,
+            content: "survive mode switch".into(),
+            status: mewcode_protocol::TodoStatus::InProgress,
+        }])
+        .unwrap();
+
+    let (status, bytes) = send(app, patch_session(&created.id, json!({ "mode": "PLAN" }))).await;
+    assert_eq!(status, StatusCode::OK);
+    let session: Session = serde_json::from_slice(&bytes).expect("patch body is a Session");
+    assert_eq!(session.mode, Mode::Plan);
+    assert_eq!(session.todos.len(), 1);
+    assert_eq!(session.todos[0].content, "survive mode switch");
+
+    let _ = std::fs::remove_dir_all(fact_dir);
+}

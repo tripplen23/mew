@@ -23,6 +23,40 @@ pub(super) fn render_panel(frame: &mut Frame, area: Rect, title: &str, body: Vec
     );
 }
 
+/// Wrapped row count of one logical line at `width`. Ratatui wraps each
+/// [`Line`] independently, so per-line counts sum to the body's height.
+pub(super) fn wrapped_line_count(line: &Line<'static>, width: u16) -> usize {
+    if width == 0 {
+        return 0;
+    }
+    Paragraph::new(Text::from(vec![line.clone()]))
+        .wrap(Wrap { trim: false })
+        .line_count(width)
+}
+
+/// Like [`render_panel`] but vertically scrolled by `scroll` wrapped rows,
+/// for bodies taller than the panel (the choice prompt on small terminals).
+pub(super) fn render_scrolled_text_panel(
+    frame: &mut Frame,
+    area: Rect,
+    title: &str,
+    body: Vec<Line<'static>>,
+    scroll: u16,
+) {
+    let rect = centered_rect(area, 60, 60);
+    frame.render_widget(Clear, rect);
+    let block = Block::bordered()
+        .title(format!(" {title}  (Esc to close) "))
+        .border_style(Style::default().fg(Color::Cyan));
+    frame.render_widget(
+        Paragraph::new(Text::from(body))
+            .wrap(Wrap { trim: false })
+            .scroll((scroll, 0))
+            .block(block),
+        rect,
+    );
+}
+
 /// Centred rect, matching the size used by [`render_panel`].
 /// Exposed so callers that build their own body lines (e.g. to truncate
 /// to the inner width) can render into the same rect.

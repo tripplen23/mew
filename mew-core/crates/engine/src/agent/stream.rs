@@ -110,6 +110,7 @@ fn take_display(sink: &DisplaySink, args: &Value) -> Option<mewcode_protocol::To
 /// translates Rig stream items into mewcode events.
 ///
 /// Returns the full reply text and accumulated token usage.
+#[allow(clippy::too_many_arguments)]
 pub async fn run_agent_stream<M: rig_core::completion::CompletionModel + 'static>(
     agent: rig_core::agent::Agent<M>,
     model: mewcode_protocol::ModelId,
@@ -118,6 +119,7 @@ pub async fn run_agent_stream<M: rig_core::completion::CompletionModel + 'static
     tx: &mpsc::Sender<StreamEvent>,
     display_sink: Option<DisplaySink>,
     activity: AgentActivity,
+    session_tokens_base: u64,
 ) -> Result<(String, TurnUsage), EngineError> {
     let mut stream = agent.stream_prompt(user_text).history(history).await;
 
@@ -202,12 +204,25 @@ pub async fn run_agent_stream<M: rig_core::completion::CompletionModel + 'static
                 usage.cache_creation_input_tokens += call.usage.cache_creation_input_tokens;
                 usage.reasoning_tokens += call.usage.reasoning_tokens;
                 usage.tool_use_prompt_tokens += call.usage.tool_use_prompt_tokens;
+
                 // Provider-reported cost lands in `Usage::cost` once upstream
                 // rig merges 0xPlaygrounds/rig#2243 and we bump rig-core;
                 // until then `cost_usd` falls back to pricing.json.
                 // if usage.cost.is_none() {
                 //     usage.cost = call.usage.cost;
                 // }
+
+                // Live context accounting: one event per completed completion
+                // (i.e. per agent/tool round-trip), so the client's status bar
+                // tracks usage during a long turn instead of at Finish only.
+                let _ = tx
+                    .send(StreamEvent::TokenUsage {
+                        input_tokens: usage.input_tokens,
+                        output_tokens: usage.output_tokens,
+                        session_tokens: session_tokens_base + usage.total(),
+                        context_limit: model.context_limit(),
+                    })
+                    .await;
 
                 tracing::debug!(
                     input_tokens = call.usage.input_tokens,

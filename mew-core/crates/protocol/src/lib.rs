@@ -23,7 +23,7 @@ pub mod tool;
 pub use credential::{
     ConnectProviderRequest, ConnectProviderResponse, ProviderCredential, ProviderStatus,
 };
-pub use display::{DiffDisplay, ToolDisplay};
+pub use display::{DiffDisplay, TodoDisplay, TodoItem, TodoList, TodoStatus, ToolDisplay};
 pub use event::StreamEvent;
 pub use message::{Message, MessagePart, Role, ToolCall, ToolResult};
 pub use mode::{Mode, ModeParseError};
