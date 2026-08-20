@@ -181,10 +181,8 @@ fn spawn_input_reader(tx: mpsc::Sender<Msg>) {
                         // Drop motion/drag: they arrive at the report rate,
                         // carry no click or scroll, and would flood the channel
                         // behind per-message redraws.
-                        let is_click = matches!(
-                            event.kind,
-                            crossterm::event::MouseEventKind::Down(_)
-                        );
+                        let is_click =
+                            matches!(event.kind, crossterm::event::MouseEventKind::Down(_));
                         let actionable = is_click
                             || matches!(
                                 event.kind,

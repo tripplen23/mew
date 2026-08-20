@@ -4,6 +4,7 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use mewcode_engine::context::MemoryStore as FactStore;
+use mewcode_engine::tools::ApprovalBroker;
 use mewcode_protocol::StreamEvent;
 use mewcode_protocol::event::{CHOICE_ALLOW_ONCE, ChoiceResponse, ChoiceResponseRequest};
 use mewcode_protocol::routes::CHOICES;
@@ -29,7 +30,9 @@ fn test_config() -> ServerConfig {
 
 fn state() -> AppState {
     let fact_store = FactStore::new(std::env::temp_dir().join(uuid::Uuid::new_v4().to_string()));
-    AppState::new(test_config(), Arc::new(MemoryStore::default()), fact_store)
+    let mut state = AppState::new(test_config(), Arc::new(MemoryStore::default()), fact_store);
+    state.approvals = ApprovalBroker::default();
+    state
 }
 
 fn post_choice(req: &ChoiceResponseRequest) -> Request<Body> {

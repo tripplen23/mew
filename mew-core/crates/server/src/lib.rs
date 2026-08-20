@@ -92,18 +92,22 @@ impl AppState {
         // `permissions.yaml`, and the dialog's "Always allow" choice writes
         // back through the hook.
         let permissions = Arc::new(std::sync::Mutex::new(PermissionStore::load()));
+        let seed: Vec<(&'static str, Option<String>)> = permissions
+            .lock()
+            .map(|p| {
+                p.as_seed()
+                    .into_iter()
+                    .map(|(tool, scope)| (tool, scope.map(str::to_string)))
+                    .collect()
+            })
+            .unwrap_or_default();
         let approvals = ApprovalBroker::default()
-            .with_always_allowed(
-                permissions
-                    .lock()
-                    .map(|p| p.as_static_names())
-                    .unwrap_or_default(),
-            )
+            .with_always_allowed(seed.iter().map(|(t, s)| (*t, s.as_deref())).collect())
             .with_persist_always_allow({
                 let permissions = permissions.clone();
-                Arc::new(move |tool: &'static str| {
+                Arc::new(move |tool: &'static str, scope: Option<&str>| {
                     if let Ok(mut store) = permissions.lock() {
-                        let _ = store.allow_forever(tool);
+                        let _ = store.allow_forever(tool, scope);
                     }
                 })
             });

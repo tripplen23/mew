@@ -19,6 +19,10 @@ use uuid::Uuid;
 
 const APPROVAL_TIMEOUT_MS: u64 = 120_000;
 
+/// Host-side callback that persists an always-allow rule: `(tool, scope)`
+/// with `None` granting the whole tool.
+pub type PersistAlwaysAllow = Arc<dyn Fn(&'static str, Option<&str>) + Send + Sync>;
+
 /// Coordinates pending tool approvals, in-memory session allow rules, and
 /// persistent (cross-session) "always allow" tool rules.
 #[derive(Clone, Default)]
@@ -30,8 +34,20 @@ pub struct ApprovalBroker {
 struct ApprovalState {
     pending: HashMap<String, PendingApproval>,
     allowed: HashSet<ApprovalRule>,
-    always_allowed: HashSet<&'static str>,
-    persist_always_allow: Option<Arc<dyn Fn(&'static str) + Send + Sync>>,
+    /// Cross-session always-allow rules, preloaded from host settings.
+    /// Scope semantics live on [`PersistentRule`].
+    always_allowed: HashSet<PersistentRule>,
+    /// Hook invoked when the user picks "always allow", so the host can
+    /// persist the rule beyond this process.
+    persist_always_allow: Option<PersistAlwaysAllow>,
+}
+
+/// One always-allow rule: `(tool, scope)`. `None` scope = whole tool;
+/// `Some` = that one command or path only.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct PersistentRule {
+    tool_name: &'static str,
+    scope_key: Option<u64>,
 }
 
 struct PendingApproval {
@@ -47,16 +63,25 @@ struct ApprovalRule {
 }
 
 impl ApprovalBroker {
-    /// Preload persistent always-allow rules (from the host's settings).
-    pub fn with_always_allowed(self, tools: Vec<&'static str>) -> Self {
+    /// Preload cross-session always-allow rules from host settings.
+    /// Each seed is `(tool, scope)` — semantics on [`PersistentRule`].
+    pub fn with_always_allowed(self, seeds: Vec<(&'static str, Option<&str>)>) -> Self {
+        let rules = seeds
+            .into_iter()
+            .map(|(tool_name, scope)| PersistentRule {
+                tool_name,
+                scope_key: scope.map(|display| scope_key_of(tool_name, display)),
+            })
+            .collect::<Vec<_>>();
         if let Ok(mut state) = self.state.lock() {
-            state.always_allowed.extend(tools);
+            state.always_allowed.extend(rules);
         }
         self
     }
 
-    /// Attach the hook that persists an always-allow rule (host-owned).
-    pub fn with_persist_always_allow(self, hook: Arc<dyn Fn(&'static str) + Send + Sync>) -> Self {
+    /// Attach the hook that persists an always-allow rule (host-owned). The
+    /// hook receives the tool name and the granted scope (`None` = firm tool).
+    pub fn with_persist_always_allow(self, hook: PersistAlwaysAllow) -> Self {
         if let Ok(mut state) = self.state.lock() {
             state.persist_always_allow = Some(hook);
         }
@@ -80,7 +105,17 @@ impl ApprovalBroker {
         if self
             .state
             .lock()
-            .map(|state| state.allowed.contains(&rule) || state.always_allowed.contains(tool_name))
+            .map(|state| {
+                state.allowed.contains(&rule)
+                    || state.always_allowed.contains(&PersistentRule {
+                        tool_name,
+                        scope_key: None,
+                    })
+                    || state.always_allowed.contains(&PersistentRule {
+                        tool_name,
+                        scope_key: Some(scope_key),
+                    })
+            })
             .unwrap_or(false)
         {
             return Ok(());
@@ -115,7 +150,7 @@ impl ApprovalBroker {
                     id: CHOICE_ALWAYS_ALLOW.into(),
                     label: "Always allow".into(),
                     description: Some(
-                        "Never ask for this tool again, across sessions (saved to Mew settings)."
+                        "Never ask for this specific command or path again, across sessions (saved to Mew settings)."
                             .into(),
                     ),
                 },
@@ -164,14 +199,20 @@ impl ApprovalBroker {
                 request_id: id,
                 option_id,
             } if id == request_id && option_id == CHOICE_ALWAYS_ALLOW => {
+                let scope_display = approval_display(tool_name, input);
+                let scope_display = (!scope_display.is_empty()).then_some(scope_display);
+                let scope_key = scope_display.as_deref().map(|d| scope_key_of(tool_name, d));
                 let hook = if let Ok(mut state) = self.state.lock() {
-                    state.always_allowed.insert(tool_name);
+                    state.always_allowed.insert(PersistentRule {
+                        tool_name,
+                        scope_key,
+                    });
                     state.persist_always_allow.clone()
                 } else {
                     None
                 };
                 if let Some(hook) = hook {
-                    hook(tool_name);
+                    hook(tool_name, scope_display.as_deref());
                 }
                 Ok(())
             }
@@ -208,12 +249,34 @@ impl ApprovalBroker {
     }
 }
 
-fn approval_scope(tool_name: &str, input: &Value) -> (String, u64) {
-    let display = if tool_name == mewcode_protocol::tool::names::BASH {
-        input.get("command").and_then(Value::as_str).unwrap_or("")
+/// The scope string a tool call is granted against: the bash command, or the
+/// file path for file tools. Empty when the input carries no scope.
+fn approval_display(tool_name: &str, input: &Value) -> String {
+    if tool_name == mewcode_protocol::tool::names::BASH {
+        input
+            .get("command")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string()
     } else {
-        input.get("path").and_then(Value::as_str).unwrap_or("")
-    };
+        input
+            .get("path")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string()
+    }
+}
+
+/// Stable scope key for `(tool, scope)` used by session and persistent rules.
+fn scope_key_of(tool_name: &str, display: &str) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    tool_name.hash(&mut hasher);
+    display.hash(&mut hasher);
+    hasher.finish()
+}
+
+fn approval_scope(tool_name: &str, input: &Value) -> (String, u64) {
+    let display = approval_display(tool_name, input);
     let label = if display.is_empty() {
         "this input".to_string()
     } else if tool_name == mewcode_protocol::tool::names::BASH {
@@ -221,10 +284,7 @@ fn approval_scope(tool_name: &str, input: &Value) -> (String, u64) {
     } else {
         format!("path `{display}`")
     };
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    tool_name.hash(&mut hasher);
-    display.hash(&mut hasher);
-    (label, hasher.finish())
+    (label, scope_key_of(tool_name, &display))
 }
 
 fn rejected(tool_name: &str, message: &str) -> ToolError {

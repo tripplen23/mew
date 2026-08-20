@@ -332,6 +332,29 @@ fn esc_during_streaming_requests_abort() {
     assert!(matches!(cmd, Cmd::None));
 }
 
+/// Esc with an overlay open closes the overlay only — it must not also abort
+/// the live turn underneath.
+#[test]
+fn esc_closes_overlay_without_aborting_turn() {
+    use crossterm::event::{KeyCode, KeyEvent};
+    use mewcode_client::runtime::model::{Cmd, Overlay, StreamingState};
+
+    let mut app = App::new();
+    let id = uuid::Uuid::new_v4();
+    app.screen = Screen::Session(SessionState::new(session_at(id, vec![])));
+    {
+        let Screen::Session(state) = &mut app.screen;
+        state.streaming = Some(StreamingState::new(uuid::Uuid::nil()));
+        state.overlay = Overlay::ModelPicker;
+    }
+
+    let cmd = update(&mut app, Msg::Key(KeyEvent::from(KeyCode::Esc)));
+    assert!(matches!(cmd, Cmd::None), "overlay Esc must not abort");
+    let Screen::Session(state) = &app.screen;
+    assert_eq!(state.overlay, Overlay::None, "overlay closed");
+    assert!(state.streaming.is_some(), "live turn untouched");
+}
+
 fn session_at(id: uuid::Uuid, todos: Vec<TodoItem>) -> Session {
     let mut s = session(todos);
     s.id = id;

@@ -1,4 +1,4 @@
-//! Tests for the persistent always-allow permissions store.
+//! Tests for the persistent always-allow permissions store (scoped rules).
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -19,41 +19,52 @@ fn fresh_dir() -> PathBuf {
 fn missing_file_loads_empty_and_corrupt_loads_empty() {
     let dir = fresh_dir();
     let store = PermissionStore::load_from(&dir.join("nope.yaml")).unwrap();
-    assert!(store.allowed_tools.is_empty());
+    assert!(store.allowed.is_empty());
 
     std::fs::write(dir.join("bad.yaml"), "::: not yaml :::").unwrap();
     let store = PermissionStore::load_from(&dir.join("bad.yaml")).unwrap();
-    assert!(store.allowed_tools.is_empty());
+    assert!(store.allowed.is_empty());
 }
 
 #[test]
-fn unknown_tool_names_are_dropped_on_load() {
+fn scoped_and_whole_tool_rules_parse_and_unknown_dropped() {
     let dir = fresh_dir();
     let path = dir.join("permissions.yaml");
-    std::fs::write(&path, "- bash\n- hoverboard\n- write_file\n").unwrap();
+    std::fs::write(&path, "- bash: ls\n- write_file\n- hoverboard: fly\n").unwrap();
 
     let store = PermissionStore::load_from(&path).unwrap();
-    let mut names = store.as_static_names();
-    names.sort();
-    assert_eq!(names, vec!["bash", "write_file"]);
+    let mut seed = store.as_seed();
+    seed.sort();
+    assert_eq!(
+        seed,
+        vec![("bash", Some("ls")), ("write_file", None)],
+        "whole-tool and scoped rules load; unknown tools drop"
+    );
 }
 
 #[test]
-fn allow_forever_persists_and_reloads() {
+fn allow_forever_persists_scoped_rules_and_reloads() {
     let dir = fresh_dir();
     let path = dir.join("permissions.yaml");
 
     let mut store = PermissionStore::load_from(&path).unwrap();
-    store.allow_forever_to(&path, "bash").unwrap();
-    store.allow_forever_to(&path, "bash").unwrap(); // idempotent
-    store.allow_forever_to(&path, "write_file").unwrap();
+    store.allow_forever_to(&path, "bash", Some("ls")).unwrap();
+    store.allow_forever_to(&path, "bash", Some("ls")).unwrap(); // idempotent
+    store.allow_forever_to(&path, "bash", None).unwrap(); // whole tool
+    store
+        .allow_forever_to(&path, "write_file", Some("docs/x.md"))
+        .unwrap();
 
     let reloaded = PermissionStore::load_from(&path).unwrap();
-    let mut names = reloaded.as_static_names();
-    names.sort();
+    let mut seed = reloaded.as_seed();
+    seed.sort();
     assert_eq!(
-        names,
-        vec!["bash", "write_file"],
+        seed,
+        vec![
+            ("bash", None),
+            ("bash", Some("ls")),
+            ("write_file", Some("docs/x.md")),
+        ],
         "rules survive a reload (restart parity)"
     );
 }

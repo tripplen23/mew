@@ -1,10 +1,16 @@
 //! Permission store — persistent "always allow" tool approvals.
 //!
-//! The interactive approval dialog's "Always allow" choice writes the tool
-//! name here, and the broker is preloaded from here at startup, so the rule
-//! survives restarts. Stored as a YAML list in `~/.config/mew/permissions.yaml`.
+//! The interactive approval dialog's "Always allow" choice writes a scoped
+//! rule here, and the broker is preloaded from here at startup, so rules
+//! survive restarts (Claude Code "don't ask again for `ls`" / OpenCode
+//! permission config parity). Stored as a YAML list in
+//! `~/.config/mew/permissions.yaml`:
+//!
+//! ```yaml
+//! - bash: ls        # allow `ls`
+//! - write_file      # allow the whole tool (edit this file by hand)
+//! ```
 
-use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -20,11 +26,12 @@ fn config_dir() -> PathBuf {
         .join("mew")
 }
 
-/// In-memory view of the persistent always-allow rules.
+/// In-memory view of the persistent always-allow rules. Each entry is a
+/// `(tool, scope)` pair; `None` scope grants the whole tool.
 #[derive(Debug, Clone, Default)]
 pub struct PermissionStore {
-    /// Tool names the user always allows.
-    pub allowed_tools: HashSet<String>,
+    /// Scoped or whole-tool allow rules.
+    pub allowed: Vec<(String, Option<String>)>,
 }
 
 impl PermissionStore {
@@ -34,48 +41,87 @@ impl PermissionStore {
         Self::load_from(&config_dir().join(PERMISSIONS_FILE)).unwrap_or_else(|_| Self::default())
     }
 
-    /// Load from an explicit path (also the test seam). Unknown tool names
-    /// are dropped so a stale entry never widens approval scope silently.
+    /// Load rules from `path` (also the test seam). An entry is `"<tool>"`
+    /// (whole tool) or `"<tool>: <scope>"` (one command/path). Hand-written
+    /// `- bash: ls` parses unquoted too; unknown tool names are dropped.
     pub fn load_from(path: &Path) -> Result<Self, std::io::Error> {
         if !path.exists() {
             return Ok(Self::default());
         }
         let contents = fs::read_to_string(path)?;
-        let names: Vec<String> = serde_yaml::from_str(&contents).unwrap_or_default();
-        let allowed_tools = names
+        let entries: Vec<serde_yaml::Value> = serde_yaml::from_str(&contents).unwrap_or_default();
+        let allowed: Vec<(String, Option<String>)> = entries
             .into_iter()
-            .filter(|name| ToolName::parse(name).is_some())
+            .filter_map(|entry| {
+                let (tool, scope) = match entry {
+                    serde_yaml::Value::String(s) => match s.split_once(':') {
+                        Some((tool, scope)) => {
+                            (tool.trim().to_string(), Some(scope.trim().to_string()))
+                        }
+                        None => (s.trim().to_string(), None),
+                    },
+                    // `- bash: ls` unquoted arrives as a one-entry mapping.
+                    serde_yaml::Value::Mapping(mapping) if mapping.len() == 1 => {
+                        let (key, value) = mapping.into_iter().next()?;
+                        let scope = match value {
+                            serde_yaml::Value::String(s) => s,
+                            _ => return None,
+                        };
+                        (key.as_str()?.to_string(), Some(scope))
+                    }
+                    _ => return None,
+                };
+                ToolName::parse(&tool)?;
+                let scope = scope.filter(|s| !s.is_empty());
+                Some((tool, scope))
+            })
             .collect();
-        Ok(Self { allowed_tools })
+        Ok(Self { allowed })
     }
 
-    /// Persist one more always-allowed tool to the default config path.
+    /// Persist one more always-allow rule to the default config path.
     /// Missing parent dirs are created on first use; failures are returned to
     /// the caller (`allow_forever` treats them as best-effort).
-    pub fn allow_forever(&mut self, tool: &str) -> Result<(), std::io::Error> {
-        self.allow_forever_to(&config_dir().join(PERMISSIONS_FILE), tool)
+    pub fn allow_forever(&mut self, tool: &str, scope: Option<&str>) -> Result<(), std::io::Error> {
+        self.allow_forever_to(&config_dir().join(PERMISSIONS_FILE), tool, scope)
     }
 
     /// Persist to an explicit path (also the test seam, so tests never touch
     /// the user's real config directory).
-    pub fn allow_forever_to(&mut self, path: &Path, tool: &str) -> Result<(), std::io::Error> {
-        if !self.allowed_tools.insert(tool.to_string()) {
-            return Ok(());
+    pub fn allow_forever_to(
+        &mut self,
+        path: &Path,
+        tool: &str,
+        scope: Option<&str>,
+    ) -> Result<(), std::io::Error> {
+        let entry = (
+            tool.to_string(),
+            scope.filter(|s| !s.is_empty()).map(str::to_string),
+        );
+        if !self.allowed.contains(&entry) {
+            self.allowed.push(entry);
         }
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
-        let mut sorted: Vec<&String> = self.allowed_tools.iter().collect();
-        sorted.sort();
-        let body = serde_yaml::to_string(&sorted).unwrap_or_default();
+        let mut lines: Vec<String> = self
+            .allowed
+            .iter()
+            .map(|(tool, scope)| match scope {
+                Some(scope) => format!("{tool}: {scope}"),
+                None => tool.clone(),
+            })
+            .collect();
+        lines.sort();
+        let body = serde_yaml::to_string(&lines).unwrap_or_default();
         fs::write(path, body)
     }
 
-    /// Loaded tool names as `&'static str` for broker seeding.
-    pub fn as_static_names(&self) -> Vec<&'static str> {
-        self.allowed_tools
+    /// Loaded rules as `(tool, scope)` seeds for the approval broker.
+    pub fn as_seed(&self) -> Vec<(&'static str, Option<&str>)> {
+        self.allowed
             .iter()
-            .filter_map(|name| ToolName::parse(name).map(|n| n.0))
+            .filter_map(|(tool, scope)| Some((ToolName::parse(tool)?.0, scope.as_deref())))
             .collect()
     }
 }

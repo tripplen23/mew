@@ -7,7 +7,10 @@ use ratatui::layout::{Position, Rect};
 use unicode_width::UnicodeWidthStr;
 
 use crate::runtime::model::{ConnectStep, Overlay, SessionState};
-use crate::runtime::view::panel::{centered_rect, render_panel, render_scrolled_panel};
+use crate::runtime::view::panel::{
+    centered_rect, render_panel, render_scrolled_panel, render_scrolled_text_panel,
+    wrapped_line_count,
+};
 use crate::runtime::view::session::overlay::content::{
     choice_lines, connect_provider_key_text, connect_provider_lines, file_picker_lines,
     rename_session_lines, render_slash_picker, skills_lines, theme_lines, tools_lines,
@@ -53,7 +56,37 @@ pub(super) fn render_active_overlay(frame: &mut Frame, area: Rect, s: &mut Sessi
             );
         }
         Overlay::Theme => render_panel(frame, area, "Theme", theme_lines()),
-        Overlay::Choice => render_panel(frame, area, "Choose", choice_lines(s)),
+        Overlay::Choice => {
+            // Follow-scroll: keep the cursor's wrapped row inside the panel
+            // when the body is taller than a small terminal.
+            let rect = centered_rect(area, 60, 60);
+            let inner_w = rect.width.saturating_sub(2);
+            let inner_h = rect.height.saturating_sub(2) as usize;
+            let (body, cursor_line) = choice_lines(s);
+            let mut total = 0;
+            let mut cursor_start = 0;
+            for (i, line) in body.iter().enumerate() {
+                if i == cursor_line {
+                    cursor_start = total;
+                }
+                total += wrapped_line_count(line, inner_w);
+            }
+            let mut scroll = s
+                .pending_choice
+                .as_ref()
+                .map(|c| c.picker.scroll)
+                .unwrap_or(0);
+            if cursor_start < scroll {
+                scroll = cursor_start;
+            } else if inner_h > 0 && cursor_start >= scroll + inner_h {
+                scroll = cursor_start + 1 - inner_h;
+            }
+            scroll = scroll.min(total.saturating_sub(inner_h));
+            if let Some(choice) = s.pending_choice.as_mut() {
+                choice.picker.scroll = scroll;
+            }
+            render_scrolled_text_panel(frame, area, "Choose", body, scroll as u16);
+        }
         Overlay::ConnectProvider => {
             let body = connect_provider_lines(s);
             let title = match s.connect_provider.step {

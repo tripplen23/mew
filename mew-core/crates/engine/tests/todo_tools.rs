@@ -67,7 +67,14 @@ async fn write_pushes_todo_display_for_dock() {
     assert_eq!(records.len(), 1);
     assert_eq!(records[0].args, args);
     match &records[0].display {
-        ToolDisplay::Todo(display) => assert_eq!(display.todos.len(), 1),
+        ToolDisplay::Todo(display) => {
+            assert_eq!(display.todos.len(), 1);
+            assert_eq!(
+                display.todos[0].id.as_deref(),
+                Some("1"),
+                "display carries the persisted list with assigned ids"
+            );
+        }
         other => panic!("expected ToolDisplay::Todo, got {other:?}"),
     }
 }
