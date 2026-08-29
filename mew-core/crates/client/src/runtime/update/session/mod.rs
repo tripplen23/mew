@@ -33,13 +33,9 @@ pub(super) use choice::submit_choice_response;
 pub(super) use composer::on_session_paste;
 pub(super) use streaming::apply_stream_event;
 
-/// Session screen: mouse events.
-/// - Wheel/click inside a scrollable picker overlay routes to that picker
-///   (see [`picker::on_picker_mouse`]).
-/// - Otherwise wheel up/down scrolls the transcript (matching terminals that
-///   no longer translate the wheel into arrow keys now that mouse capture is on).
-/// - A left click on the todo dock header toggles expand/collapse so a long
-///   task list can be stowed when it crowds the transcript.
+/// Session screen: mouse events. Picker overlays get wheel/click first via
+/// [`picker::on_picker_mouse`]; otherwise wheel scrolls the transcript and a
+/// click on the todo header toggles collapse.
 pub(super) fn on_session_mouse(s: &mut SessionState, event: MouseEvent) -> Cmd {
     if on_picker_mouse(s, event) {
         return Cmd::None;

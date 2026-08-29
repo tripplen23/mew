@@ -23,7 +23,7 @@ use rmcp::transport::TokioChildProcess;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-/// Provider-side cap on tool names (OpenAI and Anthropic both stop at 64).
+// Provider-side cap on tool names (OpenAI and Anthropic both stop at 64).
 const MAX_TOOL_NAME: usize = 64;
 
 /// One external MCP server, keyed by name in the `[mcp]` config table.
@@ -54,7 +54,7 @@ fn enabled_by_default() -> bool {
 /// Keep this alive for as long as the tools are in use: dropping a
 /// `RunningService` kills its child process.
 pub struct McpClients {
-    /// Held only for their `Drop`; the tools talk over cloned peer handles.
+    // Held only for their `Drop`; the tools talk over cloned peer handles.
     _services: Vec<RunningService<RoleClient, ()>>,
     tools: Vec<Arc<dyn ToolContracts>>,
 }
@@ -123,12 +123,11 @@ async fn connect_one(
     Ok((service, tools))
 }
 
-/// One remote MCP tool, callable through Mew's tool registry.
+// One remote MCP tool, callable through Mew's tool registry.
 struct McpTool {
-    /// `mcp_<server>_<tool>`. Leaked once at startup because
-    /// [`ToolContracts::name`] and the approval broker need `&'static str`.
+    // `mcp_<server>_<tool>`. Leaked once at startup because `ToolContracts::name` needs `&'static str`.
     name: &'static str,
-    /// The tool's name on the remote server.
+    // The tool's name on the remote server.
     remote_name: Cow<'static, str>,
     peer: ServerSink,
     descriptor: ToolDescriptor,
@@ -186,11 +185,9 @@ impl ToolContracts for McpTool {
     }
 }
 
-/// Map an MCP tool declaration onto Mew's descriptor.
-///
-/// Missing annotation hints default to the cautious reading — mutating,
-/// non-idempotent, open-world — so an unannotated tool ends up behind the
-/// approval gate rather than running unattended.
+// Map an MCP tool declaration onto Mew's descriptor. Missing annotation
+// hints default to the cautious reading — mutating, non-idempotent,
+// open-world — so an unannotated tool ends up behind the approval gate.
 fn descriptor_for(server: &str, name: &'static str, remote: &RemoteTool) -> ToolDescriptor {
     let hints = remote.annotations.as_ref();
     let read_only = hints.and_then(|a| a.read_only_hint).unwrap_or(false);
@@ -213,9 +210,8 @@ fn descriptor_for(server: &str, name: &'static str, remote: &RemoteTool) -> Tool
     }
 }
 
-/// Prefix a remote tool name with `mcp_<server>_` so it can never collide with
-/// a built-in tool, and sanitise it to the `[A-Za-z0-9_-]{1,64}` shape every
-/// provider requires.
+// Prefix a remote tool name with `mcp_<server>_` so it can never collide with
+// a built-in tool, and sanitise it to `[A-Za-z0-9_-]{1,64}`.
 fn qualified_name(server: &str, remote: &str) -> String {
     let mut name: String = format!("mcp_{server}_{remote}")
         .chars()
@@ -231,8 +227,7 @@ fn qualified_name(server: &str, remote: &str) -> String {
     name
 }
 
-/// Prefer the server's structured result; otherwise hand the model the
-/// concatenated text blocks.
+// Prefer the server's structured result; otherwise hand the model the concatenated text blocks.
 fn tool_output(result: CallToolResult) -> ToolOutput {
     if let Some(structured) = result.structured_content {
         return ToolOutput(structured);

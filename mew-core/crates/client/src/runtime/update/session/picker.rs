@@ -138,7 +138,7 @@ pub(super) fn on_picker_mouse(s: &mut SessionState, event: MouseEvent) -> bool {
     }
 }
 
-/// Content rect of the active scrollable picker overlay, if any.
+// Content rect of the active scrollable picker overlay, if any.
 fn picker_rect(s: &SessionState) -> Option<Rect> {
     match s.overlay {
         Overlay::ModelPicker => s.model_picker.picker.rect,
@@ -149,8 +149,7 @@ fn picker_rect(s: &SessionState) -> Option<Rect> {
     }
 }
 
-/// Map a clicked screen row to an entry index and move the cursor there,
-/// then re-clamp scroll so the highlight stays visible.
+// Map a clicked screen row to an entry index and move the cursor there.
 fn click_picker_row(s: &mut SessionState, rect: Rect, row: u16) {
     let local = (row.saturating_sub(rect.y)) as usize;
     match s.overlay {
@@ -189,8 +188,7 @@ fn click_picker_row(s: &mut SessionState, rect: Rect, row: u16) {
     }
 }
 
-/// Entry index of the `row`-th visual row (headers count as rows), or `None`
-/// when the row is a provider header or out of range.
+// Entry index of the `row`-th visual row (headers count as rows).
 fn model_entry_at_row(models: &[crate::net::ModelEntry], row: usize) -> Option<usize> {
     let mut visual = 0;
     let mut prev: Option<mewcode_protocol::ProviderId> = None;

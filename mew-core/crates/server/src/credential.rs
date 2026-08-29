@@ -209,7 +209,7 @@ async fn validate_opencodego_key(api_key: &str) -> Result<String, String> {
     }
 }
 
-/// Validate a DeepSeek key by listing models (requires auth, same as OpenAI format).
+// Validate a DeepSeek key by listing models (requires auth, same as OpenAI format).
 async fn validate_deepseek_key(api_key: &str) -> Result<String, String> {
     let url = "https://api.deepseek.com/models";
     let resp = reqwest::Client::builder()
