@@ -110,17 +110,32 @@ async fn connect_one(
     // visible to the server. Upgrade path: `env_clear()` plus an allowlist.
     command.envs(&config.environment);
 
-    let service = ().serve(TokioChildProcess::new(command)?).await?;
+    let service = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        ().serve(TokioChildProcess::new(command)?),
+    )
+    .await
+    .map_err(|_| anyhow::anyhow!("MCP handshake timed out after 10s"))??;
     let peer = service.peer().to_owned();
-    let tools = service
-        .list_all_tools()
-        .await?
-        .into_iter()
-        .map(|remote| {
-            Arc::new(McpTool::new(server, remote, peer.clone())) as Arc<dyn ToolContracts>
-        })
-        .collect();
-    Ok((service, tools))
+    let tools = tokio::time::timeout(std::time::Duration::from_secs(10), service.list_all_tools())
+        .await
+        .map_err(|_| anyhow::anyhow!("MCP tool discovery timed out after 10s"))??;
+    let mut seen = std::collections::HashSet::new();
+    let mut deduped = Vec::new();
+    for remote in tools {
+        let qualified = qualified_name(server, &remote.name);
+        if !seen.insert(qualified.clone()) {
+            tracing::warn!(server = %server, tool = %remote.name, qualified = %qualified, "MCP tool name collision after normalization, skipping duplicate");
+            continue;
+        }
+        deduped.push(Arc::new(McpTool::new_with_name(
+            server,
+            Box::leak(qualified.into_boxed_str()),
+            remote,
+            peer.clone(),
+        )) as Arc<dyn ToolContracts>);
+    }
+    Ok((service, deduped))
 }
 
 // One remote MCP tool, callable through Mew's tool registry.
@@ -134,8 +149,18 @@ struct McpTool {
 }
 
 impl McpTool {
+    #[allow(dead_code)]
     fn new(server: &str, remote: RemoteTool, peer: ServerSink) -> Self {
         let name: &'static str = Box::leak(qualified_name(server, &remote.name).into_boxed_str());
+        Self::new_with_name(server, name, remote, peer)
+    }
+
+    fn new_with_name(
+        server: &str,
+        name: &'static str,
+        remote: RemoteTool,
+        peer: ServerSink,
+    ) -> Self {
         Self {
             name,
             descriptor: descriptor_for(server, name, &remote),

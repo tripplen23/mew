@@ -404,6 +404,7 @@ pub struct RunRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub candidate_workspace: Option<String>,
     /// Policy summary enforced by the runtime.
+    #[serde(default)]
     pub policy: RunPolicy,
     /// Id of the task currently executing, when inside a task.
     #[serde(default, skip_serializing_if = "Option::is_none")]

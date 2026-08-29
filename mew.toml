@@ -2,5 +2,5 @@
 # Docs: run `make help` or see CONTRIBUTING.md
 
 [default.mcp.firecrawl]
-command = ["npx", "-y", "firecrawl-mcp"]
+command = ["npx", "-y", "firecrawl-mcp@3.24.0"]
 environment = { FIRECRAWL_API_KEY = "${FIRECRAWL_API_KEY}" }

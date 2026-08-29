@@ -91,6 +91,14 @@ pub(super) fn panel_content_rect(rect: Rect) -> Rect {
     }
 }
 
+/// Like [`panel_content_rect`] but without the footer row that
+/// [`render_scrolled_panel`] reserves for its `cursor/total` indicator.
+pub(super) fn panel_list_content_rect(rect: Rect) -> Rect {
+    let mut r = panel_content_rect(rect);
+    r.height = r.height.saturating_sub(1);
+    r
+}
+
 /// Scroll-start for a cursor in a `viewport`-row window: returns the
 /// smallest `scroll` that keeps `cursor` visible. Test surface only.
 #[doc(hidden)]

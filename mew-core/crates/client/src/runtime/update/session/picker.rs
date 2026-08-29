@@ -118,7 +118,11 @@ pub(super) fn on_picker_mouse(s: &mut SessionState, event: MouseEvent) -> bool {
     let Some(rect) = picker_rect(s) else {
         return false;
     };
-    if event.row < rect.y || event.row >= rect.y + rect.height {
+    if event.column < rect.x
+        || event.column >= rect.x + rect.width
+        || event.row < rect.y
+        || event.row >= rect.y + rect.height
+    {
         return false;
     }
     match event.kind {
