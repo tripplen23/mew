@@ -12,6 +12,8 @@ pub enum ProviderId {
     OpenCodeGo,
     /// Native OpenAI API via api.openai.com.
     OpenAi,
+    /// Native DeepSeek API via api.deepseek.com.
+    DeepSeek,
 }
 
 impl fmt::Display for ProviderId {
@@ -19,6 +21,7 @@ impl fmt::Display for ProviderId {
         match self {
             ProviderId::OpenCodeGo => write!(f, "OpenCode Go"),
             ProviderId::OpenAi => write!(f, "OpenAI"),
+            ProviderId::DeepSeek => write!(f, "DeepSeek"),
         }
     }
 }
@@ -35,6 +38,8 @@ pub enum ModelKind {
     OpenCodeGo,
     /// `/v1/chat/completions` via native OpenAI API.
     OpenAi,
+    /// `/v1/chat/completions` via native DeepSeek API.
+    DeepSeek,
 }
 
 macro_rules! define_models {
@@ -108,6 +113,8 @@ define_models! {
     Gpt41Nano, "gpt-4.1-nano", "GPT-4.1 Nano", OpenAi, OpenAi, 1_047_576;
     Gpt4o, "gpt-4o", "GPT-4o", OpenAi, OpenAi, 128_000;
     Gpt4oMini, "gpt-4o-mini", "GPT-4o Mini", OpenAi, OpenAi, 128_000;
+    DeepSeekChat, "deepseek-chat", "DeepSeek Chat (Native)", DeepSeek, DeepSeek, 1_000_000;
+    DeepSeekReasoner, "deepseek-reasoner", "DeepSeek Reasoner (Native)", DeepSeek, DeepSeek, 1_000_000;
 }
 
 impl Default for ModelId {

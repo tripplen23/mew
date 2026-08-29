@@ -124,6 +124,9 @@ fn env_key(provider: ProviderId) -> Option<String> {
         ProviderId::OpenAi => env::var("OPENAI_API_KEY")
             .ok()
             .filter(|s| !s.trim().is_empty()),
+        ProviderId::DeepSeek => env::var("DEEPSEEK_API_KEY")
+            .ok()
+            .filter(|s| !s.trim().is_empty()),
     }
 }
 
@@ -133,6 +136,8 @@ pub async fn validate_key(provider: ProviderId, api_key: &str) -> Result<String,
     match provider {
         ProviderId::OpenCodeGo => validate_opencodego_key(api_key).await,
         ProviderId::OpenAi => validate_openai_key(api_key).await,
+        // DeepSeek uses the same OpenAI-compatible API format for validation.
+        ProviderId::DeepSeek => validate_deepseek_key(api_key).await,
     }
 }
 
@@ -201,6 +206,32 @@ async fn validate_opencodego_key(api_key: &str) -> Result<String, String> {
                 "validation failed — OpenCode Go returned HTTP {status}: {body}",
             ))
         }
+    }
+}
+
+/// Validate a DeepSeek key by listing models (requires auth, same as OpenAI format).
+async fn validate_deepseek_key(api_key: &str) -> Result<String, String> {
+    let url = "https://api.deepseek.com/models";
+    let resp = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("failed to create HTTP client: {e}"))?
+        .get(url)
+        .header("Authorization", format!("Bearer {api_key}"))
+        .send()
+        .await
+        .map_err(|e| network_error(e, "DeepSeek"))?;
+
+    match resp.status() {
+        reqwest::StatusCode::OK => Ok(chrono::Utc::now().to_rfc3339()),
+        reqwest::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN => {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            Err(format!(
+                "invalid API key — DeepSeek returned {status}: {body}",
+            ))
+        }
+        status => Err(format!("unexpected response from DeepSeek: HTTP {status}")),
     }
 }
 

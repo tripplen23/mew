@@ -79,6 +79,18 @@ pub(super) fn centered_rect(area: Rect, percent_x: u16, percent_y: u16) -> Rect 
         .split(vertical[1])[1]
 }
 
+/// The rect of the list-body rows inside a centred, bordered panel — the
+/// `border` cells on all four sides removed. Rows land in this area at
+/// render time, so `update` can map a mouse row back to a picker entry.
+pub(super) fn panel_content_rect(rect: Rect) -> Rect {
+    Rect {
+        x: rect.x.saturating_add(1),
+        y: rect.y.saturating_add(1),
+        width: rect.width.saturating_sub(2),
+        height: rect.height.saturating_sub(2),
+    }
+}
+
 /// Scroll-start for a cursor in a `viewport`-row window: returns the
 /// smallest `scroll` that keeps `cursor` visible. Test surface only.
 #[doc(hidden)]

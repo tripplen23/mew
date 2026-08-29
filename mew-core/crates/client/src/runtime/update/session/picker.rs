@@ -4,10 +4,12 @@
 //! differ in what Enter does: model picks patch or seed a model, session picks
 //! open/delete saved sessions.
 
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use tui_textarea::{CursorMove, TextArea};
 
 use mewcode_protocol::ModelId;
+
+use ratatui::layout::Rect;
 
 use crate::net::SessionPatch;
 
@@ -105,6 +107,107 @@ fn move_picker_cursor(picker: &mut PickerState, len: usize, delta: i32) {
     }
     let max = (len - 1) as i32;
     picker.cursor = (picker.cursor as i32 + delta).clamp(0, max) as usize;
+}
+
+/// Mouse handling for the active scrollable picker overlay (skills, session
+/// list, file picker). Wheel scrolls a row per tick; a left click on a row
+/// moves the cursor there (Enter still runs the pick). Returns `true` when
+/// the pointer is over the picker's content rect, so the session screen does
+/// not also scroll the transcript.
+pub(super) fn on_picker_mouse(s: &mut SessionState, event: MouseEvent) -> bool {
+    let Some(rect) = picker_rect(s) else {
+        return false;
+    };
+    if event.row < rect.y || event.row >= rect.y + rect.height {
+        return false;
+    }
+    match event.kind {
+        MouseEventKind::ScrollUp => {
+            cursor_move(s, -1);
+            true
+        }
+        MouseEventKind::ScrollDown => {
+            cursor_move(s, 1);
+            true
+        }
+        MouseEventKind::Down(MouseButton::Left) => {
+            click_picker_row(s, rect, event.row);
+            true
+        }
+        _ => false,
+    }
+}
+
+/// Content rect of the active scrollable picker overlay, if any.
+fn picker_rect(s: &SessionState) -> Option<Rect> {
+    match s.overlay {
+        Overlay::ModelPicker => s.model_picker.picker.rect,
+        Overlay::SessionList => s.session_list.picker.rect,
+        Overlay::Skills => s.skills_picker.rect,
+        Overlay::FilePicker => s.file_picker.picker.rect,
+        _ => None,
+    }
+}
+
+/// Map a clicked screen row to an entry index and move the cursor there,
+/// then re-clamp scroll so the highlight stays visible.
+fn click_picker_row(s: &mut SessionState, rect: Rect, row: u16) {
+    let local = (row.saturating_sub(rect.y)) as usize;
+    match s.overlay {
+        Overlay::SessionList => {
+            let len = s.session_list.summaries.len();
+            let index = (s.session_list.picker.scroll + local).min(len.saturating_sub(1));
+            s.session_list.picker.cursor = index;
+            clamp_session_list_scroll(s);
+        }
+        Overlay::Skills => {
+            let len = s.skills.as_ref().map(Vec::len).unwrap_or(0);
+            let index = (s.skills_picker.scroll + local).min(len.saturating_sub(1));
+            s.skills_picker.cursor = index;
+            clamp_skills_picker_scroll(s);
+        }
+        Overlay::FilePicker => {
+            let len = s.filtered_files().len();
+            let index = (s.file_picker.picker.scroll + local).min(len.saturating_sub(1));
+            s.file_picker.picker.cursor = index;
+            clamp_file_picker_scroll(s);
+        }
+        // Model rows are provider-grouped: a screen row can land on a header.
+        // Skip headers; a model row maps to its entry via the same grouping
+        // walk the view uses ([`model_picker_lines`]).
+        Overlay::ModelPicker => {
+            let Some(models) = s.model_picker.models.as_ref() else {
+                return;
+            };
+            let visual_row = s.model_picker.picker.scroll + local;
+            if let Some(index) = model_entry_at_row(models, visual_row) {
+                s.model_picker.picker.cursor = index;
+                clamp_model_picker_scroll(s);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Entry index of the `row`-th visual row (headers count as rows), or `None`
+/// when the row is a provider header or out of range.
+fn model_entry_at_row(models: &[crate::net::ModelEntry], row: usize) -> Option<usize> {
+    let mut visual = 0;
+    let mut prev: Option<mewcode_protocol::ProviderId> = None;
+    for (i, model) in models.iter().enumerate() {
+        if prev != Some(model.provider) {
+            if visual >= row {
+                return None;
+            }
+            visual += 1;
+            prev = Some(model.provider);
+        }
+        if visual == row {
+            return Some(i);
+        }
+        visual += 1;
+    }
+    None
 }
 
 fn clamp_picker_cursor(picker: &mut PickerState, len: usize) {

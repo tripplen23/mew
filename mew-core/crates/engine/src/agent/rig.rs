@@ -40,7 +40,7 @@ pub(super) async fn run_turn(
             )
             .await
         }
-        Provider::OpenCodeGo(p) | Provider::OpenAi(p) => {
+        Provider::OpenCodeGo(p) | Provider::OpenAi(p) | Provider::DeepSeek(p) => {
             let rig_agent = p
                 .client()
                 .agent(model_id)

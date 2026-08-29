@@ -23,6 +23,7 @@ fn test_config() -> EngineConfig {
         api_key: "test-key".into(),
         openai_api_key: Some("test-openai-key".into()),
         openai_base_url: None,
+        deepseek_api_key: Some("test-deepseek-key".into()),
         default_model: ModelId::Gpt4o,
         base_url: "https://example.invalid".into(),
     }

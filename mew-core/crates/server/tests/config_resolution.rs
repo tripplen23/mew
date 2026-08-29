@@ -26,6 +26,7 @@ fn config() -> ServerConfig {
         log: "off".into(),
         skills: Default::default(),
         github: Default::default(),
+        mcp: Default::default(),
     }
 }
 

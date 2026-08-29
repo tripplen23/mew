@@ -1,7 +1,10 @@
 //! Server configuration.
 
+use std::collections::BTreeMap;
+
 use figment::Figment;
 use figment::providers::{Env, Format, Toml};
+use mewcode_engine::mcp::McpServerConfig;
 use mewcode_protocol::env::{CONFIG_FILE, OPENCODE_GO_API_KEY};
 use serde::Deserialize;
 
@@ -74,6 +77,9 @@ pub struct ServerConfig {
     /// GitHub App configuration (the @mewcli review bot).
     #[serde(default)]
     pub github: GithubServerConfig,
+    /// External MCP servers Mew connects to as a client, keyed by name.
+    #[serde(default)]
+    pub mcp: BTreeMap<String, McpServerConfig>,
 }
 
 /// GitHub App subsection of [`ServerConfig`].
@@ -143,6 +149,25 @@ impl ServerConfig {
         }
 
         figment.extract().map_err(Box::new)
+    }
+
+    /// The `[mcp]` table with `~` and `${VAR}` expanded in command arguments
+    /// and environment values, so an API key can live in `.env` instead of
+    /// being committed to `mew.toml`.
+    pub fn resolved_mcp(&self) -> BTreeMap<String, McpServerConfig> {
+        self.mcp
+            .iter()
+            .map(|(name, server)| {
+                let mut server = server.clone();
+                server.command = server.command.iter().map(|s| expand_path(s)).collect();
+                server.environment = server
+                    .environment
+                    .iter()
+                    .map(|(k, v)| (k.clone(), expand_path(v)))
+                    .collect();
+                (name.clone(), server)
+            })
+            .collect()
     }
 }
 

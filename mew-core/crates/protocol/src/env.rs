@@ -14,6 +14,10 @@ pub const OPENCODE_GO_API_KEY: &str = "OPENCODE_GO_API_KEY";
 /// become available.
 pub const OPENAI_API_KEY: &str = "OPENAI_API_KEY";
 
+/// Native DeepSeek API key. Optional — when set, native DeepSeek models
+/// become available.
+pub const DEEPSEEK_API_KEY: &str = "DEEPSEEK_API_KEY";
+
 /// Optional override for the data directory where sessions are stored.
 /// Falls back to `$XDG_DATA_HOME/mew`, then `~/.local/share/mew`.
 pub const MEWCODE_DATA_DIR: &str = "MEWCODE_DATA_DIR";

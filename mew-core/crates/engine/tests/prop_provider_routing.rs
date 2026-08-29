@@ -24,6 +24,7 @@ proptest! {
             api_key: "test-key".into(),
             openai_api_key: Some("test-openai-key".into()),
             openai_base_url: None,
+            deepseek_api_key: Some("test-deepseek-key".into()),
             default_model: ModelId::default(),
             base_url: "https://example.invalid".into(),
         };
@@ -47,6 +48,12 @@ proptest! {
                 prop_assert!(
                     matches!(provider, Provider::OpenAi(_)),
                     "expected OpenAi variant for {model:?}"
+                );
+            }
+            ModelKind::DeepSeek => {
+                prop_assert!(
+                    matches!(provider, Provider::DeepSeek(_)),
+                    "expected DeepSeek variant for {model:?}"
                 );
             }
         }

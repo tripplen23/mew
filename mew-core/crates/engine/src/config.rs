@@ -1,7 +1,7 @@
 use std::env;
 
 use mewcode_protocol::ModelId;
-use mewcode_protocol::env::{OPENAI_API_KEY, OPENCODE_GO_API_KEY};
+use mewcode_protocol::env::{DEEPSEEK_API_KEY, OPENAI_API_KEY, OPENCODE_GO_API_KEY};
 
 use crate::error::EngineError;
 
@@ -23,6 +23,8 @@ pub struct EngineConfig {
     pub openai_api_key: Option<String>,
     /// Base URL for the native OpenAI API.
     pub openai_base_url: Option<String>,
+    /// Native DeepSeek API key.
+    pub deepseek_api_key: Option<String>,
     /// Default model used when the client does not specify one.
     pub default_model: ModelId,
     /// Base URL of the OpenCode Go API. Defaults to the production endpoint.
@@ -52,10 +54,15 @@ impl EngineConfig {
             .ok()
             .filter(|s| !s.trim().is_empty());
 
+        let deepseek_api_key = env::var(DEEPSEEK_API_KEY)
+            .ok()
+            .filter(|s| !s.trim().is_empty());
+
         Ok(Self {
             api_key,
             openai_api_key,
             openai_base_url: None,
+            deepseek_api_key,
             default_model,
             base_url,
         })

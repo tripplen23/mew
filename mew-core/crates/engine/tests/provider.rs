@@ -10,6 +10,7 @@ fn cfg_with(api_key: &str) -> EngineConfig {
         api_key: api_key.to_string(),
         openai_api_key: None,
         openai_base_url: None,
+        deepseek_api_key: None,
         default_model: ModelId::DEFAULT,
         base_url: "http://localhost".into(),
     }

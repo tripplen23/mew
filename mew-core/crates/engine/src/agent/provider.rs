@@ -20,6 +20,8 @@ pub enum Provider {
     OpenCodeGo(OpenAiProvider),
     /// Native OpenAI API at `api.openai.com/v1`.
     OpenAi(OpenAiProvider),
+    /// Native DeepSeek API at `api.deepseek.com`.
+    DeepSeek(OpenAiProvider),
 }
 
 impl Provider {
@@ -39,6 +41,13 @@ impl Provider {
                     .ok_or(EngineError::MissingNativeApiKey("OPENAI_API_KEY"))?;
                 (key, "https://api.openai.com/v1")
             }
+            ProviderId::DeepSeek => {
+                let key = cfg
+                    .deepseek_api_key
+                    .as_deref()
+                    .ok_or(EngineError::MissingNativeApiKey("DEEPSEEK_API_KEY"))?;
+                (key, "https://api.deepseek.com")
+            }
         };
 
         let provider = match model.kind() {
@@ -47,6 +56,7 @@ impl Provider {
             }
             ModelKind::OpenCodeGo => Provider::OpenCodeGo(OpenAiProvider::new(api_key, base_url)),
             ModelKind::OpenAi => Provider::OpenAi(OpenAiProvider::new(api_key, base_url)),
+            ModelKind::DeepSeek => Provider::DeepSeek(OpenAiProvider::new(api_key, base_url)),
         };
         Ok(provider)
     }

@@ -8,8 +8,8 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::runtime::model::{ConnectStep, Overlay, SessionState};
 use crate::runtime::view::panel::{
-    centered_rect, render_panel, render_scrolled_panel, render_scrolled_text_panel,
-    wrapped_line_count,
+    centered_rect, panel_content_rect, render_panel, render_scrolled_panel,
+    render_scrolled_text_panel, wrapped_line_count,
 };
 use crate::runtime::view::session::overlay::content::{
     choice_lines, connect_provider_key_text, connect_provider_lines, file_picker_lines,
@@ -39,6 +39,7 @@ pub(super) fn render_active_overlay(frame: &mut Frame, area: Rect, s: &mut Sessi
         }
         Overlay::Skills => {
             let rect = centered_rect(area, 60, 60);
+            s.skills_picker.rect = Some(panel_content_rect(rect));
             let inner_w = rect.width.saturating_sub(2) as usize;
             let body = skills_lines(s, inner_w);
             render_scrolled_panel(
@@ -104,6 +105,7 @@ pub(super) fn render_active_overlay(frame: &mut Frame, area: Rect, s: &mut Sessi
             // Rect first, so the row builder can truncate each model to one
             // line — otherwise a wrapped name desyncs cursor and highlight.
             let rect = centered_rect(area, 60, 60);
+            s.model_picker.picker.rect = Some(panel_content_rect(rect));
             let inner_w = rect.width.saturating_sub(2) as usize;
             let body = model_picker_lines(s, inner_w);
             render_scrolled_panel(
@@ -128,6 +130,7 @@ pub(super) fn render_active_overlay(frame: &mut Frame, area: Rect, s: &mut Sessi
         }
         Overlay::SessionList => {
             let rect = centered_rect(area, 60, 60);
+            s.session_list.picker.rect = Some(panel_content_rect(rect));
             let inner_w = rect.width.saturating_sub(2) as usize;
             let body = session_list_lines(s, inner_w);
             render_scrolled_panel(
@@ -151,6 +154,7 @@ pub(super) fn render_active_overlay(frame: &mut Frame, area: Rect, s: &mut Sessi
             const FILE_PICKER_WIDTH_PERCENT: u16 = 70;
             const FILE_PICKER_HEIGHT_PERCENT: u16 = 50;
             let rect = centered_rect(area, FILE_PICKER_WIDTH_PERCENT, FILE_PICKER_HEIGHT_PERCENT);
+            s.file_picker.picker.rect = Some(panel_content_rect(rect));
             let inner_w = rect.width.saturating_sub(2) as usize;
             let body = file_picker_lines(s, inner_w);
             render_scrolled_panel(

@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use anyhow::Context;
 use mewcode_engine::context::MemoryStore;
+use mewcode_engine::mcp::McpClients;
 use mewcode_server::store::fs::{FsStore, resolve_data_dir};
 use mewcode_server::{AppState, config::ServerConfig};
 use opentelemetry::KeyValue;
@@ -35,7 +36,14 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!(data_dir = %data_dir.display(), "session store ready");
 
     let memory = MemoryStore::new(data_dir);
-    let state = AppState::new(config.clone(), store, memory);
+    let mut state = AppState::new(config.clone(), store, memory);
+
+    // External MCP servers are spawned once and live for the process, so a chat
+    // turn never pays the `npx` cold start.
+    let mcp_servers = config.resolved_mcp();
+    if !mcp_servers.is_empty() {
+        state = state.with_mcp(McpClients::connect(&mcp_servers).await);
+    }
 
     let listener = TcpListener::bind(addr).await?;
     tracing::info!(%addr, "mewcode server listening");

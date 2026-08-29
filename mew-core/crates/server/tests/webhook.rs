@@ -51,6 +51,7 @@ fn test_config() -> ServerConfig {
                 env!("CARGO_MANIFEST_DIR")
             )),
         },
+        mcp: Default::default(),
     }
 }
 

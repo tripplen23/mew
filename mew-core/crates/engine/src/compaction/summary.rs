@@ -177,7 +177,7 @@ call `mewcode_memory` with action="write" before responding.
                 .build();
             collect_summary(agent, &compaction_prompt).await?
         }
-        Provider::OpenCodeGo(p) | Provider::OpenAi(p) => {
+        Provider::OpenCodeGo(p) | Provider::OpenAi(p) | Provider::DeepSeek(p) => {
             let agent = p
                 .client()
                 .agent(model_id)

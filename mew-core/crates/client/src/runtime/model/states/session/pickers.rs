@@ -1,3 +1,5 @@
+use ratatui::layout::Rect;
+
 use crate::net::{ModelEntry, SessionSummary};
 
 /// One file listed by the file picker.
@@ -18,6 +20,9 @@ pub struct PickerState {
     pub viewport: u16,
     /// Largest viewport the view has ever reported.
     pub viewport_max: u16,
+    /// Absolute rect of the picker's inner content rows from the last render,
+    /// so `update` can route mouse clicks and wheel scrolls.
+    pub rect: Option<Rect>,
 }
 
 /// State for the model picker overlay.

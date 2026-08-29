@@ -1,0 +1,6 @@
+# mew.toml — Mew server + client configuration
+# Docs: run `make help` or see CONTRIBUTING.md
+
+[default.mcp.firecrawl]
+command = ["npx", "-y", "firecrawl-mcp"]
+environment = { FIRECRAWL_API_KEY = "${FIRECRAWL_API_KEY}" }

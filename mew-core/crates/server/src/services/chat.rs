@@ -6,7 +6,7 @@ use mewcode_engine::{
     Harness,
     error::{EngineError, engine_error_parts},
     skills::SkillRegistry,
-    tools::{ProjectContext, default_registry_with_todos},
+    tools::{ProjectContext, default_registry_with_todos, register_mcp_tools},
 };
 use mewcode_protocol::event::{ChatRequest, ErrorCode};
 use mewcode_protocol::{Message, MessagePart, Role, StreamEvent};
@@ -302,13 +302,15 @@ pub(crate) async fn start_chat_stream(
         let ctx = ProjectContext::new(root.clone()).with_display(display_sink.clone());
         let memory = project_memory(&state.memory, &root);
         let todos = session_todos(&state.memory, &session_id);
-        let tools = Arc::new(default_registry_with_todos(
+        let mut registry = default_registry_with_todos(
             ctx,
             skills.clone(),
             Some(memory.clone()),
             todos.clone(),
             req.mode,
-        ));
+        );
+        register_mcp_tools(&mut registry, state.mcp_tools(), req.mode);
+        let tools = Arc::new(registry);
         let prior_tokens = state
             .session_tokens
             .read()
@@ -471,6 +473,12 @@ pub async fn build_engine_config(state: &AppState) -> mewcode_engine::EngineConf
         .or_else(|| state.config.openai_api_key.clone())
         .or_else(|| std::env::var("OPENAI_API_KEY").ok());
 
+    let deepseek_api_key = store
+        .credentials
+        .get(&mewcode_protocol::ProviderId::DeepSeek)
+        .map(|credential| credential.api_key.clone())
+        .or_else(|| std::env::var("DEEPSEEK_API_KEY").ok());
+
     let base_url = std::env::var(mewcode_engine::config::ENV_BASE_URL)
         .unwrap_or_else(|_| mewcode_engine::config::DEFAULT_BASE_URL.to_string());
 
@@ -478,6 +486,7 @@ pub async fn build_engine_config(state: &AppState) -> mewcode_engine::EngineConf
         api_key,
         openai_api_key,
         openai_base_url: None,
+        deepseek_api_key,
         default_model: state
             .config
             .default_model

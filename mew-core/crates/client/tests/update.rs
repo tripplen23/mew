@@ -595,6 +595,87 @@ fn skills_picker_scroll_keeps_cursor_visible() {
     assert_eq!(sess(&app).skills_picker.scroll, 2);
 }
 
+fn skills_app_with_picker() -> App {
+    let mut app = on_session();
+    sess_mut(&mut app).max_scroll = 10;
+    update(
+        &mut app,
+        Msg::SkillsFetched(Ok((0..6)
+            .map(|i| SkillEntry {
+                name: format!("skill-{i}"),
+                description: format!("description {i}"),
+                source: "project".to_string(),
+                assets: Vec::new(),
+            })
+            .collect())),
+    );
+    let s = sess_mut(&mut app);
+    s.overlay = Overlay::Skills;
+    s.skills_picker.rect = Some(ratatui::layout::Rect {
+        x: 0,
+        y: 5,
+        width: 40,
+        height: 6,
+    });
+    app
+}
+
+fn mouse(kind: crossterm::event::MouseEventKind, row: u16) -> Msg {
+    Msg::Mouse(crossterm::event::MouseEvent {
+        kind,
+        column: 10,
+        row,
+        modifiers: crossterm::event::KeyModifiers::NONE,
+    })
+}
+
+#[test]
+fn skills_picker_wheel_scrolls_picker_not_transcript() {
+    let mut app = skills_app_with_picker();
+    sess_mut(&mut app).scroll = 5;
+
+    update(
+        &mut app,
+        mouse(crossterm::event::MouseEventKind::ScrollDown, 6),
+    );
+
+    let s = sess(&app);
+    assert_eq!(s.skills_picker.cursor, 1, "wheel moves picker cursor down");
+    assert_eq!(s.scroll, 5, "transcript must not scroll");
+}
+
+#[test]
+fn skills_picker_wheel_outside_picker_scrolls_transcript() {
+    let mut app = skills_app_with_picker();
+    sess_mut(&mut app).scroll = 5;
+
+    update(
+        &mut app,
+        mouse(crossterm::event::MouseEventKind::ScrollDown, 1),
+    );
+
+    let s = sess(&app);
+    assert_eq!(s.skills_picker.cursor, 0, "picker cursor stays put");
+    assert_eq!(s.scroll, 8, "transcript scrolls when pointer is outside");
+}
+
+#[test]
+fn skills_picker_click_selects_row() {
+    let mut app = skills_app_with_picker();
+
+    update(
+        &mut app,
+        mouse(
+            crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+            8,
+        ),
+    );
+
+    let s = sess(&app);
+    assert_eq!(s.skills_picker.cursor, 3, "click maps screen row to entry");
+    assert_eq!(s.scroll, 0, "transcript must not scroll");
+}
+
 #[test]
 fn unknown_slash_input_starts_chat_turn() {
     let mut app = type_into_session("/bogus");

@@ -30,6 +30,7 @@ use axum::middleware::{Next, from_fn};
 use axum::response::{IntoResponse, Response};
 use http_body_util::BodyExt;
 use mewcode_engine::context::MemoryStore;
+use mewcode_engine::mcp::McpClients;
 use mewcode_engine::tools::ApprovalBroker;
 use mewcode_protocol::routes::{
     CHAT, CHOICES, GITHUB_WEBHOOK, HEALTH, MEMORY_GET, MEMORY_POST, PROVIDER_CONNECT,
@@ -80,6 +81,9 @@ pub struct AppState {
     pub github_client: Option<GithubClient>,
     /// Recently seen delivery IDs, so redeliveries don't double-review.
     pub webhook_deliveries: Arc<Mutex<HashMap<String, std::time::Instant>>>,
+    /// Live external MCP servers. Held here so their child processes outlive a
+    /// single chat turn; `None` when no `[mcp]` server was configured.
+    pub mcp: Option<Arc<McpClients>>,
 }
 
 impl AppState {
@@ -128,7 +132,20 @@ impl AppState {
             aborts: Arc::new(Mutex::new(HashMap::new())),
             github_client,
             webhook_deliveries: Arc::new(Mutex::new(HashMap::new())),
+            mcp: None,
         }
+    }
+
+    /// Attach connected external MCP servers, whose tools every chat turn then
+    /// registers alongside the built-ins.
+    pub fn with_mcp(mut self, mcp: McpClients) -> Self {
+        self.mcp = Some(Arc::new(mcp));
+        self
+    }
+
+    /// Tools contributed by external MCP servers, empty when none is connected.
+    pub fn mcp_tools(&self) -> &[Arc<dyn mewcode_protocol::ToolContracts>] {
+        self.mcp.as_deref().map_or(&[], McpClients::tools)
     }
 
     /// Register the chat turn's abort flag for `session_id` and return it.
