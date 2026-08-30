@@ -76,6 +76,33 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     }
 }
 
+fn is_bidi_control(character: char) -> bool {
+    matches!(
+        character,
+        '\u{061c}'
+            | '\u{200e}'
+            | '\u{200f}'
+            | '\u{202a}'..='\u{202e}'
+            | '\u{2066}'..='\u{2069}'
+    )
+}
+
+pub(super) fn one_line(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| {
+            if character.is_control() || is_bidi_control(character) {
+                ' '
+            } else {
+                character
+            }
+        })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// Park the terminal cursor inside the bordered box that hosts `textarea`.
 ///
 /// Needed because the TextAreas render as plain `Paragraph`s and so don't move

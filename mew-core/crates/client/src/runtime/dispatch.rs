@@ -40,7 +40,7 @@ pub(crate) fn dispatch(cmd: Cmd, api: &ApiClient, tx: &mpsc::Sender<Msg>) {
                 let _ = tx.send(Msg::ChoiceSubmitted(result)).await;
             });
         }
-        Cmd::FetchModels => {
+        Cmd::FetchModels(generation) => {
             let api = api.clone();
             let tx = tx.clone();
             tokio::spawn(async move {
@@ -55,7 +55,7 @@ pub(crate) fn dispatch(cmd: Cmd, api: &ApiClient, tx: &mpsc::Sender<Msg>) {
                             .collect()
                     })
                     .map_err(|e| e.to_string());
-                let _ = tx.send(Msg::ModelsFetched(result)).await;
+                let _ = tx.send(Msg::ModelsFetched(result, generation)).await;
             });
         }
         Cmd::FetchSkills => {

@@ -60,8 +60,8 @@ pub struct ErrorResponse {
             SessionSummary,
             SessionPatch,
             crate::routes::health::HealthResponse,
-            crate::routes::providers::ModelEntry,
-            crate::routes::providers::ProviderEntry,
+            mewcode_protocol::ModelEntry,
+            mewcode_protocol::ProviderEntry,
             crate::routes::skills::SkillEntry,
             crate::routes::sessions::CreateSessionRequest,
             crate::routes::storage::StorageStatus,
@@ -83,6 +83,7 @@ pub struct ErrorResponse {
             mewcode_protocol::ToolResult,
             mewcode_protocol::Mode,
             mewcode_protocol::ModelId,
+            mewcode_protocol::ModelRef,
             mewcode_protocol::ModelKind,
             mewcode_protocol::ProviderId,
         )

@@ -9,13 +9,21 @@ use ratatui::widgets::Paragraph;
 use unicode_width::UnicodeWidthStr;
 
 use crate::runtime::model::SessionState;
+use crate::runtime::view::one_line;
 use crate::runtime::view::theme::Theme;
 
 pub(super) fn render_status(frame: &mut Frame, chunk: Rect, s: &SessionState, theme: Theme) {
     let (model, mode) = match &s.session {
-        Some(session) => (session.model.display_name(), session.mode),
+        Some(session) => (one_line(session.model.display_name()), session.mode),
         None => (
-            s.creation.pending_model.unwrap_or_default().display_name(),
+            one_line(
+                s.creation
+                    .pending_model
+                    .as_ref()
+                    .cloned()
+                    .unwrap_or_default()
+                    .display_name(),
+            ),
             s.creation.pending_mode.unwrap_or_default(),
         ),
     };

@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use tui_textarea::TextArea;
 
-use mewcode_protocol::{Mode, ModelId, TodoItem};
+use mewcode_protocol::{Mode, ModelKind, ModelRef, TodoItem};
 
 use crate::net::{Session, SkillEntry};
 
@@ -21,7 +21,7 @@ mod streaming;
 mod transcript_cache;
 
 pub use choice::ChoicePromptState;
-pub use connect::{ConnectProviderState, ConnectStep};
+pub use connect::{CONNECT_PROVIDERS, ConnectProviderState, ConnectStep};
 pub use pickers::{FileEntry, FilePickerState, ModelPickerState, PickerState, SessionListState};
 pub use slash::{SLASH_COMMANDS, SlashCommand, SlashCommandKind, slash_command_by_token};
 pub use streaming::{CompactionEntry, CompactionView, StreamingState, ToolCallView, TurnItem};
@@ -68,7 +68,11 @@ pub struct CreationState {
     /// First message of a not-yet-created session.
     pub pending_chat: Option<String>,
     /// Model picked before the first session exists.
-    pub pending_model: Option<ModelId>,
+    pub pending_model: Option<ModelRef>,
+    /// Runtime transport paired with `pending_model`.
+    pub pending_model_kind: Option<ModelKind>,
+    /// Runtime context limit paired with `pending_model`.
+    pub pending_model_context_length: Option<u64>,
     /// Mode picked before the first session exists.
     pub pending_mode: Option<Mode>,
     /// `true` while a `POST /sessions` is in flight for `pending_chat`.
@@ -131,6 +135,8 @@ pub struct SessionState {
     pub skills_picker: PickerState,
     /// Highlighted row in the slash-command picker (0-based).
     pub slash_cursor: usize,
+    /// Absolute content rect and first visible row from the last slash-picker render.
+    pub slash_picker_geometry: Option<(ratatui::layout::Rect, usize)>,
     /// File picker with @ command
     pub file_picker: FilePickerState,
     /// Pending structured choice prompt, if any.
@@ -179,6 +185,7 @@ impl SessionState {
             skills: None,
             skills_picker: PickerState::default(),
             slash_cursor: 0,
+            slash_picker_geometry: None,
             file_picker: FilePickerState::default(),
             pending_choice: None,
             connect_provider: ConnectProviderState::default(),
@@ -197,7 +204,7 @@ impl SessionState {
     /// dock from the session's persisted task list.
     pub fn new(session: Session) -> Self {
         let todos = session.todos.clone();
-        let context_limit = session.model.context_limit();
+        let context_limit = session.model.context_limit(session.model_context_length);
         Self {
             session: Some(session),
             todos,
@@ -211,7 +218,7 @@ impl SessionState {
     /// create/open flows that keep the same screen state.
     pub fn set_session(&mut self, session: Session) {
         self.todos = session.todos.clone();
-        self.context_limit = session.model.context_limit();
+        self.context_limit = session.model.context_limit(session.model_context_length);
         self.session = Some(session);
     }
 

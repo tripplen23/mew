@@ -76,7 +76,9 @@ fn session_with(message_count: usize) -> Session {
     Session {
         id: Uuid::new_v4(),
         title: "perf".to_string(),
-        model: ModelId::default(),
+        model: ModelId::default().into(),
+        model_kind: None,
+        model_context_length: None,
         mode: Mode::default(),
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),

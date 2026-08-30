@@ -5,7 +5,7 @@ use tui_textarea::TextArea;
 
 use mewcode_protocol::ProviderId;
 
-use crate::runtime::model::{Cmd, ConnectStep, Overlay, SessionState};
+use crate::runtime::model::{CONNECT_PROVIDERS, Cmd, ConnectStep, Overlay, SessionState};
 use crate::runtime::update::key_to_input;
 
 /// Handle key events while the provider connect dialog is open.
@@ -22,19 +22,22 @@ pub(super) fn on_connect_provider_key(s: &mut SessionState, key: KeyEvent) -> Cm
     match state.step {
         PickProvider => match key.code {
             KeyCode::Enter => {
-                // Default to OpenCode Go if nothing selected
-                let provider = state.selected_provider.unwrap_or(ProviderId::OpenCodeGo);
+                let provider = CONNECT_PROVIDERS
+                    .get(state.picker.cursor)
+                    .map(|descriptor| descriptor.id)
+                    .unwrap_or(ProviderId::OpenCodeGo);
                 state.selected_provider = Some(provider);
                 state.step = EnterKey;
                 state.key_input = TextArea::default();
                 Cmd::None
             }
-            KeyCode::Up | KeyCode::Down => {
-                // Toggle between providers
-                state.selected_provider = match state.selected_provider {
-                    Some(ProviderId::OpenCodeGo) => Some(ProviderId::OpenAi),
-                    _ => Some(ProviderId::OpenCodeGo),
-                };
+            KeyCode::Up => {
+                state.picker.cursor = state.picker.cursor.saturating_sub(1);
+                Cmd::None
+            }
+            KeyCode::Down => {
+                state.picker.cursor =
+                    (state.picker.cursor + 1).min(CONNECT_PROVIDERS.len().saturating_sub(1));
                 Cmd::None
             }
             _ => Cmd::None,

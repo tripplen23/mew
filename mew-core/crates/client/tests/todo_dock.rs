@@ -15,7 +15,9 @@ fn session(todos: Vec<TodoItem>) -> Session {
     Session {
         id: Uuid::new_v4(),
         title: "todo".to_string(),
-        model: ModelId::default(),
+        model: ModelId::default().into(),
+        model_kind: None,
+        model_context_length: None,
         mode: Mode::default(),
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),

@@ -1,14 +1,25 @@
 //! Server configuration.
 
+use std::collections::BTreeMap;
+
 use figment::Figment;
 use figment::providers::{Env, Format, Toml};
-use mewcode_protocol::env::{CONFIG_FILE, OPENCODE_GO_API_KEY};
+use mewcode_engine::mcp::McpServerConfig;
+use mewcode_protocol::env::{
+    ANTHROPIC_API_KEY, CONFIG_FILE, OPENAI_API_KEY, OPENCODE_GO_API_KEY, OPENCODE_ZEN_API_KEY,
+    OPENROUTER_API_KEY,
+};
 use serde::Deserialize;
 
 pub const DEFAULT_HOST: &str = "127.0.0.1";
 pub const DEFAULT_PORT: u16 = 3737;
 pub const DEFAULT_LOG: &str = "info,mewcode_engine=debug";
 pub const ENV_PREFIX: &str = "MEWCODE_";
+const PREFIXED_OPENCODE_GO_API_KEY: &str = "MEWCODE_OPENCODE_GO_API_KEY";
+const PREFIXED_OPENCODE_ZEN_API_KEY: &str = "MEWCODE_OPENCODE_ZEN_API_KEY";
+const PREFIXED_OPENAI_API_KEY: &str = "MEWCODE_OPENAI_API_KEY";
+const PREFIXED_ANTHROPIC_API_KEY: &str = "MEWCODE_ANTHROPIC_API_KEY";
+const PREFIXED_OPENROUTER_API_KEY: &str = "MEWCODE_OPENROUTER_API_KEY";
 
 /// Expand a `~` and `${VAR}` placeholders in `raw`. Returns the path
 /// unchanged if the placeholder is unset. Used for `external_dirs`
@@ -59,9 +70,18 @@ pub struct ServerConfig {
     /// OpenCode Go API key. Optional.
     #[serde(default)]
     pub opencode_go_api_key: Option<String>,
+    /// OpenCode Zen API key. Optional.
+    #[serde(default)]
+    pub opencode_zen_api_key: Option<String>,
     /// Native OpenAI API key. Optional.
     #[serde(default)]
     pub openai_api_key: Option<String>,
+    /// Native Anthropic API key. Optional.
+    #[serde(default)]
+    pub anthropic_api_key: Option<String>,
+    /// OpenRouter API key. Optional.
+    #[serde(default)]
+    pub openrouter_api_key: Option<String>,
     /// Default model.
     #[serde(default)]
     pub default_model: Option<String>,
@@ -74,6 +94,9 @@ pub struct ServerConfig {
     /// GitHub App configuration (the @mewcli review bot).
     #[serde(default)]
     pub github: GithubServerConfig,
+    /// External MCP servers Mew connects to as a client, keyed by name.
+    #[serde(default)]
+    pub mcp: BTreeMap<String, McpServerConfig>,
 }
 
 /// GitHub App subsection of [`ServerConfig`].
@@ -123,26 +146,61 @@ fn default_log() -> String {
 impl ServerConfig {
     /// Load from env vars and optional `mew.toml`.
     pub fn load() -> Result<Self, Box<figment::Error>> {
-        let mut figment = Figment::new()
-            .merge(Toml::file(CONFIG_FILE).nested())
-            .merge(Env::prefixed(ENV_PREFIX).split("__"));
+        let mut figment = Figment::new().merge(Toml::file(CONFIG_FILE).nested());
 
-        // `OPENCODE_GO_API_KEY` is the canonical env var; pull it in if the
-        // prefixed form isn't set.
-        if let Ok(key) = std::env::var(OPENCODE_GO_API_KEY) {
-            if figment.find_metadata("opencode_go_api_key").is_none() {
-                figment = figment.merge(("opencode_go_api_key", key));
+        for (field, canonical, prefixed) in [
+            (
+                "opencode_go_api_key",
+                OPENCODE_GO_API_KEY,
+                PREFIXED_OPENCODE_GO_API_KEY,
+            ),
+            (
+                "opencode_zen_api_key",
+                OPENCODE_ZEN_API_KEY,
+                PREFIXED_OPENCODE_ZEN_API_KEY,
+            ),
+            ("openai_api_key", OPENAI_API_KEY, PREFIXED_OPENAI_API_KEY),
+            (
+                "anthropic_api_key",
+                ANTHROPIC_API_KEY,
+                PREFIXED_ANTHROPIC_API_KEY,
+            ),
+            (
+                "openrouter_api_key",
+                OPENROUTER_API_KEY,
+                PREFIXED_OPENROUTER_API_KEY,
+            ),
+        ] {
+            if std::env::var(prefixed).is_err() {
+                if let Ok(key) = std::env::var(canonical) {
+                    figment = figment.merge((field, key));
+                }
             }
         }
 
-        // `OPENAI_API_KEY` is the canonical env var for native OpenAI.
-        if let Ok(key) = std::env::var("OPENAI_API_KEY") {
-            if figment.find_metadata("openai_api_key").is_none() {
-                figment = figment.merge(("openai_api_key", key));
-            }
-        }
+        figment
+            .merge(Env::prefixed(ENV_PREFIX).split("__"))
+            .extract()
+            .map_err(Box::new)
+    }
 
-        figment.extract().map_err(Box::new)
+    /// The `[mcp]` table with `~` and `${VAR}` expanded in command arguments
+    /// and environment values, so an API key can live in `.env` instead of
+    /// being committed to `mew.toml`.
+    pub fn resolved_mcp(&self) -> BTreeMap<String, McpServerConfig> {
+        self.mcp
+            .iter()
+            .map(|(name, server)| {
+                let mut server = server.clone();
+                server.command = server.command.iter().map(|s| expand_path(s)).collect();
+                server.environment = server
+                    .environment
+                    .iter()
+                    .map(|(k, v)| (k.clone(), expand_path(v)))
+                    .collect();
+                (name.clone(), server)
+            })
+            .collect()
     }
 }
 

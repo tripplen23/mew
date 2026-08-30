@@ -11,7 +11,7 @@ use std::sync::Arc;
 use mewcode_engine::context::MemoryStore as FactStore;
 use mewcode_protocol::ProviderId;
 use mewcode_protocol::credential::ProviderCredential;
-use mewcode_protocol::env::{OPENAI_API_KEY, OPENCODE_GO_API_KEY};
+use mewcode_protocol::env::{OPENAI_API_KEY, OPENCODE_GO_API_KEY, OPENROUTER_API_KEY};
 use mewcode_server::services::chat::build_engine_config;
 use mewcode_server::store::memory::MemoryStore;
 use mewcode_server::{AppState, ServerConfig};
@@ -21,11 +21,15 @@ fn config() -> ServerConfig {
         host: "127.0.0.1".into(),
         port: 0,
         opencode_go_api_key: None,
+        opencode_zen_api_key: None,
         openai_api_key: None,
+        anthropic_api_key: None,
+        openrouter_api_key: None,
         default_model: None,
         log: "off".into(),
         skills: Default::default(),
         github: Default::default(),
+        mcp: Default::default(),
     }
 }
 
@@ -51,6 +55,7 @@ async fn build_engine_config_resolution_priority() {
     let env_keys = [
         OPENCODE_GO_API_KEY,
         OPENAI_API_KEY,
+        OPENROUTER_API_KEY,
         mewcode_engine::config::ENV_BASE_URL,
     ];
     let prior: Vec<Option<String>> = env_keys.iter().map(|k| std::env::var(k).ok()).collect();
@@ -59,6 +64,7 @@ async fn build_engine_config_resolution_priority() {
     {
         let state = app_with(ServerConfig {
             opencode_go_api_key: Some("cfg-key".into()),
+            openrouter_api_key: None,
             ..config()
         });
         clear_credentials(&state).await;
@@ -77,6 +83,7 @@ async fn build_engine_config_resolution_priority() {
     {
         let state = app_with(ServerConfig {
             opencode_go_api_key: Some("cfg-key".into()),
+            openrouter_api_key: None,
             ..config()
         });
         clear_credentials(&state).await;
@@ -113,6 +120,7 @@ async fn build_engine_config_resolution_priority() {
     {
         let state = app_with(ServerConfig {
             openai_api_key: Some("cfg-openai".into()),
+            openrouter_api_key: None,
             ..config()
         });
         clear_credentials(&state).await;
@@ -125,6 +133,33 @@ async fn build_engine_config_resolution_priority() {
         let cfg = build_engine_config(&state).await;
         assert_eq!(cfg.base_url, "http://custom:8080/v1");
         assert_eq!(cfg.openai_api_key.as_deref(), Some("cfg-openai"));
+    }
+
+    // OpenRouter follows the same store -> config -> env precedence.
+    {
+        let state = app_with(ServerConfig {
+            openrouter_api_key: Some("cfg-openrouter".into()),
+            ..config()
+        });
+        clear_credentials(&state).await;
+        state.credentials.lock().await.credentials.insert(
+            ProviderId::OpenRouter,
+            ProviderCredential::new(ProviderId::OpenRouter, "store-openrouter".into()),
+        );
+        unsafe {
+            std::env::set_var(OPENROUTER_API_KEY, "env-openrouter");
+        }
+        let cfg = build_engine_config(&state).await;
+        assert_eq!(cfg.openrouter_api_key.as_deref(), Some("store-openrouter"));
+
+        state.credentials.lock().await.credentials.clear();
+        let cfg = build_engine_config(&state).await;
+        assert_eq!(cfg.openrouter_api_key.as_deref(), Some("cfg-openrouter"));
+
+        let state = app_with(config());
+        clear_credentials(&state).await;
+        let cfg = build_engine_config(&state).await;
+        assert_eq!(cfg.openrouter_api_key.as_deref(), Some("env-openrouter"));
     }
 
     for (key, value) in env_keys.iter().zip(prior) {

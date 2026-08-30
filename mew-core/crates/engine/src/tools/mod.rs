@@ -13,7 +13,7 @@
 
 use std::sync::Arc;
 
-use mewcode_protocol::Mode;
+use mewcode_protocol::{Mode, ToolContracts};
 
 use crate::context::{MemoryStore, TodoStore};
 use crate::skills::SkillRegistry;
@@ -114,4 +114,21 @@ pub fn default_registry_with_todos(
     }
 
     reg
+}
+
+/// Add tools discovered from external MCP servers
+/// ([`McpClients::tools`](crate::mcp::McpClients::tools)) to an existing
+/// registry.
+///
+/// Read-only MCP tools are available in both modes. Everything else follows the
+/// same rule as the built-in writers: it runs in `Build` (behind the approval
+/// gate) and returns a permission error in `Plan`.
+pub fn register_mcp_tools(reg: &mut ToolRegistry, tools: &[Arc<dyn ToolContracts>], mode: Mode) {
+    for tool in tools {
+        if mode.allows_writes() || tool.descriptor().annotations.read_only {
+            reg.register(tool.clone());
+        } else {
+            reg.register(Arc::new(PlanDeniedTool::new(tool.clone())));
+        }
+    }
 }

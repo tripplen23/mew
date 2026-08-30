@@ -42,7 +42,11 @@ struct SessionRow {
     /// Human-readable title.
     title: String,
     /// Model selected for the session.
-    model: mewcode_protocol::ModelId,
+    model: mewcode_protocol::ModelRef,
+    /// Runtime transport captured from provider discovery.
+    model_kind: Option<mewcode_protocol::ModelKind>,
+    /// Runtime context limit captured from provider discovery.
+    model_context_length: Option<u64>,
     /// Interaction mode for the session.
     mode: mewcode_protocol::Mode,
     /// When the session was created.
@@ -70,7 +74,9 @@ impl SessionRow {
         SessionSummary {
             id: self.id,
             title: self.title.clone(),
-            model: self.model,
+            model: self.model.clone(),
+            model_kind: self.model_kind,
+            model_context_length: self.model_context_length,
             mode: self.mode,
             created_at: self.created_at,
         }
@@ -81,7 +87,9 @@ impl SessionRow {
         Session {
             id: self.id,
             title: self.title.clone(),
-            model: self.model,
+            model: self.model.clone(),
+            model_kind: self.model_kind,
+            model_context_length: self.model_context_length,
             mode: self.mode,
             created_at: self.created_at,
             updated_at: self.updated_at,
@@ -123,6 +131,8 @@ impl SessionStore for MemoryStore {
             id: Uuid::new_v4(),
             title: new.title,
             model: new.model,
+            model_kind: new.model_kind,
+            model_context_length: new.model_context_length,
             mode: new.mode,
             created_at: now,
             updated_at: now,
@@ -173,6 +183,15 @@ impl SessionStore for MemoryStore {
         }
         if let Some(model) = patch.model {
             row.model = model;
+            row.model_kind = patch.model_kind;
+            row.model_context_length = patch.model_context_length;
+        } else {
+            if patch.model_kind.is_some() {
+                row.model_kind = patch.model_kind;
+            }
+            if patch.model_context_length.is_some() {
+                row.model_context_length = patch.model_context_length;
+            }
         }
         if let Some(mode) = patch.mode {
             row.mode = mode;

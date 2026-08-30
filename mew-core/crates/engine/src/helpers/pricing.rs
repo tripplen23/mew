@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 
-use mewcode_protocol::ModelId;
+use mewcode_protocol::ModelRef;
 
 use crate::agent::TurnUsage;
 
@@ -34,7 +34,10 @@ struct PricingTable {
 static TABLE: std::sync::OnceLock<PricingTable> = std::sync::OnceLock::new();
 
 /// Total cost in USD for a turn, or `None` when the model has no known price.
-pub fn turn_cost_usd(model: ModelId, usage: TurnUsage) -> Option<f64> {
+pub fn turn_cost_usd(model: &ModelRef, usage: TurnUsage) -> Option<f64> {
+    let ModelRef::BuiltIn(model) = model else {
+        return None;
+    };
     let table = TABLE.get_or_init(|| {
         serde_json::from_str(PRICING_JSON).expect("pricing.json must parse; corrupt asset")
     });

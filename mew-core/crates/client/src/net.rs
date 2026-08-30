@@ -10,7 +10,8 @@ use mewcode_protocol::routes::{
     CHAT, CHOICES, HEALTH, PROVIDER_CONNECT, PROVIDER_STATUS, PROVIDERS, SESSION_ABORT,
     SESSION_BY_ID, SESSION_COMPACT, SESSIONS, SKILLS,
 };
-use mewcode_protocol::{Message, Mode, ModelId, ModelKind, ProviderId, StreamEvent};
+use mewcode_protocol::{Message, Mode, ModelKind, ModelRef, StreamEvent};
+pub use mewcode_protocol::{ModelEntry, ProviderEntry};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
@@ -53,32 +54,6 @@ pub struct HealthResponse {
     pub version: String,
 }
 
-/// One model entry inside the provider registry.
-#[derive(Debug, Clone, Deserialize)]
-pub struct ModelEntry {
-    /// Provider-side model id.
-    pub id: String,
-    /// Human-friendly display name.
-    pub display_name: String,
-    /// Which provider serves this model.
-    pub provider: ProviderId,
-    /// Which endpoint protocol this model speaks.
-    pub kind: ModelKind,
-}
-
-/// One provider entry returned by `GET /providers`.
-#[derive(Debug, Clone, Deserialize)]
-pub struct ProviderEntry {
-    /// Provider id used on the wire.
-    pub id: ProviderId,
-    /// Human-friendly provider name.
-    pub display_name: String,
-    /// Whether this provider can currently be used.
-    pub available: bool,
-    /// Available models for this provider.
-    pub models: Vec<ModelEntry>,
-}
-
 /// One entry in the skill catalog returned by `GET /skills`. Mirrors the
 /// server's `SkillEntry` wire shape.
 #[derive(Debug, Clone, Deserialize)]
@@ -102,7 +77,13 @@ pub struct SessionSummary {
     /// Human-readable title.
     pub title: String,
     /// Model selected for the session.
-    pub model: ModelId,
+    pub model: ModelRef,
+    /// Runtime transport captured when this model was selected.
+    #[serde(default)]
+    pub model_kind: Option<ModelKind>,
+    /// Runtime context limit captured when this model was selected.
+    #[serde(default)]
+    pub model_context_length: Option<u64>,
     /// Interaction mode for the session.
     pub mode: Mode,
     /// When the session was created.
@@ -118,7 +99,13 @@ pub struct Session {
     /// Human-readable title.
     pub title: String,
     /// Model selected for the session.
-    pub model: ModelId,
+    pub model: ModelRef,
+    /// Runtime transport captured when this model was selected.
+    #[serde(default)]
+    pub model_kind: Option<ModelKind>,
+    /// Runtime context limit captured when this model was selected.
+    #[serde(default)]
+    pub model_context_length: Option<u64>,
     /// Interaction mode for the session.
     pub mode: Mode,
     /// When the session was created.
@@ -148,14 +135,21 @@ pub struct CreateSessionRequest {
     pub title: String,
     /// Model to use; server default when `None`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub model: Option<ModelId>,
+    pub model: Option<ModelRef>,
+    /// Runtime transport captured from provider discovery.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_kind: Option<ModelKind>,
+    /// Runtime context limit captured from provider discovery.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_context_length: Option<u64>,
     /// Interaction mode; server default when `None`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mode: Option<Mode>,
 }
 
 /// Partial update for a session. Mirrors the server's `SessionPatch`: each
-/// `Some` field is applied; `None` fields are left unchanged.
+/// `Some` field is applied; omitted fields are unchanged except that supplying
+/// a model without a context snapshot clears the previous snapshot.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct SessionPatch {
     /// New title. `None` keeps the current title.
@@ -163,7 +157,13 @@ pub struct SessionPatch {
     pub title: Option<String>,
     /// New model. `None` keeps the current model.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub model: Option<ModelId>,
+    pub model: Option<ModelRef>,
+    /// New runtime transport snapshot. `None` keeps it unless `model` is `Some`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_kind: Option<ModelKind>,
+    /// New runtime context snapshot. `None` keeps it unless `model` is `Some`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_context_length: Option<u64>,
     /// New mode. `None` keeps the current mode.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mode: Option<Mode>,
@@ -191,15 +191,13 @@ impl ApiClient {
 
     /// `GET /providers` — fetch the provider registry.
     ///
-    /// A per-request 10 s timeout bounds exactly this call, so a hung registry
-    /// fetch fails fast (into the picker's fallback) instead of wedging the
-    /// dialog open forever. Transport error, non-success status, decode
-    /// failure, or timeout all surface as one [`NetError`].
+    /// A per-request 30 s timeout bounds the concurrent upstream discovery
+    /// calls made by the server, so one slow provider cannot wedge the picker.
     pub async fn providers(&self) -> Result<Vec<ProviderEntry>, NetError> {
         let resp = self
             .inner
             .get(format!("{}{}", self.base_url, PROVIDERS))
-            .timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(30))
             .send()
             .await?;
         let bytes = ensure_success(resp)?.bytes().await?;
@@ -404,8 +402,8 @@ impl ApiClient {
         Ok(serde_json::from_slice(&bytes)?)
     }
 
-    /// Resolve a model id string into the registry.
-    pub fn model_id(&self, id: &str) -> Option<ModelId> {
+    /// Resolve a persisted model identity.
+    pub fn model_id(&self, id: &str) -> Option<ModelRef> {
         id.parse().ok()
     }
 

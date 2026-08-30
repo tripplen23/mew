@@ -10,6 +10,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 
 use super::super::model::SessionState;
+use super::one_line;
 use super::spinner::spinner_frame;
 use super::theme::Theme;
 
@@ -86,7 +87,14 @@ pub(crate) fn render_entry_lines(
     } else {
         "Type a message to start a new session.".to_string()
     };
-    let model = s.creation.pending_model.unwrap_or_default().display_name();
+    let model = one_line(
+        s.creation
+            .pending_model
+            .as_ref()
+            .cloned()
+            .unwrap_or_default()
+            .display_name(),
+    );
     let mode = s.creation.pending_mode.unwrap_or_default();
     out.push(Line::from(vec![
         Span::styled(mode.label(), Style::default().fg(theme.hot_pink)),

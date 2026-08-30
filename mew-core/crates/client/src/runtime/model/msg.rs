@@ -29,8 +29,8 @@ pub enum Msg {
     ChoiceRequested(ChoiceRequest),
     /// A pending structured choice answer was submitted.
     ChoiceSubmitted(Result<(), String>),
-    /// The model registry was fetched (or failed).
-    ModelsFetched(Result<Vec<ModelEntry>, String>),
+    /// The model registry was fetched (or failed), with its request generation.
+    ModelsFetched(Result<Vec<ModelEntry>, String>, u64),
     /// The skill catalog was fetched (or failed).
     SkillsFetched(Result<Vec<SkillEntry>, String>),
     /// The session list was fetched (or failed).

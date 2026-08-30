@@ -1,6 +1,7 @@
 use thiserror::Error;
 
 use mewcode_protocol::event::ErrorCode;
+use mewcode_protocol::{ModelKind, ProviderId};
 
 /// All errors the engine can produce.
 #[derive(Debug, Error)]
@@ -12,6 +13,15 @@ pub enum EngineError {
     /// A native provider's API key was not found.
     #[error("{0} is not set")]
     MissingNativeApiKey(&'static str),
+
+    /// A model was paired with an endpoint protocol its provider does not support.
+    #[error("{provider} does not support transport {kind:?}")]
+    UnsupportedProviderTransport {
+        /// Provider selected by the model identity.
+        provider: ProviderId,
+        /// Requested endpoint protocol.
+        kind: ModelKind,
+    },
 
     /// The HTTP request upstream failed.
     #[error("upstream error: {0}")]
@@ -81,8 +91,8 @@ fn contains_context_overflow(msg: &str) -> bool {
 
 /// Split an engine error into its streamed [`mewcode_protocol::event::StreamEvent::Error`] fields.
 ///
-/// `message` is a sanitised, user-actionable summary — the caller logs the
-/// raw error, which may carry provider bodies or keys. `retryable` is true
+/// `message` is a sanitised, user-actionable summary; callers must not log
+/// raw errors because they may carry provider bodies or keys. `retryable` is true
 /// only for transient conditions (upstream 5xx/429/network), so the client
 /// can offer a retry without reimplementing engine semantics.
 /// `EngineError::Aborted` never reaches here: callers intercept it and emit
@@ -97,6 +107,11 @@ pub fn engine_error_parts(error: &EngineError) -> (ErrorCode, String, bool) {
         EngineError::MissingNativeApiKey(name) => (
             ErrorCode::MissingApiKey,
             format!("{name} is not set"),
+            false,
+        ),
+        EngineError::UnsupportedProviderTransport { .. } => (
+            ErrorCode::Internal,
+            "model transport is incompatible with its provider".into(),
             false,
         ),
         EngineError::Upstream(_) => (ErrorCode::Upstream, "upstream provider error".into(), true),

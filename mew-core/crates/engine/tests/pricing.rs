@@ -23,16 +23,17 @@ fn assert_cost_close(actual: f64, expected: f64) {
 
 #[test]
 fn known_model_costs_fresh_and_cached_input() {
-    let fresh = turn_cost_usd(ModelId::Gpt41Mini, usage(1_000_000, 0, 0, 0)).unwrap();
+    let model = ModelId::Gpt41Mini.into();
+    let fresh = turn_cost_usd(&model, usage(1_000_000, 0, 0, 0)).unwrap();
     assert_cost_close(fresh, 0.40);
 
-    let cached = turn_cost_usd(ModelId::Gpt41Mini, usage(1_000_000, 0, 1_000_000, 0)).unwrap();
+    let cached = turn_cost_usd(&model, usage(1_000_000, 0, 1_000_000, 0)).unwrap();
     assert_cost_close(cached, 0.10);
 }
 
 #[test]
 fn output_is_billed() {
-    let cost = turn_cost_usd(ModelId::DeepSeekV4Pro, usage(0, 1_000_000, 0, 0)).unwrap();
+    let cost = turn_cost_usd(&ModelId::DeepSeekV4Pro.into(), usage(0, 1_000_000, 0, 0)).unwrap();
     assert_cost_close(cost, 0.87);
 }
 
@@ -40,8 +41,20 @@ fn output_is_billed() {
 fn every_model_has_a_price() {
     for model in ModelId::ALL {
         assert!(
-            turn_cost_usd(*model, usage(1, 1, 0, 0)).is_some(),
+            turn_cost_usd(&(*model).into(), usage(1, 1, 0, 0)).is_some(),
             "missing price for {model:?}"
         );
+    }
+}
+
+#[test]
+fn dynamic_provider_models_do_not_use_builtin_pricing_fallback() {
+    for model in [
+        mewcode_protocol::ModelRef::open_code_go("future-code-model").unwrap(),
+        mewcode_protocol::ModelRef::openai("gpt-future").unwrap(),
+        mewcode_protocol::ModelRef::deepseek("deepseek-future").unwrap(),
+        mewcode_protocol::ModelRef::openrouter("openai/gpt-4.1-mini").unwrap(),
+    ] {
+        assert_eq!(turn_cost_usd(&model, usage(1_000_000, 1, 0, 0)), None);
     }
 }

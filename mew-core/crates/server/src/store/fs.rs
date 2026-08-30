@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use mewcode_protocol::env::MEWCODE_DATA_DIR;
-use mewcode_protocol::{Message, Mode, ModelId};
+use mewcode_protocol::{Message, Mode, ModelKind, ModelRef};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -45,8 +45,14 @@ struct MetaJson {
     id: Uuid,
     /// Human-readable title.
     title: String,
-    /// Model selected for the session (serializes to the provider-id string).
-    model: ModelId,
+    /// Model selected for the session (serializes to its persistence identity).
+    model: ModelRef,
+    /// Runtime transport captured from provider discovery.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    model_kind: Option<ModelKind>,
+    /// Runtime context limit captured from provider discovery.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    model_context_length: Option<u64>,
     /// Interaction mode (serializes to `BUILD` / `PLAN`).
     mode: Mode,
     /// When the session was created.
@@ -70,7 +76,9 @@ impl MetaJson {
         SessionSummary {
             id: self.id,
             title: self.title.clone(),
-            model: self.model,
+            model: self.model.clone(),
+            model_kind: self.model_kind,
+            model_context_length: self.model_context_length,
             mode: self.mode,
             created_at: self.created_at,
         }
@@ -81,7 +89,9 @@ impl MetaJson {
         Session {
             id: self.id,
             title: self.title.clone(),
-            model: self.model,
+            model: self.model.clone(),
+            model_kind: self.model_kind,
+            model_context_length: self.model_context_length,
             mode: self.mode,
             created_at: self.created_at,
             updated_at: self.updated_at,
@@ -302,6 +312,8 @@ impl SessionStore for FsStore {
             id: Uuid::new_v4(),
             title: new.title,
             model: new.model,
+            model_kind: new.model_kind,
+            model_context_length: new.model_context_length,
             mode: new.mode,
             created_at: now,
             updated_at: now,
@@ -356,6 +368,15 @@ impl SessionStore for FsStore {
         }
         if let Some(model) = patch.model {
             meta.model = model;
+            meta.model_kind = patch.model_kind;
+            meta.model_context_length = patch.model_context_length;
+        } else {
+            if patch.model_kind.is_some() {
+                meta.model_kind = patch.model_kind;
+            }
+            if patch.model_context_length.is_some() {
+                meta.model_context_length = patch.model_context_length;
+            }
         }
         if let Some(mode) = patch.mode {
             meta.mode = mode;

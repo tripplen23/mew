@@ -1,4 +1,4 @@
-use crate::{Message, MessagePart, Mode, ModelId, ProviderId};
+use crate::{Message, MessagePart, Mode, ModelRef, ProviderId};
 
 /// Phase of a manual compaction operation.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
@@ -33,7 +33,7 @@ pub enum StreamEvent {
         /// Mode the user picked.
         mode: Mode,
         /// Model the user picked.
-        model: ModelId,
+        model: ModelRef,
         /// Server working directory.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pwd: Option<String>,
@@ -265,7 +265,7 @@ pub struct ChatRequest {
     /// Session this turn belongs to.
     pub session_id: uuid::Uuid,
     /// Model to use.
-    pub model: ModelId,
+    pub model: ModelRef,
     /// Provider to route through. `None` defaults to OpenCodeGo.
     #[serde(default)]
     pub provider: Option<ProviderId>,

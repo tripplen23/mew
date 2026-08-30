@@ -42,7 +42,9 @@ pub async fn run_review(state: AppState, req: ReviewRequest) -> (StatusCode, Jso
         .store
         .create_session(crate::store::NewSession {
             title: "mew review".into(),
-            model: ModelId::DEFAULT,
+            model: ModelId::DEFAULT.into(),
+            model_kind: None,
+            model_context_length: None,
             mode: Mode::Plan,
         })
         .await
@@ -62,7 +64,7 @@ pub async fn run_review(state: AppState, req: ReviewRequest) -> (StatusCode, Jso
     let prompt = build_prompt(&req);
     let chat_req = ChatRequest {
         session_id: session.id,
-        model: ModelId::DEFAULT,
+        model: ModelId::DEFAULT.into(),
         provider: None,
         mode: Mode::Plan,
         messages: vec![Message::user(vec![MessagePart::Text { text: prompt }])],

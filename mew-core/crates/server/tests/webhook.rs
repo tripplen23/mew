@@ -39,7 +39,10 @@ fn test_config() -> ServerConfig {
         host: "127.0.0.1".into(),
         port: 0,
         opencode_go_api_key: None,
+        opencode_zen_api_key: None,
         openai_api_key: None,
+        anthropic_api_key: None,
+        openrouter_api_key: None,
         default_model: None,
         log: "off".into(),
         skills: Default::default(),
@@ -51,6 +54,7 @@ fn test_config() -> ServerConfig {
                 env!("CARGO_MANIFEST_DIR")
             )),
         },
+        mcp: Default::default(),
     }
 }
 

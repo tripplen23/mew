@@ -21,9 +21,9 @@ use super::model::{
 
 mod session;
 
+pub(crate) use session::picker::clamp_model_picker_scroll;
 use session::picker::{
-    clamp_file_picker_scroll, clamp_model_picker_scroll, clamp_session_list_scroll,
-    clamp_skills_picker_scroll,
+    clamp_file_picker_scroll, clamp_session_list_scroll, clamp_skills_picker_scroll,
 };
 use session::{
     apply_stream_event, on_session_key, on_session_mouse, on_session_paste, submit_choice_response,
@@ -41,7 +41,7 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
     match msg {
         Msg::Key(key) => on_session_key(s, toast, key),
 
-        Msg::Mouse(event) => on_session_mouse(s, event),
+        Msg::Mouse(event) => on_session_mouse(s, toast, event),
 
         Msg::ChoiceRequested(request) => {
             s.pending_choice = Some(super::model::ChoicePromptState::new(request));
@@ -96,6 +96,8 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
                 s.creation.creating = false;
                 s.creation.creation_started_at = None;
                 s.creation.pending_model = None;
+                s.creation.pending_model_kind = None;
+                s.creation.pending_model_context_length = None;
                 s.creation.pending_mode = None;
                 if let Some(text) = pending {
                     let user_msg = Message::user(vec![MessagePart::Text { text: text.clone() }]);
@@ -110,7 +112,7 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
                     let live = s.session.as_ref().unwrap();
                     return Cmd::StartChat(ChatRequest {
                         session_id: live.id,
-                        model: live.model,
+                        model: live.model.clone(),
                         provider: None,
                         mode: live.mode,
                         messages: live.messages.clone(),
@@ -153,7 +155,7 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
                 let pending = s.message_queue.remove(0);
                 if let Some(session) = s.session.as_ref() {
                     let session_id = session.id;
-                    let model = session.model;
+                    let model = session.model.clone();
                     let mode = session.mode;
                     let user_msg = Message::user(vec![MessagePart::Text { text: pending }]);
                     s.session.as_mut().unwrap().messages.push(user_msg);
@@ -184,7 +186,10 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
             }
         }
 
-        Msg::ModelsFetched(result) => {
+        Msg::ModelsFetched(result, generation) => {
+            if generation != s.model_picker.generation {
+                return Cmd::None;
+            }
             // The /model picker is fire-and-forget: the user can Esc out
             // before the registry returns. If the overlay has already
             // changed (e.g. user opened /tools or sent a chat), keep the
@@ -193,7 +198,7 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
             match result {
                 Ok(entries) => {
                     s.model_picker.models = Some(entries);
-                    let len = s.model_picker.models.as_ref().map(Vec::len).unwrap_or(0);
+                    let len = s.model_picker.filtered_models().len();
                     if s.model_picker.picker.cursor >= len {
                         s.model_picker.picker.cursor = len.saturating_sub(1);
                     }
@@ -349,7 +354,8 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
                             )));
                             // Refresh model list so new provider shows up
                             s.model_picker.models = None;
-                            let fetch = Cmd::FetchModels;
+                            s.model_picker.generation = s.model_picker.generation.wrapping_add(1);
+                            let fetch = Cmd::FetchModels(s.model_picker.generation);
                             // Keep overlay open so user can see success
                             return Cmd::Batch(vec![fetch]);
                         }

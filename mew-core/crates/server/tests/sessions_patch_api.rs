@@ -24,11 +24,15 @@ fn test_config() -> ServerConfig {
         host: "127.0.0.1".into(),
         port: 0,
         opencode_go_api_key: Some("test-key".into()),
+        opencode_zen_api_key: None,
         openai_api_key: None,
+        anthropic_api_key: None,
+        openrouter_api_key: None,
         default_model: None,
         log: "off".into(),
         skills: Default::default(),
         github: Default::default(),
+        mcp: Default::default(),
     }
 }
 
@@ -99,7 +103,7 @@ async fn patch_title_only_preserves_model_and_mode() {
     let session: Session = serde_json::from_slice(&bytes).expect("patch body is a Session");
     assert_eq!(session.id, created.id);
     assert_eq!(session.title, "After");
-    assert_eq!(session.model, ModelId::Glm51);
+    assert_eq!(session.model, ModelId::Glm51.into());
     assert_eq!(session.mode, Mode::Build);
     assert!(session.updated_at >= created.updated_at);
 }
@@ -117,8 +121,65 @@ async fn patch_model_only_preserves_title_and_mode() {
     assert_eq!(status, StatusCode::OK);
     let session: Session = serde_json::from_slice(&bytes).expect("patch body is a Session");
     assert_eq!(session.title, "Before");
-    assert_eq!(session.model, ModelId::MiniMaxM3);
+    assert_eq!(session.model, ModelId::MiniMaxM3.into());
     assert_eq!(session.mode, Mode::Build);
+}
+
+#[tokio::test]
+async fn changing_model_without_context_clears_previous_snapshot() {
+    let app = app();
+    let (status, bytes) = send(
+        app.clone(),
+        post_session(json!({
+            "title": "Context",
+            "model": "openrouter::Vendor/Known",
+            "model_context_length": 262144,
+            "mode": "BUILD"
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let created: Session = serde_json::from_slice(&bytes).expect("create body is a Session");
+
+    let (status, bytes) = send(
+        app,
+        patch_session(
+            &created.id,
+            json!({ "model": "openrouter::Vendor/Unknown" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let session: Session = serde_json::from_slice(&bytes).expect("patch body is a Session");
+    assert_eq!(session.model.raw_id(), "Vendor/Unknown");
+    assert_eq!(session.model_context_length, None);
+}
+
+#[tokio::test]
+async fn supplying_same_model_without_context_also_clears_snapshot() {
+    let app = app();
+    let (status, bytes) = send(
+        app.clone(),
+        post_session(json!({
+            "title": "Context",
+            "model": "openrouter::Vendor/Known",
+            "model_context_length": 262144,
+            "mode": "BUILD"
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let created: Session = serde_json::from_slice(&bytes).expect("create body is a Session");
+
+    let (status, bytes) = send(
+        app,
+        patch_session(&created.id, json!({ "model": "openrouter::Vendor/Known" })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let session: Session = serde_json::from_slice(&bytes).expect("patch body is a Session");
+    assert_eq!(session.model.raw_id(), "Vendor/Known");
+    assert_eq!(session.model_context_length, None);
 }
 
 #[tokio::test]
@@ -130,7 +191,7 @@ async fn patch_mode_only_preserves_title_and_model() {
     assert_eq!(status, StatusCode::OK);
     let session: Session = serde_json::from_slice(&bytes).expect("patch body is a Session");
     assert_eq!(session.title, "Before");
-    assert_eq!(session.model, ModelId::Glm51);
+    assert_eq!(session.model, ModelId::Glm51.into());
     assert_eq!(session.mode, Mode::Plan);
 }
 
@@ -150,7 +211,7 @@ async fn patch_all_three_fields_at_once() {
     assert_eq!(status, StatusCode::OK);
     let session: Session = serde_json::from_slice(&bytes).expect("patch body is a Session");
     assert_eq!(session.title, "All three");
-    assert_eq!(session.model, ModelId::MiniMaxM3);
+    assert_eq!(session.model, ModelId::MiniMaxM3.into());
     assert_eq!(session.mode, Mode::Plan);
 }
 
@@ -316,7 +377,9 @@ async fn patch_and_delete_wait_for_session_operation_lock() {
         .store
         .create_session(NewSession {
             title: "locked".into(),
-            model: ModelId::default(),
+            model: ModelId::default().into(),
+            model_kind: None,
+            model_context_length: None,
             mode: Mode::default(),
         })
         .await
@@ -333,6 +396,8 @@ async fn patch_and_delete_wait_for_session_operation_lock() {
         Json(UpdateSessionRequest {
             title: Some("updated".into()),
             model: None,
+            model_kind: None,
+            model_context_length: None,
             mode: None,
         }),
     ));
@@ -387,4 +452,45 @@ async fn patch_preserves_todos_hydration() {
     assert_eq!(session.todos[0].content, "survive mode switch");
 
     let _ = std::fs::remove_dir_all(fact_dir);
+}
+
+#[tokio::test]
+async fn create_and_patch_model_kind_follow_model_snapshot_semantics() {
+    let app = app();
+    let (status, bytes) = send(
+        app.clone(),
+        post_session(json!({
+            "title": "Zen",
+            "model": "opencode-zen::gpt-5.4",
+            "model_kind": "open-ai-responses",
+            "model_context_length": 1050000,
+            "mode": "BUILD"
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let created: Session = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(
+        created.model_kind,
+        Some(mewcode_protocol::ModelKind::OpenAiResponses)
+    );
+
+    let (status, bytes) = send(
+        app.clone(),
+        patch_session(&created.id, json!({ "title": "Renamed" })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let renamed: Session = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(renamed.model_kind, created.model_kind);
+
+    let (status, bytes) = send(
+        app,
+        patch_session(&created.id, json!({ "model": "opencode-zen::glm-5.2" })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let replaced: Session = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(replaced.model_kind, None);
+    assert_eq!(replaced.model_context_length, None);
 }

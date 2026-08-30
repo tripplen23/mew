@@ -73,6 +73,10 @@ make run          # server + TUI, auto-cleanup on exit
 
 Requires Rust 1.85+ (edition 2024) and Go 1.26+.
 
+### Model providers
+
+Mew supports OpenCode Go, OpenCode Zen, OpenAI, native Anthropic, DeepSeek, and OpenRouter. Provider credentials, runtime model discovery, session identity, transport routing, and compatibility details are documented in [Model providers](docs/model-providers.md).
+
 ### Dev commands
 
 ```

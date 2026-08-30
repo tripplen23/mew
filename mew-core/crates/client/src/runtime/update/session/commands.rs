@@ -65,17 +65,16 @@ pub(super) fn on_sound_command(
     Cmd::None
 }
 
-/// Handle `/model`: open the picker overlay, fetching the registry on
-/// demand. Picking a row (Enter in the overlay) is handled in
-/// `on_session_key`; this function only opens the dialog.
+/// Handle `/model`: open the picker overlay and refresh the runtime registry.
+/// Picking a row (Enter in the overlay) is handled in `on_session_key`.
 pub(super) fn on_model_command(s: &mut SessionState) -> Cmd {
     s.overlay = Overlay::ModelPicker;
+    s.model_picker.query = TextArea::default();
     s.model_picker.picker.cursor = 0;
-    if s.model_picker.models.is_none() {
-        Cmd::FetchModels
-    } else {
-        Cmd::None
-    }
+    s.model_picker.picker.scroll = 0;
+    s.model_picker.models = None;
+    s.model_picker.generation = s.model_picker.generation.wrapping_add(1);
+    Cmd::FetchModels(s.model_picker.generation)
 }
 
 /// Handle `/skills`: open the skill picker overlay.
@@ -152,19 +151,28 @@ pub(super) fn on_session_command(
                 s.clear_composer();
                 return Cmd::CreateSession(CreateSessionRequest {
                     title,
-                    model: s.creation.pending_model,
+                    model: s.creation.pending_model.clone(),
+                    model_kind: s.creation.pending_model_kind,
+                    model_context_length: s.creation.pending_model_context_length,
                     mode: Some(s.creation.pending_mode.unwrap_or_default()),
                 });
             }
 
             // Bare `/session new` — back to entry view; the first message
             // creates the session and derives a title, like the very first one.
-            let carried_model = s.session.as_ref().map(|sess| sess.model);
+            let carried_model = s.session.as_ref().map(|sess| sess.model.clone());
+            let carried_model_kind = s.session.as_ref().and_then(|sess| sess.model_kind);
+            let carried_model_context_length = s
+                .session
+                .as_ref()
+                .and_then(|sess| sess.model_context_length);
             let carried_mode = s.session.as_ref().map(|sess| sess.mode);
             let carried_sound = s.sound_enabled;
             let carried_pwd = s.pwd.clone();
             *s = SessionState::empty();
             s.creation.pending_model = carried_model;
+            s.creation.pending_model_kind = carried_model_kind;
+            s.creation.pending_model_context_length = carried_model_context_length;
             s.creation.pending_mode = carried_mode;
             s.sound_enabled = carried_sound;
             s.pwd = carried_pwd;

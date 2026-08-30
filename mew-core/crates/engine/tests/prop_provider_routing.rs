@@ -22,12 +22,17 @@ proptest! {
         // Dummy credentials/base: provider construction is offline (no request).
         let cfg = EngineConfig {
             api_key: "test-key".into(),
+            opencode_zen_api_key: None,
             openai_api_key: Some("test-openai-key".into()),
             openai_base_url: None,
+            anthropic_api_key: None,
+            deepseek_api_key: Some("test-deepseek-key".into()),
+            openrouter_api_key: None,
             default_model: ModelId::default(),
             base_url: "https://example.invalid".into(),
         };
-        let provider = Provider::for_model(model, &cfg)
+        let model = model.into();
+        let provider = Provider::for_model(&model, &cfg)
             .expect("for_model is infallible");
 
         match model.kind() {
@@ -43,10 +48,28 @@ proptest! {
                     "expected OpenCodeGo variant for {model:?}"
                 );
             }
+            ModelKind::OpenCodeZen => {
+                prop_assert!(matches!(provider, Provider::OpenCodeZen(_)));
+            }
+            ModelKind::OpenAiResponses => {
+                prop_assert!(matches!(provider, Provider::OpenAiResponses(_)));
+            }
             ModelKind::OpenAi => {
                 prop_assert!(
                     matches!(provider, Provider::OpenAi(_)),
                     "expected OpenAi variant for {model:?}"
+                );
+            }
+            ModelKind::DeepSeek => {
+                prop_assert!(
+                    matches!(provider, Provider::DeepSeek(_)),
+                    "expected DeepSeek variant for {model:?}"
+                );
+            }
+            ModelKind::OpenRouter => {
+                prop_assert!(
+                    matches!(provider, Provider::OpenRouter(_)),
+                    "expected OpenRouter variant for {model:?}"
                 );
             }
         }

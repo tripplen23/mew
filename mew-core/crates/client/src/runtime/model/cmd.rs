@@ -19,7 +19,7 @@ pub enum Cmd {
     /// Submit a pending structured choice answer.
     SubmitChoice(ChoiceResponseRequest),
     /// Fetch the model registry for the picker overlay.
-    FetchModels,
+    FetchModels(u64),
     /// Fetch the skill catalog for the skills overlay.
     FetchSkills,
     /// Fetch the session list for the picker overlay.

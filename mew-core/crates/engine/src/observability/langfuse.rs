@@ -4,7 +4,7 @@
 //! - <https://opentelemetry.io/docs/specs/semconv/gen-ai/>
 //! - <https://langfuse.com/docs/opentelemetry/get-started>
 
-use mewcode_protocol::{Mode, ModelId};
+use mewcode_protocol::{Mode, ModelRef};
 
 /// Span name for a single agent turn.
 pub const TRACE_NAME_CHAT_TURN: &str = "chat-turn";
@@ -36,13 +36,14 @@ pub const FIELD_LANGFUSE_SESSION_ID: &str = "langfuse.session.id";
 ///
 /// Exposed as `pub` for the tracing-instrumentation test in
 /// `crates/engine/tests/chat_turn_span.rs`.
-pub fn chat_turn_span(model: ModelId, mode: Mode) -> tracing::Span {
+pub fn chat_turn_span(model: impl Into<ModelRef>, mode: Mode) -> tracing::Span {
+    let model = model.into();
     tracing::info_span!(
         "chat-turn",
-        gen_ai.request.model = model.as_str(),
+        gen_ai.request.model = model.raw_id(),
         mewcode.mode = ?mode,
         // Trace list stays scannable: name includes the model, e.g. "chat-turn deepseek-v4-flash".
-        langfuse.trace.name = format!("{TRACE_NAME_CHAT_TURN} {}", model.as_str()),
+        langfuse.trace.name = format!("{TRACE_NAME_CHAT_TURN} {}", model.raw_id()),
         langfuse.session.id = tracing::field::Empty,
         langfuse.trace.input = tracing::field::Empty,
         langfuse.trace.output = tracing::field::Empty,
