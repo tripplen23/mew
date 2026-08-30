@@ -175,9 +175,7 @@ fn click_picker_row(s: &mut SessionState, rect: Rect, row: u16) {
             s.file_picker.picker.cursor = index;
             clamp_file_picker_scroll(s);
         }
-        // Model rows are provider-grouped: a screen row can land on a header.
-        // Skip headers; a model row maps to its entry via the same grouping
-        // walk the view uses ([`model_picker_lines`]).
+        // Model rows include provider headers; only model rows map to entries.
         Overlay::ModelPicker => {
             let Some(models) = s.model_picker.models.as_ref() else {
                 return;
