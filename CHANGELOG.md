@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/tripplen23/mew/compare/mew-core-v0.10.0...mew-core-v0.11.0) (2026-08-30)
+
+
+### Features
+
+* mcp client, deepseek native, picker mouse, run record ([#191](https://github.com/tripplen23/mew/issues/191)) ([cebcc31](https://github.com/tripplen23/mew/commit/cebcc316a88230ff77030d83b9867b9f7741cdc7))
+
 ## [0.10.0](https://github.com/tripplen23/mew/compare/mew-core-v0.9.0...mew-core-v0.10.0) (2026-08-08)
 
 
