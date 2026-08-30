@@ -12,7 +12,9 @@ use mewcode_server::store::{Backend, NewSession, SessionPatch, SessionStore, Sto
 fn new_session(title: &str) -> NewSession {
     NewSession {
         title: title.to_string(),
-        model: ModelId::default(),
+        model: ModelId::default().into(),
+        model_kind: None,
+        model_context_length: None,
         mode: Mode::default(),
     }
 }
@@ -46,7 +48,7 @@ async fn create_then_get_round_trip() {
         .expect("create should succeed");
 
     assert_eq!(created.title, "hello");
-    assert_eq!(created.model, ModelId::default());
+    assert_eq!(created.model, ModelId::default().into());
     assert_eq!(created.mode, Mode::default());
     assert!(created.messages.is_empty());
     assert_eq!(created.created_at, created.updated_at);
@@ -219,6 +221,28 @@ async fn list_sessions_returns_summaries_newest_first() {
 }
 
 #[tokio::test]
+async fn dynamic_model_and_context_round_trip_through_memory_store() {
+    let store = MemoryStore::new();
+    let model = mewcode_protocol::ModelRef::openrouter("Vendor/Exact:free").unwrap();
+    let created = store
+        .create_session(NewSession {
+            title: "dynamic".into(),
+            model: model.clone(),
+            model_kind: None,
+            model_context_length: Some(262_144),
+            mode: Mode::Build,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(created.model, model);
+    assert_eq!(created.model_context_length, Some(262_144));
+    let summary = store.list_sessions().await.unwrap().pop().unwrap();
+    assert_eq!(summary.model.raw_id(), "Vendor/Exact:free");
+    assert_eq!(summary.model_context_length, Some(262_144));
+}
+
+#[tokio::test]
 async fn compaction_anchor_round_trips() {
     let store = MemoryStore::new();
     let created = store
@@ -307,4 +331,82 @@ async fn compaction_checkpoint_must_match_memory_transcript() {
             .expect_err("checkpoint must reference its exact transcript boundary");
         assert!(matches!(error, StoreError::Invalid(_)));
     }
+}
+
+#[tokio::test]
+async fn changing_model_without_context_clears_previous_snapshot() {
+    let store = MemoryStore::new();
+    let created = store
+        .create_session(NewSession {
+            title: "context".into(),
+            model: mewcode_protocol::ModelRef::openrouter("Vendor/Known").unwrap(),
+            model_kind: None,
+            model_context_length: Some(262_144),
+            mode: Mode::Build,
+        })
+        .await
+        .unwrap();
+
+    let patched = store
+        .patch_session(
+            created.id,
+            SessionPatch {
+                model: Some(mewcode_protocol::ModelRef::openrouter("Vendor/Unknown").unwrap()),
+                model_context_length: None,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(patched.model.raw_id(), "Vendor/Unknown");
+    assert_eq!(patched.model_context_length, None);
+}
+
+#[tokio::test]
+async fn model_kind_round_trips_preserves_on_metadata_patch_and_clears_with_model() {
+    let store = MemoryStore::new();
+    let created = store
+        .create_session(NewSession {
+            title: "transport".into(),
+            model: mewcode_protocol::ModelRef::open_code_zen("gpt-5.4").unwrap(),
+            model_kind: Some(mewcode_protocol::ModelKind::OpenAiResponses),
+            model_context_length: Some(1_050_000),
+            mode: Mode::Build,
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        created.model_kind,
+        Some(mewcode_protocol::ModelKind::OpenAiResponses)
+    );
+    assert_eq!(
+        store.list_sessions().await.unwrap()[0].model_kind,
+        created.model_kind
+    );
+
+    let renamed = store
+        .patch_session(
+            created.id,
+            SessionPatch {
+                title: Some("renamed".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(renamed.model_kind, created.model_kind);
+
+    let replaced = store
+        .patch_session(
+            created.id,
+            SessionPatch {
+                model: Some(mewcode_protocol::ModelRef::open_code_zen("glm-5.2").unwrap()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(replaced.model_kind, None);
+    assert_eq!(replaced.model_context_length, None);
 }

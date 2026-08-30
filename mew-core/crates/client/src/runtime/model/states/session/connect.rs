@@ -1,11 +1,11 @@
 use tui_textarea::TextArea;
 
-use mewcode_protocol::ProviderId;
+use mewcode_protocol::{ProviderId, SUPPORTED_PROVIDERS};
 
 use super::PickerState;
 
 /// Providers selectable in the connect dialog.
-pub const CONNECT_PROVIDERS: &[ProviderId] = &[ProviderId::OpenCodeGo, ProviderId::OpenAi];
+pub const CONNECT_PROVIDERS: &[mewcode_protocol::ProviderDescriptor] = SUPPORTED_PROVIDERS;
 
 /// State for the provider connect dialog.
 #[derive(Default)]

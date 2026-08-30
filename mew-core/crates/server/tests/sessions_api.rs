@@ -24,7 +24,10 @@ fn test_config() -> ServerConfig {
         host: "127.0.0.1".into(),
         port: 0,
         opencode_go_api_key: Some("test-key".into()),
+        opencode_zen_api_key: None,
         openai_api_key: None,
+        anthropic_api_key: None,
+        openrouter_api_key: None,
         default_model: None,
         log: "off".into(),
         skills: Default::default(),
@@ -82,7 +85,7 @@ async fn full_lifecycle_create_get_delete_then_not_found() {
     assert_eq!(status, StatusCode::CREATED);
     let created: Session = serde_json::from_slice(&bytes).expect("create body is a Session");
     assert_eq!(created.title, "Lifecycle");
-    assert_eq!(created.model, ModelId::Glm51);
+    assert_eq!(created.model, ModelId::Glm51.into());
     assert_eq!(created.mode, Mode::Plan);
     assert_eq!(created.messages.len(), 0);
 
@@ -99,7 +102,7 @@ async fn full_lifecycle_create_get_delete_then_not_found() {
     let fetched: Session = serde_json::from_slice(&bytes).expect("get body is a Session");
     assert_eq!(fetched.id, created.id);
     assert_eq!(fetched.title, "Lifecycle");
-    assert_eq!(fetched.model, ModelId::Glm51);
+    assert_eq!(fetched.model, ModelId::Glm51.into());
     assert_eq!(fetched.mode, Mode::Plan);
 
     // DELETE /sessions/{id} -> 204, empty body.

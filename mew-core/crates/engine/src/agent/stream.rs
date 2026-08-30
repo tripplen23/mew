@@ -113,13 +113,14 @@ fn take_display(sink: &DisplaySink, args: &Value) -> Option<mewcode_protocol::To
 #[allow(clippy::too_many_arguments)]
 pub async fn run_agent_stream<M: rig_core::completion::CompletionModel + 'static>(
     agent: rig_core::agent::Agent<M>,
-    model: mewcode_protocol::ModelId,
+    model: mewcode_protocol::ModelRef,
     user_text: String,
     history: Vec<rig_core::completion::Message>,
     tx: &mpsc::Sender<StreamEvent>,
     display_sink: Option<DisplaySink>,
     activity: AgentActivity,
     session_tokens_base: u64,
+    context_limit: u64,
 ) -> Result<(String, TurnUsage), EngineError> {
     let mut stream = agent.stream_prompt(user_text).history(history).await;
 
@@ -220,7 +221,7 @@ pub async fn run_agent_stream<M: rig_core::completion::CompletionModel + 'static
                         input_tokens: usage.input_tokens,
                         output_tokens: usage.output_tokens,
                         session_tokens: session_tokens_base + usage.total(),
-                        context_limit: model.context_limit(),
+                        context_limit,
                     })
                     .await;
 
@@ -278,7 +279,7 @@ pub async fn run_agent_stream<M: rig_core::completion::CompletionModel + 'static
     // fallback otherwise. Same value Finish reports.
     let cost = usage
         .cost
-        .or_else(|| crate::helpers::pricing::turn_cost_usd(model, usage));
+        .or_else(|| crate::helpers::pricing::turn_cost_usd(&model, usage));
     usage.cost = cost;
     if let Some(cost) = cost {
         span.record("gen_ai.usage.cost", cost);

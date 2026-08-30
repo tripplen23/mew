@@ -56,7 +56,9 @@ async fn failed_metadata_update_does_not_commit_message() {
     let session = store
         .create_session(NewSession {
             title: "ordered commit".into(),
-            model: ModelId::DEFAULT,
+            model: ModelId::DEFAULT.into(),
+            model_kind: None,
+            model_context_length: None,
             mode: Mode::Build,
         })
         .await
@@ -106,7 +108,9 @@ async fn no_tmp_file_remains_after_append() {
     let session = store
         .create_session(NewSession {
             title: "atomic".to_string(),
-            model: ModelId::DEFAULT,
+            model: ModelId::DEFAULT.into(),
+            model_kind: None,
+            model_context_length: None,
             mode: Mode::Build,
         })
         .await
@@ -132,7 +136,9 @@ async fn meta_read_during_writes_is_never_torn() {
     let session = store
         .create_session(NewSession {
             title: "concurrent".to_string(),
-            model: ModelId::DEFAULT,
+            model: ModelId::DEFAULT.into(),
+            model_kind: None,
+            model_context_length: None,
             mode: Mode::Build,
         })
         .await
@@ -213,7 +219,9 @@ proptest! {
             let session = store
                 .create_session(NewSession {
                     title: title.clone(),
-                    model: ModelId::DEFAULT,
+                    model: ModelId::DEFAULT.into(),
+                    model_kind: None,
+                    model_context_length: None,
                     mode: Mode::Plan,
                 })
                 .await

@@ -24,7 +24,7 @@ pub(super) fn on_connect_provider_key(s: &mut SessionState, key: KeyEvent) -> Cm
             KeyCode::Enter => {
                 let provider = CONNECT_PROVIDERS
                     .get(state.picker.cursor)
-                    .copied()
+                    .map(|descriptor| descriptor.id)
                     .unwrap_or(ProviderId::OpenCodeGo);
                 state.selected_provider = Some(provider);
                 state.step = EnterKey;

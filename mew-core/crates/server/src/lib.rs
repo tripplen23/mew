@@ -9,6 +9,7 @@ pub mod error;
 pub mod github;
 pub mod openapi;
 pub mod permission;
+pub mod provider_catalog;
 pub mod routes;
 pub mod services;
 pub mod sse;

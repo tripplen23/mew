@@ -1,4 +1,5 @@
 use ratatui::layout::Rect;
+use tui_textarea::TextArea;
 
 use crate::net::{ModelEntry, SessionSummary};
 
@@ -30,7 +31,29 @@ pub struct PickerState {
 pub struct ModelPickerState {
     /// Cached model registry for the [`super::Overlay::ModelPicker`] overlay.
     pub models: Option<Vec<ModelEntry>>,
+    /// Local model search input.
+    pub query: TextArea<'static>,
+    /// Latest fetch generation; older asynchronous responses are ignored.
+    pub generation: u64,
     pub picker: PickerState,
+}
+
+impl ModelPickerState {
+    /// Models matching the display name, exact upstream id, or provider.
+    pub fn filtered_models(&self) -> Vec<&ModelEntry> {
+        let query = self.query.lines().join("").to_lowercase();
+        self.models
+            .as_deref()
+            .unwrap_or_default()
+            .iter()
+            .filter(|model| {
+                query.is_empty()
+                    || model.display_name.to_lowercase().contains(&query)
+                    || model.id.to_lowercase().contains(&query)
+                    || model.provider.to_string().to_lowercase().contains(&query)
+            })
+            .collect()
+    }
 }
 
 /// State for the session list overlay.

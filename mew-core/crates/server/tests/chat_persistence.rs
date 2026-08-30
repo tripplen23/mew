@@ -29,7 +29,10 @@ fn test_config() -> ServerConfig {
         host: "127.0.0.1".into(),
         port: 0,
         opencode_go_api_key: Some("test-key".into()),
+        opencode_zen_api_key: None,
         openai_api_key: None,
+        anthropic_api_key: None,
+        openrouter_api_key: None,
         default_model: None,
         log: "off".into(),
         skills: Default::default(),
@@ -41,7 +44,7 @@ fn test_config() -> ServerConfig {
 fn user_turn(session_id: Uuid, text: &str) -> ChatRequest {
     ChatRequest {
         session_id,
-        model: ModelId::default(),
+        model: ModelId::default().into(),
         provider: None,
         mode: Mode::default(),
         messages: vec![Message {
@@ -73,7 +76,9 @@ async fn chat_persists_the_user_message_to_the_session() {
     let session = store
         .create_session(NewSession {
             title: "persist me".into(),
-            model: ModelId::default(),
+            model: ModelId::default().into(),
+            model_kind: None,
+            model_context_length: None,
             mode: Mode::default(),
         })
         .await

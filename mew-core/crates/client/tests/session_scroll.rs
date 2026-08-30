@@ -32,7 +32,9 @@ fn app_with_long_transcript() -> App {
     let session = Session {
         id: Uuid::new_v4(),
         title: "scrolltest".to_string(),
-        model: ModelId::default(),
+        model: ModelId::default().into(),
+        model_kind: None,
+        model_context_length: None,
         mode: Mode::default(),
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
@@ -216,7 +218,9 @@ fn opening_a_new_session_clears_the_old_transcript_cache() {
     let fresh = Session {
         id: Uuid::new_v4(),
         title: "second".to_string(),
-        model: ModelId::default(),
+        model: ModelId::default().into(),
+        model_kind: None,
+        model_context_length: None,
         mode: Mode::default(),
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),

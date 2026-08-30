@@ -90,7 +90,7 @@ fn stage_harness_event_accumulates_reply_and_stages_finish() {
     let start = StreamEvent::Start {
         message_id: uuid::Uuid::new_v4(),
         mode: mewcode_protocol::Mode::default(),
-        model: mewcode_protocol::ModelId::default(),
+        model: mewcode_protocol::ModelId::default().into(),
         pwd: None,
     };
     stage_harness_event(
@@ -165,7 +165,9 @@ async fn successful_turn_commit_persists_before_returning_finish() {
     let session = store
         .create_session(NewSession {
             title: "chat".into(),
-            model: mewcode_protocol::ModelId::default(),
+            model: mewcode_protocol::ModelId::default().into(),
+            model_kind: None,
+            model_context_length: None,
             mode: mewcode_protocol::Mode::default(),
         })
         .await
@@ -178,7 +180,7 @@ async fn successful_turn_commit_persists_before_returning_finish() {
         &store,
         &tokens,
         session.id,
-        mewcode_protocol::ModelId::default(),
+        mewcode_protocol::ModelId::default().into(),
         "reply".into(),
         Some(message_id),
         finish.clone(),
@@ -203,7 +205,9 @@ async fn successful_empty_reply_still_persists_assistant_message() {
     let session = store
         .create_session(NewSession {
             title: "chat".into(),
-            model: mewcode_protocol::ModelId::default(),
+            model: mewcode_protocol::ModelId::default().into(),
+            model_kind: None,
+            model_context_length: None,
             mode: mewcode_protocol::Mode::default(),
         })
         .await
@@ -215,7 +219,7 @@ async fn successful_empty_reply_still_persists_assistant_message() {
         &store,
         &tokens,
         session.id,
-        mewcode_protocol::ModelId::default(),
+        mewcode_protocol::ModelId::default().into(),
         String::new(),
         Some(message_id),
         finish_event(),
@@ -238,7 +242,9 @@ async fn missing_assistant_id_does_not_persist_checkpoint() {
     let session = store
         .create_session(NewSession {
             title: "chat".into(),
-            model: mewcode_protocol::ModelId::default(),
+            model: mewcode_protocol::ModelId::default().into(),
+            model_kind: None,
+            model_context_length: None,
             mode: mewcode_protocol::Mode::default(),
         })
         .await
@@ -254,7 +260,7 @@ async fn missing_assistant_id_does_not_persist_checkpoint() {
         &store,
         &tokens,
         session.id,
-        mewcode_protocol::ModelId::default(),
+        mewcode_protocol::ModelId::default().into(),
         "reply".into(),
         None,
         finish_event(),
@@ -278,7 +284,9 @@ async fn failed_turn_commit_does_not_return_finish_or_update_tokens() {
     let session = store
         .create_session(NewSession {
             title: "chat".into(),
-            model: mewcode_protocol::ModelId::default(),
+            model: mewcode_protocol::ModelId::default().into(),
+            model_kind: None,
+            model_context_length: None,
             mode: mewcode_protocol::Mode::default(),
         })
         .await
@@ -289,7 +297,7 @@ async fn failed_turn_commit_does_not_return_finish_or_update_tokens() {
         &store,
         &tokens,
         session.id,
-        mewcode_protocol::ModelId::default(),
+        mewcode_protocol::ModelId::default().into(),
         "reply".into(),
         Some(uuid::Uuid::new_v4()),
         finish_event(),

@@ -23,7 +23,9 @@ fn session_app() -> App {
     app.screen = Screen::Session(SessionState::new(Session {
         id: Uuid::new_v4(),
         title: "demo".to_string(),
-        model: ModelId::default(),
+        model: ModelId::default().into(),
+        model_kind: None,
+        model_context_length: None,
         mode: Mode::default(),
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),

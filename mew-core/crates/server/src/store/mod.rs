@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use mewcode_protocol::{Message, Mode, ModelId};
+use mewcode_protocol::{Message, Mode, ModelKind, ModelRef};
 use serde::{Deserialize, Serialize};
 
 use crate::AppError;
@@ -72,7 +72,13 @@ pub struct Session {
     /// Human-readable title.
     pub title: String,
     /// Model selected for the session.
-    pub model: ModelId,
+    pub model: ModelRef,
+    /// Runtime transport captured when the model was selected.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_kind: Option<ModelKind>,
+    /// Runtime context limit captured when the model was selected.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_context_length: Option<u64>,
     /// Interaction mode for the session.
     pub mode: Mode,
     /// When the session was created.
@@ -106,7 +112,13 @@ pub struct SessionSummary {
     /// Human-readable title.
     pub title: String,
     /// Model selected for the session.
-    pub model: ModelId,
+    pub model: ModelRef,
+    /// Runtime transport captured when the model was selected.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_kind: Option<ModelKind>,
+    /// Runtime context limit captured when the model was selected.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_context_length: Option<u64>,
     /// Interaction mode for the session.
     pub mode: Mode,
     /// When the session was created.
@@ -122,13 +134,19 @@ pub struct NewSession {
     /// Human-readable title.
     pub title: String,
     /// Model selected for the session.
-    pub model: ModelId,
+    pub model: ModelRef,
+    /// Runtime transport captured when the model was selected.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_kind: Option<ModelKind>,
+    /// Runtime context limit captured when the model was selected.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_context_length: Option<u64>,
     /// Interaction mode for the session.
     pub mode: Mode,
 }
 
-/// Partial update for a session. Each `Some` field is applied to the
-/// stored session; `None` fields are left unchanged.
+/// Partial update for a session. Fields are unchanged when omitted, except
+/// that supplying a model without a context snapshot clears the old snapshot.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct SessionPatch {
     /// New title. `None` keeps the current title.
@@ -136,7 +154,13 @@ pub struct SessionPatch {
     pub title: Option<String>,
     /// New model. `None` keeps the current model.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub model: Option<ModelId>,
+    pub model: Option<ModelRef>,
+    /// New runtime transport snapshot. `None` keeps it unless `model` is `Some`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_kind: Option<ModelKind>,
+    /// New runtime context snapshot. `None` keeps it unless `model` is `Some`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_context_length: Option<u64>,
     /// New mode. `None` keeps the current mode.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mode: Option<Mode>,
@@ -237,7 +261,8 @@ pub trait SessionStore: Send + Sync {
     /// Create a new session and return it.
     async fn create_session(&self, new: NewSession) -> Result<Session, StoreError>;
 
-    /// Apply a partial update to a session. `None` fields are left unchanged.
+    /// Apply a partial update to a session. Omitted fields are unchanged,
+    /// except supplying a model without a context snapshot clears the old one.
     /// Returns the refreshed session, or [`StoreError::NotFound`] if the id
     /// does not exist.
     async fn patch_session(

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use mewcode_protocol::{Message, ModelId, Role, StreamEvent};
+use mewcode_protocol::{Message, ModelKind, ModelRef, Role, StreamEvent};
 use tokio::sync::mpsc;
 
 use crate::agent::Provider;
@@ -77,9 +77,12 @@ pub struct CompactionResult {
 /// 2. Return a structured summary of the old turns
 ///
 /// Returns the compaction result on success.
+#[allow(clippy::too_many_arguments)]
 pub async fn compact_history(
     head: &[Message],
-    model: ModelId,
+    model: &ModelRef,
+    model_kind: Option<ModelKind>,
+    model_context_length: Option<u64>,
     cfg: &EngineConfig,
     memory: Option<MemoryStore>,
     tokens_before: u64,
@@ -88,7 +91,7 @@ pub async fn compact_history(
 ) -> Result<CompactionResult, EngineError> {
     use rig_core::client::CompletionClient;
 
-    let context_limit = model.context_limit();
+    let context_limit = model.context_limit(model_context_length);
 
     // Preserve prior compacted context as a typed record, then append each
     // uncovered message without flattening record contents into prompt syntax.
@@ -145,8 +148,8 @@ call `mewcode_memory` with action="write" before responding.
     let compaction_prompt = build_compaction_prompt(&existing_memory, &history_records);
 
     // Create a temporary agent with only the memory tool.
-    let provider = Provider::for_model(model, cfg)?;
-    let model_id = model.as_str();
+    let provider = Provider::for_model_kind(model, model_kind, cfg)?;
+    let model_id = model.raw_id();
 
     // Build a minimal tool registry with only the memory tool.
     let memory_tools: Vec<Box<dyn rig_core::tool::ToolDyn>> = if let Some(ref mem) = memory {
@@ -177,7 +180,23 @@ call `mewcode_memory` with action="write" before responding.
                 .build();
             collect_summary(agent, &compaction_prompt).await?
         }
-        Provider::OpenCodeGo(p) | Provider::OpenAi(p) | Provider::DeepSeek(p) => {
+        Provider::OpenAiResponses(p) => {
+            let agent = p
+                .client()
+                .agent(model_id)
+                .name("compaction")
+                .preamble(COMPACTION_INSTRUCTIONS)
+                .max_tokens(4096)
+                .default_max_turns(5)
+                .tools(memory_tools)
+                .build();
+            collect_summary(agent, &compaction_prompt).await?
+        }
+        Provider::OpenCodeGo(p)
+        | Provider::OpenCodeZen(p)
+        | Provider::OpenAi(p)
+        | Provider::DeepSeek(p)
+        | Provider::OpenRouter(p) => {
             let agent = p
                 .client()
                 .agent(model_id)

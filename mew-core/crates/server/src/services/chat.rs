@@ -170,7 +170,7 @@ pub async fn commit_successful_turn(
     store: &dyn crate::store::SessionStore,
     session_tokens: &tokio::sync::RwLock<std::collections::HashMap<uuid::Uuid, u64>>,
     session_id: uuid::Uuid,
-    model: mewcode_protocol::ModelId,
+    model: mewcode_protocol::ModelRef,
     reply: String,
     assistant_message_id: Option<uuid::Uuid>,
     finish: StreamEvent,
@@ -186,7 +186,7 @@ pub async fn commit_successful_turn(
                 id: message_id,
                 role: Role::Assistant,
                 parts: vec![MessagePart::Text { text: reply }],
-                model: Some(model.as_str().to_owned()),
+                model: Some(model.raw_id().to_owned()),
                 created_at: chrono::Utc::now(),
             },
         )
@@ -257,7 +257,16 @@ pub(crate) async fn start_chat_stream(
                 return;
             }
         };
-        let (messages, new_user_message) =
+        let (messages, new_user_message) = if req.model != session.model {
+            send_error(
+                &mut client,
+                ErrorCode::BadRequest,
+                "chat model does not match the session model",
+                false,
+                Some(session_id),
+            );
+            return;
+        } else {
             match canonical_turn_messages(session.messages.clone(), &req.messages) {
                 Ok(turn) => turn,
                 Err(message) => {
@@ -270,7 +279,8 @@ pub(crate) async fn start_chat_stream(
                     );
                     return;
                 }
-            };
+            }
+        };
         if let Err(error) = state
             .store
             .append_message(session_id, new_user_message)
@@ -318,7 +328,9 @@ pub(crate) async fn start_chat_stream(
             .get(&session_id)
             .copied()
             .unwrap_or(0);
-        let mut harness = Harness::new(req.model, req.mode, skills, tools)
+        let mut harness = Harness::new(session.model.clone(), req.mode, skills, tools)
+            .with_model_kind(session.model_kind)
+            .with_model_context_length(session.model_context_length)
             .with_session(session_id)
             .with_project_root(root)
             .with_memory(memory)
@@ -395,8 +407,8 @@ pub(crate) async fn start_chat_stream(
                 try_forward_event(&mut client, StreamEvent::Aborted);
                 return;
             }
-            tracing::error!(?error, %session_id, "harness error");
             let (code, message, retryable) = engine_error_parts(&error);
+            tracing::error!(?code, retryable, %session_id, "harness error");
             send_error(&mut client, code, message, retryable, Some(session_id));
             return;
         }
@@ -416,7 +428,7 @@ pub(crate) async fn start_chat_stream(
             state.store.as_ref(),
             state.session_tokens.as_ref(),
             session_id,
-            req.model,
+            session.model,
             reply,
             assistant_message_id,
             finish,
@@ -466,6 +478,12 @@ pub async fn build_engine_config(state: &AppState) -> mewcode_engine::EngineConf
         .or_else(|| state.config.opencode_go_api_key.clone())
         .or_else(|| std::env::var("OPENCODE_GO_API_KEY").ok())
         .unwrap_or_default();
+    let opencode_zen_api_key = store
+        .credentials
+        .get(&mewcode_protocol::ProviderId::OpenCodeZen)
+        .map(|credential| credential.api_key.clone())
+        .or_else(|| state.config.opencode_zen_api_key.clone())
+        .or_else(|| std::env::var(mewcode_protocol::env::OPENCODE_ZEN_API_KEY).ok());
     let openai_api_key = store
         .credentials
         .get(&mewcode_protocol::ProviderId::OpenAi)
@@ -473,20 +491,37 @@ pub async fn build_engine_config(state: &AppState) -> mewcode_engine::EngineConf
         .or_else(|| state.config.openai_api_key.clone())
         .or_else(|| std::env::var("OPENAI_API_KEY").ok());
 
+    let anthropic_api_key = store
+        .credentials
+        .get(&mewcode_protocol::ProviderId::Anthropic)
+        .map(|credential| credential.api_key.clone())
+        .or_else(|| state.config.anthropic_api_key.clone())
+        .or_else(|| std::env::var(mewcode_protocol::env::ANTHROPIC_API_KEY).ok());
+
     let deepseek_api_key = store
         .credentials
         .get(&mewcode_protocol::ProviderId::DeepSeek)
         .map(|credential| credential.api_key.clone())
         .or_else(|| std::env::var("DEEPSEEK_API_KEY").ok());
 
+    let openrouter_api_key = store
+        .credentials
+        .get(&mewcode_protocol::ProviderId::OpenRouter)
+        .map(|credential| credential.api_key.clone())
+        .or_else(|| state.config.openrouter_api_key.clone())
+        .or_else(|| std::env::var(mewcode_protocol::env::OPENROUTER_API_KEY).ok());
+
     let base_url = std::env::var(mewcode_engine::config::ENV_BASE_URL)
         .unwrap_or_else(|_| mewcode_engine::config::DEFAULT_BASE_URL.to_string());
 
     mewcode_engine::EngineConfig {
         api_key,
+        opencode_zen_api_key,
         openai_api_key,
         openai_base_url: None,
+        anthropic_api_key,
         deepseek_api_key,
+        openrouter_api_key,
         default_model: state
             .config
             .default_model

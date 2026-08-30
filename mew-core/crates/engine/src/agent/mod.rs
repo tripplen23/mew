@@ -14,7 +14,7 @@ mod provider;
 mod rig;
 mod stream;
 
-use mewcode_protocol::{ModelId, StreamEvent};
+use mewcode_protocol::{ModelRef, StreamEvent};
 use tokio::sync::mpsc;
 
 pub use self::prompt::build_system_prompt;
@@ -34,18 +34,19 @@ const DEFAULT_MAX_TURNS: usize = 100;
 /// between turns, and tool wrappers are cheap to reconstruct from the registry.
 pub struct Agent {
     provider: Provider,
-    model: ModelId,
+    model: ModelRef,
     system_prompt: String,
     tools: Vec<Box<dyn rig_core::tool::ToolDyn>>,
     max_tokens: u64,
     max_turns: usize,
     display_sink: Option<crate::tools::DisplaySink>,
     session_tokens_base: u64,
+    context_limit: u64,
 }
 
 impl Agent {
     /// Build an agent for the given provider, model, and system prompt.
-    pub fn new(provider: Provider, model: ModelId, system_prompt: String) -> Self {
+    pub fn new(provider: Provider, model: ModelRef, system_prompt: String) -> Self {
         Self {
             provider,
             model,
@@ -55,6 +56,7 @@ impl Agent {
             max_turns: DEFAULT_MAX_TURNS,
             display_sink: None,
             session_tokens_base: 0,
+            context_limit: 0,
         }
     }
 
@@ -86,6 +88,12 @@ impl Agent {
     /// `TokenUsage` events can report a running total.
     pub fn with_session_tokens(mut self, tokens: u64) -> Self {
         self.session_tokens_base = tokens;
+        self
+    }
+
+    /// Set the provider-reported context limit used by live usage events.
+    pub fn with_context_limit(mut self, context_limit: u64) -> Self {
+        self.context_limit = context_limit;
         self
     }
 

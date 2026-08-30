@@ -3,7 +3,7 @@
 //! finished assistant message.
 
 use mewcode_protocol::event::ErrorCode;
-use mewcode_protocol::{Message, MessagePart, ModelId, ToolCall, ToolResult};
+use mewcode_protocol::{Message, MessagePart, ModelRef, ToolCall, ToolResult};
 
 use crate::runtime::model::{
     CompactionEntry, CompactionView, SessionState, StreamMsg, StreamingState, Toast, ToolCallView,
@@ -194,7 +194,7 @@ pub(crate) fn apply_stream_event(s: &mut SessionState, ev: StreamMsg) -> Option<
 
             if let Some(st) = s.streaming.take() {
                 if let Some(session) = s.session.as_mut() {
-                    let (msg, views) = commit_turn(st, session.model);
+                    let (msg, views) = commit_turn(st, session.model.clone());
                     // A compaction entry anchors to the message count before its
                     // reply is committed, so it renders above that reply. A turn
                     // that produced no content (e.g. a manual /compact, which
@@ -252,7 +252,7 @@ pub(crate) fn apply_stream_event(s: &mut SessionState, ev: StreamMsg) -> Option<
 /// Commit a finished turn in a single pass: split its ordered items into the
 /// committed assistant message (text and tool parts, in stream order) and any
 /// inline compaction views.
-fn commit_turn(st: StreamingState, model: ModelId) -> (Message, Vec<CompactionView>) {
+fn commit_turn(st: StreamingState, model: ModelRef) -> (Message, Vec<CompactionView>) {
     let mut parts: Vec<MessagePart> = Vec::new();
     let mut views: Vec<CompactionView> = Vec::new();
     for item in st.items {
@@ -288,5 +288,5 @@ fn commit_turn(st: StreamingState, model: ModelId) -> (Message, Vec<CompactionVi
             TurnItem::Progress(_) => {}
         }
     }
-    (Message::assistant(parts, model.as_str()), views)
+    (Message::assistant(parts, model.raw_id()), views)
 }

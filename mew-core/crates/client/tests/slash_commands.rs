@@ -9,13 +9,14 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::Terminal;
 use ratatui::backend::{Backend, TestBackend};
-use tui_textarea::TextArea;
+use tui_textarea::{CursorMove, TextArea};
+use unicode_width::UnicodeWidthStr;
 
 use mewcode_client::runtime::model::{App, Cmd, ConnectStep, Msg, Overlay, Screen, SessionState};
 use mewcode_client::runtime::update;
 use mewcode_client::runtime::view::render;
 use mewcode_protocol::ProviderId;
-use mewcode_protocol::{MessagePart, Mode, ModelId};
+use mewcode_protocol::{MessagePart, Mode, ModelId, ModelRef};
 
 fn test_app() -> App {
     App::new()
@@ -25,7 +26,9 @@ fn session() -> mewcode_client::net::Session {
     mewcode_client::net::Session {
         id: uuid::Uuid::new_v4(),
         title: "demo".into(),
-        model: ModelId::Glm51,
+        model: ModelId::Glm51.into(),
+        model_kind: None,
+        model_context_length: None,
         mode: Mode::Build,
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
@@ -58,8 +61,6 @@ fn seed_active_session(s: &mut SessionState) {
     s.session = Some(session());
 }
 
-// --- /model --------------------------------------------------------------
-
 #[test]
 fn slash_model_opens_picker_and_fetches_when_uncached() {
     let mut app = test_app();
@@ -72,7 +73,7 @@ fn slash_model_opens_picker_and_fetches_when_uncached() {
     let cmd = update(&mut app, press_enter());
 
     assert!(
-        matches!(cmd, Cmd::FetchModels),
+        matches!(cmd, Cmd::FetchModels(_)),
         "expected FetchModels, got {cmd:?}"
     );
     let s = active_state(&mut app);
@@ -85,10 +86,10 @@ fn slash_model_opens_picker_and_fetches_when_uncached() {
 }
 
 #[test]
-fn slash_model_reuses_cached_registry() {
+fn slash_model_refreshes_cached_registry() {
     let mut app = test_app();
     seed_active_session(active_state(&mut app));
-    active_state(&mut app).model_picker.models = Some(vec![]); // cache the registry
+    active_state(&mut app).model_picker.models = Some(vec![]);
 
     {
         let s = active_state(&mut app);
@@ -96,9 +97,56 @@ fn slash_model_reuses_cached_registry() {
     }
     let cmd = update(&mut app, press_enter());
 
-    assert!(matches!(cmd, Cmd::None), "expected no fetch, got {cmd:?}");
+    assert!(
+        matches!(cmd, Cmd::FetchModels(_)),
+        "expected refresh, got {cmd:?}"
+    );
     let s = active_state(&mut app);
     assert_eq!(s.overlay, Overlay::ModelPicker);
+    assert!(
+        s.model_picker.models.is_none(),
+        "stale models must not remain selectable during refresh"
+    );
+}
+
+#[test]
+fn model_picker_ignores_out_of_order_refresh_results() {
+    let mut app = test_app();
+    seed_active_session(active_state(&mut app));
+
+    for attempt in 0..2 {
+        let s = active_state(&mut app);
+        type_text(s, "/model");
+        let _ = update(&mut app, press_enter());
+        if attempt == 0 {
+            let _ = update(&mut app, press_esc());
+        }
+    }
+
+    let stale = vec![mewcode_client::net::ModelEntry {
+        id: "stale/model".into(),
+        display_name: "Stale".into(),
+        provider: ProviderId::OpenRouter,
+        kind: mewcode_protocol::ModelKind::OpenRouter,
+        context_length: None,
+        is_free: false,
+    }];
+    let current = vec![mewcode_client::net::ModelEntry {
+        id: "current/model".into(),
+        display_name: "Current".into(),
+        provider: ProviderId::OpenRouter,
+        kind: mewcode_protocol::ModelKind::OpenRouter,
+        context_length: None,
+        is_free: false,
+    }];
+
+    let _ = update(&mut app, Msg::ModelsFetched(Ok(stale), 1));
+    assert!(active_state(&mut app).model_picker.models.is_none());
+    let _ = update(&mut app, Msg::ModelsFetched(Ok(current), 2));
+    assert_eq!(
+        active_state(&mut app).model_picker.models.as_ref().unwrap()[0].id,
+        "current/model"
+    );
 }
 
 #[test]
@@ -117,8 +165,6 @@ fn slash_model_with_no_active_session_toasts() {
     let s = active_state(&mut app);
     assert_eq!(s.overlay, Overlay::ModelPicker);
 }
-
-// --- /session ------------------------------------------------------------
 
 #[test]
 fn slash_session_opens_list_and_fetches_when_uncached() {
@@ -149,7 +195,9 @@ fn slash_session_always_refetches_to_pick_up_new_sessions() {
     active_state(&mut app).session_list.summaries = vec![mewcode_client::net::SessionSummary {
         id,
         title: "first".into(),
-        model: ModelId::Glm51,
+        model: ModelId::Glm51.into(),
+        model_kind: None,
+        model_context_length: None,
         mode: Mode::Build,
         created_at: chrono::Utc::now(),
     }];
@@ -358,31 +406,101 @@ fn tab_before_session_toggles_pending_mode() {
     );
 }
 
-// --- /model picker key nav -----------------------------------------------
-
 #[test]
 fn model_picker_enter_emits_patch_session_cmd() {
     let mut app = test_app();
     seed_active_session(active_state(&mut app));
-    active_state(&mut app).model_picker.models = Some(vec![mewcode_client::net::ModelEntry {
-        id: "minimax-m3".into(),
-        display_name: "MiniMax M3".into(),
-        provider: mewcode_protocol::ProviderId::OpenCodeGo,
-        kind: mewcode_protocol::ModelKind::OpenCodeGo,
-    }]);
 
-    // Open the picker and press Enter on the only row.
+    // Open the picker, deliver the refreshed catalog, and press Enter.
     {
         let s = active_state(&mut app);
         type_text(s, "/model");
     }
     let _ = update(&mut app, press_enter());
+    active_state(&mut app).model_picker.models = Some(vec![mewcode_client::net::ModelEntry {
+        id: "minimax-m3".into(),
+        display_name: "MiniMax M3".into(),
+        provider: mewcode_protocol::ProviderId::OpenCodeGo,
+        kind: mewcode_protocol::ModelKind::OpenCodeGo,
+        context_length: None,
+        is_free: false,
+    }]);
     let cmd = update(&mut app, press_enter());
 
     match cmd {
         Cmd::PatchSession { id, patch, .. } => {
             assert_eq!(id, active_state(&mut app).session.as_ref().unwrap().id);
-            assert_eq!(patch.model, Some(ModelId::MiniMaxM3));
+            assert_eq!(patch.model, Some(ModelId::MiniMaxM3.into()));
+        }
+        other => panic!("expected Cmd::PatchSession, got {other:?}"),
+    }
+}
+
+#[test]
+fn openrouter_picker_selection_preserves_id_and_context_snapshot() {
+    let mut app = test_app();
+    seed_active_session(active_state(&mut app));
+    active_state(&mut app).model_picker.models = Some(vec![mewcode_client::net::ModelEntry {
+        id: "Vendor/Exact:free".into(),
+        display_name: "Vendor Exact".into(),
+        provider: ProviderId::OpenRouter,
+        kind: mewcode_protocol::ModelKind::OpenRouter,
+        context_length: Some(262_144),
+        is_free: true,
+    }]);
+    active_state(&mut app).overlay = Overlay::ModelPicker;
+
+    let cmd = update(&mut app, press_enter());
+    match cmd {
+        Cmd::PatchSession { patch, .. } => {
+            assert_eq!(
+                patch.model,
+                Some(ModelRef::openrouter("Vendor/Exact:free").unwrap())
+            );
+            assert_eq!(patch.model_context_length, Some(262_144));
+        }
+        other => panic!("expected Cmd::PatchSession, got {other:?}"),
+    }
+}
+
+#[test]
+fn dynamic_model_ids_are_sanitized_when_rendered() {
+    let mut app = test_app();
+    let mut active = session();
+    active.model = ModelRef::openrouter("safe\u{1b}[31m\u{202e}exe").unwrap();
+    active_state(&mut app).session = Some(active);
+
+    let mut terminal = Terminal::new(TestBackend::new(100, 24)).unwrap();
+    terminal.draw(|frame| render(frame, &mut app)).unwrap();
+    let rendered = terminal.backend().to_string();
+
+    assert!(!rendered.contains('\u{1b}'));
+    assert!(!rendered.contains('\u{202e}'));
+    assert!(rendered.contains("safe [31m exe"));
+}
+
+#[test]
+fn dynamic_openai_picker_selection_preserves_exact_identity() {
+    let mut app = test_app();
+    seed_active_session(active_state(&mut app));
+    active_state(&mut app).model_picker.models = Some(vec![mewcode_client::net::ModelEntry {
+        id: "gpt-future/model:v1".into(),
+        display_name: "Future GPT".into(),
+        provider: ProviderId::OpenAi,
+        kind: mewcode_protocol::ModelKind::OpenAi,
+        context_length: None,
+        is_free: false,
+    }]);
+    active_state(&mut app).overlay = Overlay::ModelPicker;
+
+    let cmd = update(&mut app, press_enter());
+    match cmd {
+        Cmd::PatchSession { patch, .. } => {
+            assert_eq!(
+                patch.model,
+                Some(ModelRef::openai("gpt-future/model:v1").unwrap())
+            );
+            assert_eq!(patch.model_context_length, None);
         }
         other => panic!("expected Cmd::PatchSession, got {other:?}"),
     }
@@ -391,33 +509,38 @@ fn model_picker_enter_emits_patch_session_cmd() {
 #[test]
 fn model_picker_before_session_sets_pending_model() {
     let mut app = test_app();
-    active_state(&mut app).model_picker.models = Some(vec![
-        mewcode_client::net::ModelEntry {
-            id: "minimax-m3".into(),
-            display_name: "MiniMax M3".into(),
-            provider: mewcode_protocol::ProviderId::OpenCodeGo,
-            kind: mewcode_protocol::ModelKind::AnthropicMessages,
-        },
-        mewcode_client::net::ModelEntry {
-            id: "minimax-m2.5".into(),
-            display_name: "MiniMax M2.5".into(),
-            provider: mewcode_protocol::ProviderId::OpenCodeGo,
-            kind: mewcode_protocol::ModelKind::AnthropicMessages,
-        },
-    ]);
 
     {
         let s = active_state(&mut app);
         type_text(s, "/model");
     }
     let _ = update(&mut app, press_enter());
+    active_state(&mut app).model_picker.models = Some(vec![
+        mewcode_client::net::ModelEntry {
+            id: "minimax-m3".into(),
+            display_name: "MiniMax M3".into(),
+            provider: mewcode_protocol::ProviderId::OpenCodeGo,
+            kind: mewcode_protocol::ModelKind::AnthropicMessages,
+            context_length: None,
+            is_free: false,
+        },
+        mewcode_client::net::ModelEntry {
+            id: "minimax-m2.5".into(),
+            display_name: "MiniMax M2.5".into(),
+            provider: mewcode_protocol::ProviderId::OpenCodeGo,
+            kind: mewcode_protocol::ModelKind::AnthropicMessages,
+            context_length: None,
+            is_free: false,
+        },
+    ]);
+
     let _ = update(&mut app, press_arrow(KeyCode::Down));
     let cmd = update(&mut app, press_enter());
 
     let s = active_state(&mut app);
     assert!(matches!(cmd, Cmd::None));
     assert_eq!(s.overlay, Overlay::None);
-    assert_eq!(s.creation.pending_model, Some(ModelId::MiniMaxM25));
+    assert_eq!(s.creation.pending_model, Some(ModelId::MiniMaxM25.into()));
     assert!(
         app.toast.is_none(),
         "choosing a default model should not toast"
@@ -427,7 +550,7 @@ fn model_picker_before_session_sets_pending_model() {
 #[test]
 fn first_session_create_uses_pending_model() {
     let mut app = test_app();
-    active_state(&mut app).creation.pending_model = Some(ModelId::MiniMaxM25);
+    active_state(&mut app).creation.pending_model = Some(ModelId::MiniMaxM25.into());
     {
         let s = active_state(&mut app);
         type_text(s, "hello");
@@ -436,7 +559,7 @@ fn first_session_create_uses_pending_model() {
     match update(&mut app, press_enter()) {
         Cmd::CreateSession(req) => {
             assert_eq!(req.title, "hello");
-            assert_eq!(req.model, Some(ModelId::MiniMaxM25));
+            assert_eq!(req.model, Some(ModelId::MiniMaxM25.into()));
         }
         other => panic!("expected CreateSession, got {other:?}"),
     }
@@ -460,8 +583,6 @@ fn first_session_create_uses_pending_mode() {
     }
 }
 
-// --- /session list key nav -----------------------------------------------
-
 #[test]
 fn session_list_enter_emits_open_session_cmd() {
     let mut app = test_app();
@@ -469,7 +590,9 @@ fn session_list_enter_emits_open_session_cmd() {
     active_state(&mut app).session_list.summaries = vec![mewcode_client::net::SessionSummary {
         id,
         title: "first".into(),
-        model: ModelId::Glm51,
+        model: ModelId::Glm51.into(),
+        model_kind: None,
+        model_context_length: None,
         mode: Mode::Build,
         created_at: chrono::Utc::now(),
     }];
@@ -494,7 +617,9 @@ fn session_list_d_emits_delete_cmd() {
     active_state(&mut app).session_list.summaries = vec![mewcode_client::net::SessionSummary {
         id,
         title: "first".into(),
-        model: ModelId::Glm51,
+        model: ModelId::Glm51.into(),
+        model_kind: None,
+        model_context_length: None,
         mode: Mode::Build,
         created_at: chrono::Utc::now(),
     }];
@@ -515,8 +640,6 @@ fn session_list_d_emits_delete_cmd() {
     );
 }
 
-// --- unknown slash -------------------------------------------------------
-
 #[test]
 fn unknown_slash_command_is_sent_as_chat_text() {
     let mut app = test_app();
@@ -534,8 +657,6 @@ fn unknown_slash_command_is_sent_as_chat_text() {
     assert!(s.session_list.summaries.is_empty());
     assert!(app.toast.is_none());
 }
-
-// --- existing commands still work ----------------------------------------
 
 #[test]
 fn tools_overlay_still_opens() {
@@ -653,11 +774,12 @@ fn connect_overlay_parks_cursor_in_api_key_field() {
     let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
     terminal.draw(|frame| render(frame, &mut app)).unwrap();
     let buf = terminal.backend().to_string();
+    assert!(!buf.contains("abc"), "API key must not be rendered: {buf}");
     let row = buf
         .lines()
         .enumerate()
-        .find_map(|(row, line)| line.contains("abc│").then_some(row))
-        .expect("API key cursor should render in overlay");
+        .find_map(|(row, line)| line.contains("•••│").then_some(row))
+        .expect("masked API key cursor should render in overlay");
 
     assert_eq!(
         terminal.backend_mut().get_cursor_position().unwrap().y,
@@ -745,8 +867,6 @@ fn plain_text_is_chat_not_command() {
     ));
 }
 
-// --- Esc on rename discards the draft ------------------------------------
-
 #[test]
 fn esc_on_rename_clears_composer_draft() {
     let mut app = test_app();
@@ -776,8 +896,6 @@ fn esc_on_rename_clears_composer_draft() {
         "Esc should discard the rename draft, not leave it in the composer (got {draft:?})"
     );
 }
-
-// --- /session new <title> ------------------------------------------------
 
 #[test]
 fn slash_session_new_with_title_emits_create_session_cmd() {
@@ -839,14 +957,14 @@ fn slash_session_new_without_title_carries_over_active_session_model_and_mode() 
     {
         let s = active_state(&mut app);
         seed_active_session(s);
-        s.session.as_mut().unwrap().model = ModelId::MiMoV25Pro;
+        s.session.as_mut().unwrap().model = ModelId::MiMoV25Pro.into();
         s.session.as_mut().unwrap().mode = Mode::Plan;
         type_text(s, "/session new");
     }
     update(&mut app, press_enter());
 
     let s = active_state(&mut app);
-    assert_eq!(s.creation.pending_model, Some(ModelId::MiMoV25Pro));
+    assert_eq!(s.creation.pending_model, Some(ModelId::MiMoV25Pro.into()));
     assert_eq!(s.creation.pending_mode, Some(Mode::Plan));
 }
 
@@ -866,8 +984,6 @@ fn slash_session_unknown_subcommand_toasts() {
     assert_eq!(s.overlay, Overlay::None);
     assert!(app.toast.is_some());
 }
-
-// --- stale async completions ---------------------------------------------
 
 #[test]
 fn session_patched_after_overlay_closed_does_not_clear_composer() {
@@ -891,7 +1007,9 @@ fn session_patched_after_overlay_closed_does_not_clear_composer() {
     let new_session = Session {
         id: uuid::Uuid::new_v4(),
         title: "renamed".into(),
-        model: ModelId::MiniMaxM3,
+        model: ModelId::MiniMaxM3.into(),
+        model_kind: None,
+        model_context_length: None,
         mode: Mode::Build,
         messages: vec![],
         created_at: chrono::Utc::now(),
@@ -950,7 +1068,9 @@ fn session_patched_from_rename_clears_draft_even_if_overlay_already_closed() {
     let new_session = Session {
         id: active_state(&mut app).session.as_ref().unwrap().id,
         title: "renamed".into(),
-        model: ModelId::MiniMaxM3,
+        model: ModelId::MiniMaxM3.into(),
+        model_kind: None,
+        model_context_length: None,
         mode: Mode::Build,
         messages: vec![],
         created_at: chrono::Utc::now(),
@@ -989,7 +1109,9 @@ fn session_opened_after_overlay_closed_does_not_adopt_session() {
     let other = Session {
         id: uuid::Uuid::new_v4(),
         title: "other".into(),
-        model: ModelId::MiniMaxM3,
+        model: ModelId::MiniMaxM3.into(),
+        model_kind: None,
+        model_context_length: None,
         mode: Mode::Build,
         messages: vec![],
         created_at: chrono::Utc::now(),
@@ -1009,8 +1131,6 @@ fn session_opened_after_overlay_closed_does_not_adopt_session() {
     let draft = s.composer.lines().join("\n");
     assert_eq!(draft, "draft", "stale SessionOpened must not clobber input");
 }
-
-// --- slash-command picker ------------------------------------------------
 
 fn type_char(c: char) -> Msg {
     Msg::Key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE))
@@ -1125,14 +1245,16 @@ fn picker_mouse_click_activates_visible_row() {
 }
 
 #[test]
-fn model_picker_click_activates_model_row() {
+fn model_picker_click_activates_openrouter_model_row() {
     let mut app = test_app();
     seed_active_session(active_state(&mut app));
     active_state(&mut app).model_picker.models = Some(vec![mewcode_client::net::ModelEntry {
-        id: "minimax-m3".into(),
-        display_name: "MiniMax M3".into(),
-        provider: ProviderId::OpenCodeGo,
-        kind: mewcode_protocol::ModelKind::OpenCodeGo,
+        id: "Vendor/Exact:free".into(),
+        display_name: "Vendor Exact".into(),
+        provider: ProviderId::OpenRouter,
+        kind: mewcode_protocol::ModelKind::OpenRouter,
+        context_length: Some(262_144),
+        is_free: true,
     }]);
     active_state(&mut app).overlay = Overlay::ModelPicker;
     render_picker(&mut app, 80, 24);
@@ -1151,11 +1273,12 @@ fn model_picker_click_activates_model_row() {
         cmd,
         Cmd::PatchSession {
             patch: mewcode_client::net::SessionPatch {
-                model: Some(ModelId::MiniMaxM3),
+                model: Some(ref model),
+                model_context_length: Some(262_144),
                 ..
             },
             ..
-        }
+        } if model == &ModelRef::openrouter("Vendor/Exact:free").unwrap()
     ));
 }
 
@@ -1172,7 +1295,7 @@ fn picker_enter_dispatches_highlighted_command() {
         Overlay::ModelPicker,
         "Enter should dispatch /model"
     );
-    assert!(matches!(cmd, Cmd::FetchModels));
+    assert!(matches!(cmd, Cmd::FetchModels(_)));
     // The composer is cleared by the slash submit path.
     assert!(s.composer.lines().join("\n").is_empty());
 }
@@ -1245,8 +1368,6 @@ fn picker_quit_and_seeded_command_clear_pasted_text() {
     assert!(s.pasted.is_empty());
 }
 
-// --- model / session picker scroll -------------------------------------
-
 fn seed_models(n: usize) -> Vec<mewcode_client::net::ModelEntry> {
     (0..n)
         .map(|i| mewcode_client::net::ModelEntry {
@@ -1254,6 +1375,8 @@ fn seed_models(n: usize) -> Vec<mewcode_client::net::ModelEntry> {
             display_name: format!("Model {i}"),
             provider: mewcode_protocol::ProviderId::OpenCodeGo,
             kind: mewcode_protocol::ModelKind::OpenCodeGo,
+            context_length: None,
+            is_free: false,
         })
         .collect()
 }
@@ -1290,6 +1413,7 @@ fn model_picker_rows_fit_on_one_visual_line() {
     s.model_picker.picker.scroll = 0;
 
     let max_width = 30; // tight enough to force truncation for long ids
+    s.model_picker.models.as_mut().unwrap()[0].display_name = "界".repeat(40);
     let lines = model_picker_lines(s, max_width);
     assert_eq!(lines.len(), 6); // one provider header + five models
     for (i, line) in lines.iter().enumerate() {
@@ -1303,12 +1427,38 @@ fn model_picker_rows_fit_on_one_visual_line() {
         assert_eq!(line.spans.len(), 1, "row {i} should be a single span");
         let span = &line.spans[0];
         assert!(
-            span.content.chars().count() <= max_width,
-            "row {i} text {:?} ({} chars) exceeds width {max_width}",
+            span.content.width() <= max_width,
+            "row {i} text {:?} ({} cells) exceeds width {max_width}",
             span.content,
-            span.content.chars().count()
+            span.content.width()
         );
     }
+}
+
+#[test]
+fn free_openrouter_models_are_marked_without_hiding_exact_id() {
+    use mewcode_client::runtime::view::model_picker_lines;
+    let mut app = test_app();
+    let state = active_state(&mut app);
+    state.model_picker.models = Some(vec![mewcode_client::net::ModelEntry {
+        id: "Vendor/Exact:free".into(),
+        display_name: "Vendor Exact".into(),
+        provider: ProviderId::OpenRouter,
+        kind: mewcode_protocol::ModelKind::OpenRouter,
+        context_length: Some(262_144),
+        is_free: true,
+    }]);
+
+    let text = model_picker_lines(state, 80)[1]
+        .spans
+        .iter()
+        .map(|span| span.content.as_ref())
+        .collect::<String>();
+    assert!(text.contains("[free]"), "missing free marker: {text}");
+    assert!(
+        text.contains("Vendor/Exact:free"),
+        "exact id hidden: {text}"
+    );
 }
 
 #[test]
@@ -1337,8 +1487,6 @@ fn model_picker_last_row_is_visible_in_small_terminal() {
     );
     assert!(buf.contains("15/15"), "footer should still render:\n{buf}");
 }
-
-// --- message submitted while /compact is in flight -----------------------
 
 /// Regression test: a manual `/compact` sets `s.streaming = Some(...)` so
 /// its progress renders through the same live-turn UI as a normal chat
@@ -1372,5 +1520,364 @@ fn message_sent_during_manual_compact_is_queued_not_stuck_in_composer() {
         s.message_queue.as_slice(),
         ["hello"],
         "the message must be queued for automatic send once compaction finishes"
+    );
+}
+
+#[test]
+fn model_picker_search_filters_and_selects_filtered_model() {
+    let mut app = test_app();
+    seed_active_session(active_state(&mut app));
+    {
+        let s = active_state(&mut app);
+        s.overlay = Overlay::ModelPicker;
+        s.model_picker.models = Some(vec![
+            mewcode_client::net::ModelEntry {
+                id: "alpha/id".into(),
+                display_name: "Alpha".into(),
+                provider: ProviderId::OpenRouter,
+                kind: mewcode_protocol::ModelKind::OpenRouter,
+                context_length: None,
+                is_free: false,
+            },
+            mewcode_client::net::ModelEntry {
+                id: "beta/id".into(),
+                display_name: "Beta".into(),
+                provider: ProviderId::OpenAi,
+                kind: mewcode_protocol::ModelKind::OpenAi,
+                context_length: Some(8_192),
+                is_free: false,
+            },
+        ]);
+        s.model_picker.picker.cursor = 1;
+        s.model_picker.picker.scroll = 3;
+    }
+
+    for c in "OPENAI".chars() {
+        update(&mut app, type_char(c));
+    }
+
+    let state = active_state(&mut app);
+    assert_eq!(state.model_picker.query.lines(), &["OPENAI"]);
+    assert_eq!(state.model_picker.filtered_models().len(), 1);
+    assert_eq!(state.model_picker.picker.cursor, 0);
+    assert_eq!(state.model_picker.picker.scroll, 0);
+
+    let cmd = update(&mut app, press_enter());
+    assert!(matches!(
+        cmd,
+        Cmd::PatchSession {
+            patch: mewcode_client::net::SessionPatch {
+                model: Some(ref model),
+                model_context_length: Some(8_192),
+                ..
+            },
+            ..
+        } if model == &ModelRef::openai("beta/id").unwrap()
+    ));
+}
+
+#[test]
+fn model_picker_search_matches_display_name_id_and_restores_on_backspace() {
+    let mut app = test_app();
+    {
+        let s = active_state(&mut app);
+        s.overlay = Overlay::ModelPicker;
+        s.model_picker.models = Some(vec![
+            mewcode_client::net::ModelEntry {
+                id: "vendor/exact-id".into(),
+                display_name: "Friendly Name".into(),
+                provider: ProviderId::OpenRouter,
+                kind: mewcode_protocol::ModelKind::OpenRouter,
+                context_length: None,
+                is_free: false,
+            },
+            mewcode_client::net::ModelEntry {
+                id: "other".into(),
+                display_name: "Other".into(),
+                provider: ProviderId::OpenAi,
+                kind: mewcode_protocol::ModelKind::OpenAi,
+                context_length: None,
+                is_free: false,
+            },
+        ]);
+    }
+
+    for c in "FRIENDLY".chars() {
+        update(&mut app, type_char(c));
+    }
+    assert_eq!(
+        active_state(&mut app).model_picker.filtered_models().len(),
+        1
+    );
+
+    active_state(&mut app).model_picker.query = TextArea::new(vec!["EXACT-ID".into()]);
+    active_state(&mut app)
+        .model_picker
+        .query
+        .move_cursor(CursorMove::End);
+    assert_eq!(
+        active_state(&mut app).model_picker.filtered_models().len(),
+        1
+    );
+
+    update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE)),
+    );
+    assert_eq!(
+        active_state(&mut app).model_picker.query.lines(),
+        &["EXACT-I"]
+    );
+    assert_eq!(
+        active_state(&mut app).model_picker.filtered_models().len(),
+        1
+    );
+}
+
+#[test]
+fn model_picker_no_match_is_clear_and_enter_is_noop() {
+    let mut app = test_app();
+    seed_active_session(active_state(&mut app));
+    {
+        let s = active_state(&mut app);
+        s.overlay = Overlay::ModelPicker;
+        s.model_picker.models = Some(seed_models(2));
+    }
+    for c in "missing".chars() {
+        update(&mut app, type_char(c));
+    }
+
+    let rendered = draw(&mut app, 100, 28);
+    assert!(rendered.contains("No matching models."), "{rendered}");
+    assert!(rendered.contains("0/2"), "{rendered}");
+    assert!(matches!(update(&mut app, press_enter()), Cmd::None));
+}
+
+#[test]
+fn reopening_model_picker_clears_search_cursor_and_scroll() {
+    let mut app = test_app();
+    {
+        let s = active_state(&mut app);
+        s.model_picker.query = TextArea::new(vec!["old".into()]);
+        s.model_picker.picker.cursor = 4;
+        s.model_picker.picker.scroll = 7;
+        type_text(s, "/model");
+    }
+
+    update(&mut app, press_enter());
+
+    let state = active_state(&mut app);
+    assert_eq!(state.model_picker.query.lines(), &[""]);
+    assert_eq!(state.model_picker.picker.cursor, 0);
+    assert_eq!(state.model_picker.picker.scroll, 0);
+}
+
+#[test]
+fn model_picker_renders_search_and_parks_cursor_at_edit_position() {
+    let mut app = test_app();
+    {
+        let s = active_state(&mut app);
+        s.overlay = Overlay::ModelPicker;
+        s.model_picker.models = Some(seed_models(2));
+        s.model_picker.query = TextArea::new(vec!["ac".into()]);
+        s.model_picker.query.move_cursor(CursorMove::Jump(0, 1));
+    }
+    update(&mut app, type_char('b'));
+
+    let mut terminal = Terminal::new(TestBackend::new(100, 28)).unwrap();
+    terminal.draw(|frame| render(frame, &mut app)).unwrap();
+    let rendered = terminal.backend().to_string();
+    let cursor = terminal.backend_mut().get_cursor_position().unwrap();
+    let search_row = rendered
+        .lines()
+        .enumerate()
+        .find_map(|(row, line)| line.contains("Search: abc").then_some(row))
+        .expect("search field should render inside the model modal");
+
+    assert_eq!(active_state(&mut app).model_picker.query.lines(), &["abc"]);
+    assert_eq!(cursor.y, search_row as u16);
+    assert_eq!(
+        rendered
+            .lines()
+            .nth(search_row)
+            .unwrap()
+            .chars()
+            .nth(cursor.x as usize),
+        Some('b')
+    );
+}
+
+#[test]
+fn filtered_model_picker_mouse_maps_grouped_rows_to_filtered_entries() {
+    let mut app = test_app();
+    seed_active_session(active_state(&mut app));
+    {
+        let s = active_state(&mut app);
+        s.overlay = Overlay::ModelPicker;
+        s.model_picker.models = Some(vec![
+            mewcode_client::net::ModelEntry {
+                id: "hidden".into(),
+                display_name: "Hidden".into(),
+                provider: ProviderId::OpenRouter,
+                kind: mewcode_protocol::ModelKind::OpenRouter,
+                context_length: None,
+                is_free: false,
+            },
+            mewcode_client::net::ModelEntry {
+                id: "target".into(),
+                display_name: "Target".into(),
+                provider: ProviderId::OpenAi,
+                kind: mewcode_protocol::ModelKind::OpenAi,
+                context_length: None,
+                is_free: false,
+            },
+        ]);
+        s.model_picker.query = TextArea::new(vec!["target".into()]);
+    }
+    render_picker(&mut app, 100, 28);
+    let rect = active_state(&mut app).model_picker.picker.rect.unwrap();
+
+    let cmd = update(
+        &mut app,
+        picker_mouse(MouseEventKind::Down(MouseButton::Left), rect.x, rect.y + 1),
+    );
+
+    assert!(matches!(
+        cmd,
+        Cmd::PatchSession {
+            patch: mewcode_client::net::SessionPatch { model: Some(ref model), .. },
+            ..
+        } if model == &ModelRef::openai("target").unwrap()
+    ));
+}
+
+#[test]
+fn model_picker_clamps_cursor_and_scroll_when_catalog_shrinks() {
+    let mut app = test_app();
+    open_model_picker(&mut app);
+    let generation = active_state(&mut app).model_picker.generation;
+    update(
+        &mut app,
+        Msg::ModelsFetched(Ok(seed_models(20)), generation),
+    );
+    draw(&mut app, 100, 28);
+    {
+        let s = active_state(&mut app);
+        s.model_picker.picker.cursor = 19;
+        s.model_picker.picker.scroll = 20;
+    }
+
+    update(&mut app, Msg::ModelsFetched(Ok(seed_models(2)), generation));
+
+    let s = active_state(&mut app);
+    assert_eq!(s.model_picker.picker.cursor, 1);
+    assert_eq!(s.model_picker.picker.scroll, 0);
+}
+
+#[test]
+fn model_picker_resize_uses_current_search_adjusted_viewport() {
+    let mut app = test_app();
+    {
+        let s = active_state(&mut app);
+        s.overlay = Overlay::ModelPicker;
+        s.model_picker.models = Some(seed_models(20));
+        s.model_picker.picker.cursor = 19;
+    }
+    draw(&mut app, 100, 40);
+    let rendered = draw(&mut app, 100, 20);
+
+    assert!(
+        rendered.contains("Model 19"),
+        "selected row must remain visible:\n{rendered}"
+    );
+}
+
+#[test]
+fn model_picker_search_cursor_handles_wide_and_long_queries() {
+    let mut app = test_app();
+    {
+        let s = active_state(&mut app);
+        s.overlay = Overlay::ModelPicker;
+        s.model_picker.models = Some(seed_models(1));
+        s.model_picker.query = TextArea::new(vec![format!("e\u{301}👩‍💻{}z", "a".repeat(80))]);
+        s.model_picker.query.move_cursor(CursorMove::End);
+    }
+
+    let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+    terminal.draw(|frame| render(frame, &mut app)).unwrap();
+    let rendered = terminal.backend().to_string();
+    let cursor = terminal.backend_mut().get_cursor_position().unwrap();
+    let rect = active_state(&mut app).model_picker.picker.rect.unwrap();
+
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.contains("Search:") && line.contains('z'))
+    );
+    assert_eq!(cursor.y, rect.y - 1);
+    assert!(cursor.x >= rect.x + " Search: ".chars().count() as u16);
+    assert!(cursor.x < rect.x + rect.width);
+}
+
+#[test]
+fn zen_picker_carries_transport_snapshot_through_patch_and_create() {
+    let entry = mewcode_client::net::ModelEntry {
+        id: "gpt-5.4".into(),
+        display_name: "GPT 5.4".into(),
+        provider: ProviderId::OpenCodeZen,
+        kind: mewcode_protocol::ModelKind::OpenAiResponses,
+        context_length: Some(1_050_000),
+        is_free: false,
+    };
+
+    let mut app = test_app();
+    seed_active_session(active_state(&mut app));
+    active_state(&mut app).model_picker.models = Some(vec![entry.clone()]);
+    active_state(&mut app).overlay = Overlay::ModelPicker;
+    match update(&mut app, press_enter()) {
+        Cmd::PatchSession { patch, .. } => {
+            assert_eq!(
+                patch.model_kind,
+                Some(mewcode_protocol::ModelKind::OpenAiResponses)
+            );
+            assert_eq!(patch.model_context_length, Some(1_050_000));
+        }
+        other => panic!("expected model patch, got {other:?}"),
+    }
+
+    let mut app = test_app();
+    active_state(&mut app).model_picker.models = Some(vec![entry]);
+    active_state(&mut app).overlay = Overlay::ModelPicker;
+    assert!(matches!(update(&mut app, press_enter()), Cmd::None));
+    assert_eq!(
+        active_state(&mut app).creation.pending_model_kind,
+        Some(mewcode_protocol::ModelKind::OpenAiResponses)
+    );
+    type_text(active_state(&mut app), "hello");
+    match update(&mut app, press_enter()) {
+        Cmd::CreateSession(request) => {
+            assert_eq!(
+                request.model_kind,
+                Some(mewcode_protocol::ModelKind::OpenAiResponses)
+            );
+        }
+        other => panic!("expected create, got {other:?}"),
+    }
+}
+
+#[test]
+fn bare_session_new_carries_model_kind_snapshot() {
+    let mut app = test_app();
+    seed_active_session(active_state(&mut app));
+    let session = active_state(&mut app).session.as_mut().unwrap();
+    session.model = ModelRef::open_code_zen("gpt-5.4").unwrap();
+    session.model_kind = Some(mewcode_protocol::ModelKind::OpenAiResponses);
+    type_text(active_state(&mut app), "/session new");
+
+    update(&mut app, press_enter());
+
+    assert_eq!(
+        active_state(&mut app).creation.pending_model_kind,
+        Some(mewcode_protocol::ModelKind::OpenAiResponses)
     );
 }

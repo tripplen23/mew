@@ -115,7 +115,9 @@ async fn apply(
         Op::Create { title } => {
             let new = NewSession {
                 title: title.clone(),
-                model: ModelId::default(),
+                model: ModelId::default().into(),
+                model_kind: None,
+                model_context_length: None,
                 mode: Mode::default(),
             };
             match store.create_session(new).await {

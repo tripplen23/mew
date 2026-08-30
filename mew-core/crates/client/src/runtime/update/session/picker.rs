@@ -7,8 +7,6 @@
 use crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use tui_textarea::{CursorMove, TextArea};
 
-use mewcode_protocol::ModelId;
-
 use ratatui::layout::Rect;
 
 use crate::net::SessionPatch;
@@ -24,7 +22,15 @@ pub(super) fn on_model_picker_key(s: &mut SessionState, key: KeyEvent) -> Cmd {
         KeyCode::Up => cursor_move(s, -1),
         KeyCode::Down => cursor_move(s, 1),
         KeyCode::Enter => pick_model(s),
-        _ => Cmd::None,
+        _ => {
+            let before = s.model_picker.query.lines().to_vec();
+            s.model_picker.query.input(key_to_input(key));
+            if s.model_picker.query.lines() != before {
+                s.model_picker.picker.cursor = 0;
+                s.model_picker.picker.scroll = 0;
+            }
+            Cmd::None
+        }
     }
 }
 
@@ -212,11 +218,9 @@ fn click_picker_row(s: &mut SessionState, rect: Rect, row: u16) -> bool {
         }
         // Model rows include provider headers; only model rows map to entries.
         Overlay::ModelPicker => {
-            let Some(models) = s.model_picker.models.as_ref() else {
-                return false;
-            };
+            let models = s.model_picker.filtered_models();
             let visual_row = s.model_picker.picker.scroll + local;
-            let Some(index) = model_entry_at_row(models, visual_row) else {
+            let Some(index) = model_entry_at_row(&models, visual_row) else {
                 return false;
             };
             s.model_picker.picker.cursor = index;
@@ -246,7 +250,7 @@ fn click_picker_row(s: &mut SessionState, rect: Rect, row: u16) -> bool {
 }
 
 // Entry index of the `row`-th visual row (headers count as rows).
-fn model_entry_at_row(models: &[crate::net::ModelEntry], row: usize) -> Option<usize> {
+fn model_entry_at_row(models: &[&crate::net::ModelEntry], row: usize) -> Option<usize> {
     let mut visual = 0;
     let mut prev: Option<mewcode_protocol::ProviderId> = None;
     for (i, model) in models.iter().enumerate() {
@@ -272,13 +276,17 @@ fn clamp_picker_cursor(picker: &mut PickerState, len: usize) {
 }
 
 fn pick_model(s: &mut SessionState) -> Cmd {
-    let Some(entries) = s.model_picker.models.as_ref() else {
-        return Cmd::None;
-    };
-    let Some(entry) = entries.get(s.model_picker.picker.cursor) else {
-        return Cmd::None;
-    };
-    let Ok(model) = entry.id.parse::<ModelId>() else {
+    let Some((model, model_kind, context_length)) = s
+        .model_picker
+        .filtered_models()
+        .get(s.model_picker.picker.cursor)
+        .and_then(|entry| {
+            entry
+                .model_ref()
+                .ok()
+                .map(|model| (model, entry.kind, entry.context_length))
+        })
+    else {
         return Cmd::None;
     };
     if let Some(session) = s.session.as_ref() {
@@ -286,12 +294,16 @@ fn pick_model(s: &mut SessionState) -> Cmd {
             id: session.id,
             patch: SessionPatch {
                 model: Some(model),
+                model_kind: Some(model_kind),
+                model_context_length: context_length,
                 ..Default::default()
             },
             from_rename: false,
         };
     }
     s.creation.pending_model = Some(model);
+    s.creation.pending_model_kind = Some(model_kind);
+    s.creation.pending_model_context_length = context_length;
     s.overlay = Overlay::None;
     Cmd::None
 }
@@ -299,31 +311,31 @@ fn pick_model(s: &mut SessionState) -> Cmd {
 fn cursor_move(s: &mut SessionState, delta: i32) -> Cmd {
     match s.overlay {
         Overlay::ModelPicker => {
-            let Some(models) = s.model_picker.models.as_ref() else {
-                return Cmd::None;
+            let models = s.model_picker.filtered_models();
+            let len = models.len();
+            let max = len.saturating_sub(1) as i32;
+            let cursor = if len == 0 {
+                0
+            } else {
+                (s.model_picker.picker.cursor as i32 + delta).clamp(0, max) as usize
             };
-            move_picker_cursor(&mut s.model_picker.picker, models.len(), delta);
-            let cursor_row = model_cursor_row(models, s.model_picker.picker.cursor);
-            let header_row = model_header_row(models, s.model_picker.picker.cursor);
-            let len = model_visual_len(models);
-            s.model_picker.picker.scroll = clamp_picker_scroll(
-                s.model_picker.picker.scroll,
-                cursor_row,
-                len,
-                s.model_picker
-                    .picker
-                    .viewport
-                    .max(s.model_picker.picker.viewport_max) as usize,
-            );
-            s.model_picker.picker.scroll = prefer_visible_header(
-                s.model_picker.picker.scroll,
+            let cursor_row = model_cursor_row(&models, cursor);
+            let header_row = model_header_row(&models, cursor);
+            let visual_len = model_visual_len(&models);
+            let viewport = s.model_picker.picker.viewport.max(1) as usize;
+            let scroll = prefer_visible_header(
+                clamp_picker_scroll(
+                    s.model_picker.picker.scroll,
+                    cursor_row,
+                    visual_len,
+                    viewport,
+                ),
                 header_row,
                 cursor_row,
-                s.model_picker
-                    .picker
-                    .viewport
-                    .max(s.model_picker.picker.viewport_max) as usize,
+                viewport,
             );
+            s.model_picker.picker.cursor = cursor;
+            s.model_picker.picker.scroll = scroll;
             Cmd::None
         }
         Overlay::SessionList => {
@@ -388,43 +400,29 @@ fn clamp_picker_scroll(scroll: usize, cursor: usize, len: usize, visible_rows: u
         return 0;
     }
     let visible = visible_rows.min(len);
-    if cursor < scroll {
+    let scroll = if cursor < scroll {
         cursor
     } else if cursor >= scroll + visible {
         cursor + 1 - visible
     } else {
         scroll
-    }
+    };
+    scroll.min(len.saturating_sub(visible))
 }
 
 /// Re-clamp model picker scroll after async model data changes.
 pub(crate) fn clamp_model_picker_scroll(s: &mut SessionState) {
-    let (len, cursor) = s
-        .model_picker
-        .models
-        .as_ref()
-        .map(|models| {
-            (
-                model_visual_len(models),
-                model_cursor_row(models, s.model_picker.picker.cursor),
-            )
-        })
-        .unwrap_or((0, 0));
-    let viewport = s
-        .model_picker
-        .picker
-        .viewport
-        .max(s.model_picker.picker.viewport_max) as usize;
-    s.model_picker.picker.scroll =
-        clamp_picker_scroll(s.model_picker.picker.scroll, cursor, len, viewport);
-    if let Some(models) = s.model_picker.models.as_ref() {
-        s.model_picker.picker.scroll = prefer_visible_header(
-            s.model_picker.picker.scroll,
-            model_header_row(models, s.model_picker.picker.cursor),
-            cursor,
-            viewport,
-        );
-    }
+    let models = s.model_picker.filtered_models();
+    let cursor = model_cursor_row(&models, s.model_picker.picker.cursor);
+    let len = model_visual_len(&models);
+    let header = model_header_row(&models, s.model_picker.picker.cursor);
+    let viewport = s.model_picker.picker.viewport.max(1) as usize;
+    s.model_picker.picker.scroll = prefer_visible_header(
+        clamp_picker_scroll(s.model_picker.picker.scroll, cursor, len, viewport),
+        header,
+        cursor,
+        viewport,
+    );
 }
 
 fn prefer_visible_header(
@@ -439,7 +437,7 @@ fn prefer_visible_header(
     header
 }
 
-fn model_header_row(models: &[crate::net::ModelEntry], cursor: usize) -> usize {
+fn model_header_row(models: &[&crate::net::ModelEntry], cursor: usize) -> usize {
     let mut row = 0;
     let mut prev = None;
     let mut header = 0;
@@ -457,7 +455,7 @@ fn model_header_row(models: &[crate::net::ModelEntry], cursor: usize) -> usize {
     header
 }
 
-fn model_cursor_row(models: &[crate::net::ModelEntry], cursor: usize) -> usize {
+fn model_cursor_row(models: &[&crate::net::ModelEntry], cursor: usize) -> usize {
     let mut row = 0;
     let mut prev = None;
     for (i, model) in models.iter().enumerate() {
@@ -473,7 +471,7 @@ fn model_cursor_row(models: &[crate::net::ModelEntry], cursor: usize) -> usize {
     row.saturating_sub(1)
 }
 
-fn model_visual_len(models: &[crate::net::ModelEntry]) -> usize {
+fn model_visual_len(models: &[&crate::net::ModelEntry]) -> usize {
     let mut len = 0;
     let mut prev = None;
     for model in models {

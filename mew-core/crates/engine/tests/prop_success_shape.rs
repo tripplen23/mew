@@ -86,7 +86,7 @@ proptest! {
         match first {
             StreamEvent::Start { mode: m, model: md, .. } => {
                 prop_assert_eq!(*m, mode, "Start must carry the turn's mode");
-                prop_assert_eq!(*md, model, "Start must carry the turn's model");
+                prop_assert_eq!(md, &model.into(), "Start must carry the turn's model");
             }
             other => prop_assert!(false, "first event must be Start, got {other:?}"),
         }

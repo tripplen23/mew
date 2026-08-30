@@ -120,7 +120,7 @@ fn submit_chat_text(s: &mut SessionState, visible_text: &str) -> Cmd {
         // `Uuid::nil()` placeholder; the real id arrives with SSE `Started`.
         s.streaming = Some(StreamingState::new(Uuid::nil()));
         let session_id = session.id;
-        let model = session.model;
+        let model = session.model.clone();
         let mode = session.mode;
         let messages = session.messages.clone();
         // Clear the composer now that the message is committed to history.
@@ -140,7 +140,9 @@ fn submit_chat_text(s: &mut SessionState, visible_text: &str) -> Cmd {
         s.creation.creation_started_at = Some(std::time::Instant::now());
         Cmd::CreateSession(CreateSessionRequest {
             title: derive_title(&user_text),
-            model: s.creation.pending_model,
+            model: s.creation.pending_model.clone(),
+            model_kind: s.creation.pending_model_kind,
+            model_context_length: s.creation.pending_model_context_length,
             mode: Some(s.creation.pending_mode.unwrap_or_default()),
         })
     }

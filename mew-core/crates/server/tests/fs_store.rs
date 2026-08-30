@@ -17,7 +17,9 @@ use mewcode_server::store::{Backend, NewSession, SessionPatch, SessionStore, Sto
 fn new_session(title: &str) -> NewSession {
     NewSession {
         title: title.to_string(),
-        model: ModelId::default(),
+        model: ModelId::default().into(),
+        model_kind: None,
+        model_context_length: None,
         mode: Mode::default(),
     }
 }
@@ -61,7 +63,7 @@ async fn create_then_get_round_trip() {
         .expect("create should succeed");
 
     assert_eq!(created.title, "hello");
-    assert_eq!(created.model, ModelId::default());
+    assert_eq!(created.model, ModelId::default().into());
     assert_eq!(created.mode, Mode::default());
     assert!(created.messages.is_empty());
 
@@ -324,6 +326,61 @@ async fn compaction_checkpoint_must_match_filesystem_transcript() {
 }
 
 #[tokio::test]
+async fn dynamic_model_and_context_round_trip_through_filesystem_metadata() {
+    let (_tmp, store) = temp_store();
+    let model = mewcode_protocol::ModelRef::openrouter("openrouter::Vendor/Exact:free").unwrap();
+    let created = store
+        .create_session(NewSession {
+            title: "dynamic".into(),
+            model: model.clone(),
+            model_kind: None,
+            model_context_length: Some(262_144),
+            mode: Mode::Build,
+        })
+        .await
+        .expect("create should succeed");
+
+    assert_eq!(created.model, model);
+    assert_eq!(created.model_context_length, Some(262_144));
+
+    let raw = std::fs::read_to_string(
+        store
+            .data_dir()
+            .join("sessions")
+            .join(created.id.to_string())
+            .join("meta.json"),
+    )
+    .unwrap();
+    assert!(raw.contains("openrouter::openrouter::Vendor/Exact:free"));
+
+    let fetched = store.get_session(created.id).await.unwrap();
+    assert_eq!(fetched.model.raw_id(), "openrouter::Vendor/Exact:free");
+    assert_eq!(fetched.model_context_length, Some(262_144));
+}
+
+#[tokio::test]
+async fn legacy_builtin_metadata_without_context_snapshot_still_loads() {
+    let (_tmp, store) = temp_store();
+    let created = store.create_session(new_session("legacy")).await.unwrap();
+    let path = store
+        .data_dir()
+        .join("sessions")
+        .join(created.id.to_string())
+        .join("meta.json");
+    let mut value: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    value
+        .as_object_mut()
+        .unwrap()
+        .remove("model_context_length");
+    std::fs::write(&path, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+
+    let fetched = store.get_session(created.id).await.unwrap();
+    assert_eq!(fetched.model, ModelId::default().into());
+    assert_eq!(fetched.model_context_length, None);
+}
+
+#[tokio::test]
 async fn list_sessions_skips_unreadable_session_instead_of_failing() {
     let (_tmp, store) = temp_store();
 
@@ -367,5 +424,40 @@ async fn list_sessions_skips_unreadable_session_instead_of_failing() {
     assert!(
         !ids.contains(&corrupt_id),
         "the corrupt session must be skipped, not listed: {ids:?}"
+    );
+}
+
+#[tokio::test]
+async fn model_kind_persists_and_legacy_metadata_without_it_loads() {
+    let (_tmp, store) = temp_store();
+    let created = store
+        .create_session(NewSession {
+            title: "transport".into(),
+            model: mewcode_protocol::ModelRef::open_code_zen("gpt-5.4").unwrap(),
+            model_kind: Some(mewcode_protocol::ModelKind::OpenAiResponses),
+            model_context_length: Some(1_050_000),
+            mode: Mode::Build,
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        created.model_kind,
+        Some(mewcode_protocol::ModelKind::OpenAiResponses)
+    );
+
+    let path = store
+        .data_dir()
+        .join("sessions")
+        .join(created.id.to_string())
+        .join("meta.json");
+    let mut value: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    assert_eq!(value["model_kind"], "open-ai-responses");
+    value.as_object_mut().unwrap().remove("model_kind");
+    std::fs::write(&path, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+
+    assert_eq!(
+        store.get_session(created.id).await.unwrap().model_kind,
+        None
     );
 }

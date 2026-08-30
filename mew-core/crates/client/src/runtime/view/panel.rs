@@ -117,10 +117,8 @@ pub fn scroll_start_for_cursor(cursor: usize, viewport: usize, total_rows: usize
 /// height. Truncates `body` to the visible window, pads to the footer
 /// row, and renders.
 ///
-/// `viewport_out` = the list's visible row count (inner height minus the
-/// footer row). The update loop clamps the scroll from this — a wrong
-/// value (e.g. raw inner height) lets the cursor scroll off the bottom
-/// in a small terminal.
+/// `viewport_out` = the list's visible row count (inner height minus fixed
+/// prefix rows and the footer). The update loop clamps the scroll from this.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn render_scrolled_panel(
     frame: &mut Frame,
@@ -129,10 +127,12 @@ pub(super) fn render_scrolled_panel(
     hint: &str,
     percent_x: u16,
     percent_y: u16,
+    prefix: Vec<Line<'static>>,
     body: Vec<Line<'static>>,
     total_rows: usize,
     _scroll: usize,
     cursor: usize,
+    footer: Option<String>,
     viewport_out: &mut u16,
 ) {
     // Same rect callers used to truncate `body` to the inner width, so the
@@ -140,23 +140,23 @@ pub(super) fn render_scrolled_panel(
     let rect = centered_rect(area, percent_x, percent_y);
     frame.render_widget(Clear, rect);
     let inner_height = rect.height.saturating_sub(2);
-    // One row is reserved for the footer; the rest is the list viewport.
-    let visible = inner_height.saturating_sub(1) as usize;
+    let visible = inner_height
+        .saturating_sub(1)
+        .saturating_sub(prefix.len() as u16) as usize;
 
-    // Truncate to the visible window so the footer stays clear and
-    // `viewport` matches what we drew.
-    let mut lines: Vec<Line> = body.into_iter().take(visible).collect();
-    // Pad with blanks so the footer anchors to the bottom on short lists.
-    while lines.len() < visible {
+    let prefix_len = prefix.len();
+    let mut lines = prefix;
+    lines.extend(body.into_iter().take(visible));
+    while lines.len() < prefix_len + visible {
         lines.push(Line::from(""));
     }
-    // Footer: "<cursor+1>/<total>" so the cursor position stays visible
-    // even when its row is scrolled out.
-    let footer_text = if total_rows == 0 {
-        " — ".to_string()
-    } else {
-        format!(" {}/{} ", cursor + 1, total_rows)
-    };
+    let footer_text = footer.unwrap_or_else(|| {
+        if total_rows == 0 {
+            " — ".to_string()
+        } else {
+            format!(" {}/{} ", cursor + 1, total_rows)
+        }
+    });
     lines.push(Line::from(Span::styled(
         footer_text,
         Style::default().fg(Color::DarkGray),

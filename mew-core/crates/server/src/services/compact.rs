@@ -6,7 +6,7 @@ use mewcode_engine::compact_history;
 use mewcode_engine::compaction::{CHARS_PER_TOKEN, prune_messages, split_for_compaction};
 use mewcode_engine::error::engine_error_parts;
 use mewcode_protocol::event::{CompactionPhase, ErrorCode};
-use mewcode_protocol::{Message, ModelId, StreamEvent};
+use mewcode_protocol::{Message, StreamEvent};
 use tokio::sync::{RwLock, mpsc};
 
 use crate::AppState;
@@ -133,7 +133,7 @@ pub(crate) async fn start_compaction(
                 }
             };
 
-            let model: ModelId = session.model;
+            let model = session.model.clone();
 
             let tokens_before = {
                 let map = session_tokens.read().await;
@@ -195,7 +195,9 @@ pub(crate) async fn start_compaction(
 
             let result = match compact_history(
                 &head,
-                model,
+                &model,
+                session.model_kind,
+                session.model_context_length,
                 &cfg,
                 Some(memory),
                 tokens_before,
@@ -206,8 +208,8 @@ pub(crate) async fn start_compaction(
             {
                 Ok(result) => result,
                 Err(error) => {
-                    tracing::error!(%error, session_id = %id, "compaction worker failed");
                     let (code, message, _) = engine_error_parts(&error);
+                    tracing::error!(?code, session_id = %id, "compaction worker failed");
                     // Compaction failures surface as CompactionFailed so the
                     // client suggests re-running /compact; codes with their own
                     // action (missing key → /connect) pass through unchanged.

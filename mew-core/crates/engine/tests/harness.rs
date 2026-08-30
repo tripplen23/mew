@@ -21,9 +21,12 @@ fn test_harness() -> Harness {
 fn test_config() -> EngineConfig {
     EngineConfig {
         api_key: "test-key".into(),
+        opencode_zen_api_key: None,
         openai_api_key: Some("test-openai-key".into()),
         openai_base_url: None,
+        anthropic_api_key: None,
         deepseek_api_key: Some("test-deepseek-key".into()),
+        openrouter_api_key: None,
         default_model: ModelId::Gpt4o,
         base_url: "https://example.invalid".into(),
     }
@@ -124,6 +127,13 @@ async fn checkpoint_with_matching_boundary_message_id_replaces_prefix() {
     assert!(!texts.contains(&"first user"));
     assert!(texts.contains(&"first assistant"));
     assert!(texts.iter().any(|text| text.contains("valid summary")));
+}
+
+#[test]
+fn dynamic_context_limit_uses_persisted_snapshot() {
+    let model = mewcode_protocol::ModelRef::openrouter("vendor/model").unwrap();
+    assert_eq!(model.context_limit(None), 0);
+    assert_eq!(model.context_limit(Some(262_144)), 262_144);
 }
 
 #[test]

@@ -4,7 +4,7 @@
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use mewcode_protocol::{Mode, ModelId};
+use mewcode_protocol::{Mode, ModelKind, ModelRef};
 use serde::Deserialize;
 
 use crate::AppError;
@@ -17,7 +17,11 @@ pub struct CreateSessionRequest {
     /// Human-readable title (required, non-empty after trimming).
     pub title: String,
     /// Model to use; defaults when omitted.
-    pub model: Option<ModelId>,
+    pub model: Option<ModelRef>,
+    /// Runtime transport captured from the provider registry.
+    pub model_kind: Option<ModelKind>,
+    /// Runtime context limit captured from the provider registry.
+    pub model_context_length: Option<u64>,
     /// Interaction mode; defaults when omitted.
     pub mode: Option<Mode>,
 }
@@ -29,7 +33,13 @@ pub struct UpdateSessionRequest {
     /// New title. Omit to keep the current title.
     pub title: Option<String>,
     /// New model. Omit to keep the current model.
-    pub model: Option<ModelId>,
+    pub model: Option<ModelRef>,
+    /// New runtime transport snapshot. Omit or use `null` to keep it unless a
+    /// non-null `model` is supplied, which clears the previous value.
+    pub model_kind: Option<ModelKind>,
+    /// New runtime context snapshot. Omit or use `null` to keep it unless a
+    /// non-null `model` is supplied, which clears the previous value.
+    pub model_context_length: Option<u64>,
     /// New mode. Omit to keep the current mode.
     pub mode: Option<Mode>,
 }
@@ -105,6 +115,8 @@ pub async fn create(
         .create_session(NewSession {
             title: title.to_owned(),
             model: body.model.unwrap_or_default(),
+            model_kind: body.model_kind,
+            model_context_length: body.model_context_length,
             mode: body.mode.unwrap_or_default(),
         })
         .await?;
@@ -142,9 +154,9 @@ pub async fn delete(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// `PATCH /sessions/{id}` — apply a partial update (title, model, mode).
-/// Fields set to `null` in the body are left unchanged. Returns the
-/// refreshed session.
+/// `PATCH /sessions/{id}` — update title, model, context snapshot, or mode.
+/// Omitted and `null` fields remain unchanged, except supplying a non-null model
+/// without a context snapshot clears the previous snapshot.
 #[utoipa::path(
     patch,
     path = "/sessions/{id}",
@@ -174,6 +186,8 @@ pub async fn patch(
             SessionPatch {
                 title: body.title,
                 model: body.model,
+                model_kind: body.model_kind,
+                model_context_length: body.model_context_length,
                 mode: body.mode,
                 ..Default::default()
             },

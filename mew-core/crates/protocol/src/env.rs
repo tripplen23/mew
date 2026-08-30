@@ -10,13 +10,22 @@
 /// proxies it to the engine.
 pub const OPENCODE_GO_API_KEY: &str = "OPENCODE_GO_API_KEY";
 
+/// OpenCode Zen API key. Optional — when set, its runtime model catalog becomes available.
+pub const OPENCODE_ZEN_API_KEY: &str = "OPENCODE_ZEN_API_KEY";
+
 /// Native OpenAI API key. Optional — when set, native OpenAI models
 /// become available.
 pub const OPENAI_API_KEY: &str = "OPENAI_API_KEY";
 
+/// Native Anthropic API key. Optional — when set, native Anthropic models become available.
+pub const ANTHROPIC_API_KEY: &str = "ANTHROPIC_API_KEY";
+
 /// Native DeepSeek API key. Optional — when set, native DeepSeek models
 /// become available.
 pub const DEEPSEEK_API_KEY: &str = "DEEPSEEK_API_KEY";
+
+/// OpenRouter API key. Optional — when set, its runtime model catalog becomes available.
+pub const OPENROUTER_API_KEY: &str = "OPENROUTER_API_KEY";
 
 /// Optional override for the data directory where sessions are stored.
 /// Falls back to `$XDG_DATA_HOME/mew`, then `~/.local/share/mew`.

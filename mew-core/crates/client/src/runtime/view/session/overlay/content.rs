@@ -5,13 +5,14 @@ use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Clear, Paragraph};
 
 use mewcode_protocol::Mode;
-use mewcode_protocol::ModelId;
 use mewcode_protocol::ProviderId;
 use mewcode_protocol::tool::allowed_tools_for_mode;
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 
 use crate::runtime::model::{CONNECT_PROVIDERS, SLASH_COMMANDS, SessionState, ThemeId};
 use crate::runtime::view::panel::scroll_start_for_cursor;
-use crate::runtime::view::text_cursor_glyph;
+use crate::runtime::view::{one_line, text_cursor_glyph};
 
 /// The `/tools` overlay body: the tools allowed in the active mode plus
 /// the total count. Engine may also expose denied tools to the model so it can
@@ -244,23 +245,29 @@ fn fallback(value: u16, default: u16) -> u16 {
 /// the full-list index, so callers need no window→global translation. Rows
 /// are truncated to `max_width` so the picker never wraps.
 pub fn model_picker_lines(s: &SessionState, max_width: usize) -> Vec<Line<'static>> {
-    let Some(entries) = s.model_picker.models.as_ref() else {
+    if s.model_picker.models.is_none() {
         return vec![Line::from(Span::styled(
             "Loading models...",
             Style::default().fg(Color::DarkGray),
         ))];
-    };
+    }
+    let entries = s.model_picker.filtered_models();
     if entries.is_empty() {
+        let message = if s.model_picker.models.as_ref().is_some_and(Vec::is_empty) {
+            "No models available."
+        } else {
+            "No matching models."
+        };
         return vec![Line::from(Span::styled(
-            "No models available.",
+            message,
             Style::default().fg(Color::DarkGray),
         ))];
     }
     let current = s
         .session
         .as_ref()
-        .map(|sess| sess.model)
-        .or(s.creation.pending_model);
+        .map(|sess| sess.model.clone())
+        .or_else(|| s.creation.pending_model.clone());
 
     // Offset map so the cursor still indexes into `entries` despite headers.
     let mut rows: Vec<Row> = Vec::with_capacity(entries.len() + 4);
@@ -274,7 +281,7 @@ pub fn model_picker_lines(s: &SessionState, max_width: usize) -> Vec<Line<'stati
         }
         rows.push(Row::Model {
             entry_idx: i,
-            is_current: m.id.parse::<ModelId>().ok() == current,
+            is_current: m.model_ref().ok().as_ref() == current.as_ref(),
         });
     }
 
@@ -308,7 +315,7 @@ pub fn model_picker_lines(s: &SessionState, max_width: usize) -> Vec<Line<'stati
                     Style::default()
                 };
                 Line::from(Span::styled(
-                    format_model_row(marker, &m.display_name, &m.id, max_width),
+                    format_model_row(marker, &m.display_name, &m.id, m.is_free, max_width),
                     style,
                 ))
             }
@@ -339,26 +346,34 @@ fn cursor_to_row(rows: &[Row], cursor: usize) -> usize {
 /// falls back to the display name alone when the id would push the row
 /// over the limit. The `* ` / `  ` marker is always preserved so the
 /// "current model" indicator stays aligned.
-fn format_model_row(marker: &str, display_name: &str, id: &str, max_width: usize) -> String {
+fn format_model_row(
+    marker: &str,
+    display_name: &str,
+    id: &str,
+    is_free: bool,
+    max_width: usize,
+) -> String {
     const ELLIPSIS: &str = "…";
-    // Space after the marker + 1 slack cell, so wide CJK glyphs don't push
-    // past the panel.
-    let overhead = marker.chars().count() + 1 + 1;
+    let free = if is_free { " [free]" } else { "" };
+    let overhead = marker.width() + 2;
     if max_width <= overhead {
         return marker.to_string();
     }
     let budget = max_width - overhead;
+    let id = one_line(id);
     let id_part = format!(" ({id})");
-    let id_w = id_part.chars().count();
-    if id_w <= budget {
-        let name_budget = budget - id_w;
+    let tail = format!("{free}{id_part}");
+    let tail_w = tail.width();
+    if tail_w <= budget {
+        let name_budget = budget - tail_w;
         let name = truncate_with_ellipsis(display_name, name_budget, ELLIPSIS);
-        return format!("{marker} {name}{id_part}");
+        return format!("{marker} {name}{tail}");
     }
-    // Not enough room for the id; show just the name, truncated to the
-    // full budget.
-    let name = truncate_with_ellipsis(display_name, budget, ELLIPSIS);
-    format!("{marker} {name}")
+    let free_w = free.width();
+    let name_budget = budget.saturating_sub(free_w);
+    let name = truncate_with_ellipsis(display_name, name_budget, ELLIPSIS);
+    let free = truncate_with_ellipsis(free, budget.saturating_sub(name.width()), ELLIPSIS);
+    format!("{marker} {name}{free}")
 }
 
 /// Truncate `s` so it occupies at most `max_width` display cells.
@@ -369,16 +384,25 @@ fn truncate_with_ellipsis(s: &str, max_width: usize, ellipsis: &str) -> String {
     if max_width == 0 {
         return String::new();
     }
-    let w = s.chars().count();
-    if w <= max_width {
+    if s.width() <= max_width {
         return s.to_string();
     }
-    let ell_w = ellipsis.chars().count();
-    if max_width <= ell_w {
-        return ellipsis.chars().take(max_width).collect();
+    let ellipsis = ellipsis
+        .graphemes(true)
+        .take_while(|grapheme| grapheme.width() <= max_width)
+        .collect::<String>();
+    let ellipsis_width = ellipsis.width();
+    let keep = max_width.saturating_sub(ellipsis_width);
+    let mut head = String::new();
+    let mut width = 0;
+    for grapheme in s.graphemes(true) {
+        let grapheme_width = grapheme.width();
+        if width + grapheme_width > keep {
+            break;
+        }
+        head.push_str(grapheme);
+        width += grapheme_width;
     }
-    let keep = max_width - ell_w;
-    let head: String = s.chars().take(keep).collect();
     format!("{head}{ellipsis}")
 }
 
@@ -408,7 +432,7 @@ pub fn session_list_lines(s: &SessionState, max_width: usize) -> Vec<Line<'stati
             } else {
                 Style::default()
             };
-            let row = format_session_row(&summary.title, summary.model.as_str(), max_width);
+            let row = format_session_row(&summary.title, summary.model.raw_id(), max_width);
             Line::from(Span::styled(row, style))
         })
         .collect()
@@ -418,6 +442,7 @@ fn format_session_row(title: &str, model: &str, max_width: usize) -> String {
     const ELLIPSIS: &str = "…";
     // Two-space leading/trailing padding + ` (model)` tail; falls back to
     // the title alone when the model won't fit.
+    let model = one_line(model);
     let tail = format!(" ({model})");
     let tail_w = tail.chars().count();
     let prefix = 2usize; // leading "  "
@@ -468,13 +493,13 @@ pub(super) fn connect_provider_lines(s: &SessionState) -> Vec<Line<'static>> {
     match state.step {
         ConnectStep::PickProvider => {
             let mut lines = vec![Line::from("Select a provider to connect:")];
-            for (i, &provider) in CONNECT_PROVIDERS.iter().enumerate() {
+            for (i, descriptor) in CONNECT_PROVIDERS.iter().enumerate() {
                 let selected = i == state.picker.cursor;
                 let marker = if selected { "▶" } else { " " };
                 lines.push(Line::from(vec![
                     Span::raw(format!("  {marker} ")),
                     Span::styled(
-                        provider.to_string(),
+                        descriptor.display_name,
                         if selected {
                             Style::default()
                                 .add_modifier(Modifier::BOLD)
@@ -498,6 +523,7 @@ pub(super) fn connect_provider_lines(s: &SessionState) -> Vec<Line<'static>> {
                 .map(|p| p.to_string())
                 .unwrap_or_default();
             let key_text = connect_provider_key_text(s);
+            let masked_key = "•".repeat(key_text.chars().count());
             let mut lines = vec![
                 Line::from(vec![
                     Span::raw("Provider: "),
@@ -507,7 +533,7 @@ pub(super) fn connect_provider_lines(s: &SessionState) -> Vec<Line<'static>> {
                 Line::from("Enter your API key (type directly):"),
                 Line::from(""),
                 Line::from(vec![Span::styled(
-                    format!("  {key_text}{}", text_cursor_glyph(&key_text)),
+                    format!("  {masked_key}{}", text_cursor_glyph(&masked_key)),
                     Style::default().fg(Color::Yellow),
                 )]),
             ];

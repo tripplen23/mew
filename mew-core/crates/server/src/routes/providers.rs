@@ -1,40 +1,13 @@
-use crate::credential::validate_key;
+use crate::credential::{ValidationError, validate_key};
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
 use mewcode_protocol::credential::{
     ConnectProviderRequest, ConnectProviderResponse, ProviderCredential, ProviderStatus,
 };
-use mewcode_protocol::{ModelId, ModelKind, ProviderId};
-use serde::Serialize;
+use mewcode_protocol::{ProviderEntry, ProviderId, SUPPORTED_PROVIDERS};
 
 use crate::AppState;
-
-/// One model entry in a provider's model list.
-#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
-pub struct ModelEntry {
-    /// Provider-side model id
-    pub id: String,
-    /// Human-friendly display name for the model picker.
-    pub display_name: &'static str,
-    /// Which provider serves this model.
-    pub provider: ProviderId,
-    /// Which endpoint protocol this model speaks.
-    pub kind: ModelKind,
-}
-
-/// One provider entry in the provider registry.
-#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
-pub struct ProviderEntry {
-    /// Provider id used on the wire.
-    pub id: ProviderId,
-    /// Human-friendly provider name.
-    pub display_name: String,
-    /// Whether this provider can currently be used.
-    pub available: bool,
-    /// Available models for this provider.
-    pub models: Vec<ModelEntry>,
-}
 
 /// `GET /providers` — list providers and the models each currently exposes.
 #[utoipa::path(
@@ -46,25 +19,101 @@ pub struct ProviderEntry {
     ),
 )]
 pub async fn list_providers(State(state): State<AppState>) -> Json<Vec<ProviderEntry>> {
-    let store = state.credentials.lock().await;
-    let entries = [ProviderId::OpenCodeGo, ProviderId::OpenAi]
-        .into_iter()
-        .map(|provider| {
-            let available = store.has(provider);
-            let models = if available {
-                models_for_provider(provider)
-            } else {
-                Vec::new()
+    use crate::provider_catalog::{
+        ANTHROPIC_MODELS_URL, DEEPSEEK_MODELS_URL, MODELS_DEV_URL, OPENAI_MODELS_URL,
+        OPENCODE_ZEN_MODELS_URL, OPENROUTER_MODELS_URL,
+    };
+
+    let config = crate::services::chat::build_engine_config(&state).await;
+    let opencode_url = format!("{}/models", config.base_url.trim_end_matches('/'));
+    let opencode_key = (!config.api_key.trim().is_empty()).then_some(config.api_key.as_str());
+    let openai_key = config
+        .openai_api_key
+        .as_deref()
+        .filter(|key| !key.trim().is_empty());
+    let zen_key = config
+        .opencode_zen_api_key
+        .as_deref()
+        .filter(|key| !key.trim().is_empty());
+    let anthropic_key = config
+        .anthropic_api_key
+        .as_deref()
+        .filter(|key| !key.trim().is_empty());
+    let deepseek_key = config
+        .deepseek_api_key
+        .as_deref()
+        .filter(|key| !key.trim().is_empty());
+    let openrouter_key = config
+        .openrouter_api_key
+        .as_deref()
+        .filter(|key| !key.trim().is_empty());
+    let (opencode, zen, openai, anthropic, deepseek, openrouter) = tokio::join!(
+        discover_configured(ProviderId::OpenCodeGo, &opencode_url, opencode_key),
+        discover_zen_configured(zen_key, OPENCODE_ZEN_MODELS_URL, MODELS_DEV_URL),
+        discover_configured(ProviderId::OpenAi, OPENAI_MODELS_URL, openai_key),
+        discover_configured(ProviderId::Anthropic, ANTHROPIC_MODELS_URL, anthropic_key),
+        discover_configured(ProviderId::DeepSeek, DEEPSEEK_MODELS_URL, deepseek_key),
+        discover_configured(
+            ProviderId::OpenRouter,
+            OPENROUTER_MODELS_URL,
+            openrouter_key,
+        ),
+    );
+    let mut results = std::collections::HashMap::from([
+        (ProviderId::OpenCodeGo, opencode),
+        (ProviderId::OpenCodeZen, zen),
+        (ProviderId::OpenAi, openai),
+        (ProviderId::Anthropic, anthropic),
+        (ProviderId::DeepSeek, deepseek),
+        (ProviderId::OpenRouter, openrouter),
+    ]);
+    let entries = SUPPORTED_PROVIDERS
+        .iter()
+        .map(|descriptor| {
+            let result = results
+                .remove(&descriptor.id)
+                .unwrap_or_else(|| Err("model catalog unavailable".to_owned()));
+            let available = provider_available(descriptor.id, &config);
+            let (models, error) = match result {
+                Ok(models) if available => (models, None),
+                Ok(_) => (Vec::new(), None),
+                Err(error) if available => (Vec::new(), Some(error)),
+                Err(_) => (Vec::new(), None),
             };
             ProviderEntry {
-                id: provider,
-                display_name: provider.to_string(),
+                id: descriptor.id,
+                display_name: descriptor.display_name.to_owned(),
                 available,
                 models,
+                error,
             }
         })
         .collect();
     Json(entries)
+}
+
+async fn discover_configured(
+    provider: ProviderId,
+    url: &str,
+    api_key: Option<&str>,
+) -> Result<Vec<mewcode_protocol::ModelEntry>, String> {
+    match api_key {
+        Some(key) => crate::provider_catalog::discover_models(provider, url, key).await,
+        None => Ok(Vec::new()),
+    }
+}
+
+async fn discover_zen_configured(
+    api_key: Option<&str>,
+    live_url: &str,
+    metadata_url: &str,
+) -> Result<Vec<mewcode_protocol::ModelEntry>, String> {
+    match api_key {
+        Some(key) => {
+            crate::provider_catalog::discover_zen_models(live_url, metadata_url, key).await
+        }
+        None => Ok(Vec::new()),
+    }
 }
 
 /// `POST /providers/connect` — validate and store an API key.
@@ -80,6 +129,7 @@ pub async fn list_providers(State(state): State<AppState>) -> Json<Vec<ProviderE
     responses(
         (status = 200, description = "Key validated and stored", body = ConnectProviderResponse),
         (status = 401, description = "Key rejected by the provider. The body still carries the ConnectProviderResponse::InvalidKey payload for backward compatibility.", body = ConnectProviderResponse),
+        (status = 502, description = "Provider validation was unavailable.", body = ConnectProviderResponse),
         (status = 500, description = "Key validated but could not be persisted. The body still carries the ConnectProviderResponse::Error payload for backward compatibility.", body = ConnectProviderResponse),
     ),
 )]
@@ -120,10 +170,40 @@ pub async fn connect_provider(
                 }),
             )
         }
-        Err(reason) => (
+        Err(ValidationError::InvalidKey(reason)) => (
             StatusCode::UNAUTHORIZED,
             Json(ConnectProviderResponse::InvalidKey { provider, reason }),
         ),
+        Err(ValidationError::Unavailable(message)) => (
+            StatusCode::BAD_GATEWAY,
+            Json(ConnectProviderResponse::Error { provider, message }),
+        ),
+    }
+}
+
+fn provider_available(provider: ProviderId, config: &mewcode_engine::EngineConfig) -> bool {
+    match provider {
+        ProviderId::OpenCodeGo => !config.api_key.trim().is_empty(),
+        ProviderId::OpenCodeZen => config
+            .opencode_zen_api_key
+            .as_deref()
+            .is_some_and(|key| !key.trim().is_empty()),
+        ProviderId::OpenAi => config
+            .openai_api_key
+            .as_deref()
+            .is_some_and(|key| !key.trim().is_empty()),
+        ProviderId::Anthropic => config
+            .anthropic_api_key
+            .as_deref()
+            .is_some_and(|key| !key.trim().is_empty()),
+        ProviderId::DeepSeek => config
+            .deepseek_api_key
+            .as_deref()
+            .is_some_and(|key| !key.trim().is_empty()),
+        ProviderId::OpenRouter => config
+            .openrouter_api_key
+            .as_deref()
+            .is_some_and(|key| !key.trim().is_empty()),
     }
 }
 
@@ -137,24 +217,19 @@ pub async fn connect_provider(
     ),
 )]
 pub async fn provider_status(State(state): State<AppState>) -> Json<Vec<ProviderStatus>> {
+    let config = crate::services::chat::build_engine_config(&state).await;
     let store = state.credentials.lock().await;
-    Json(store.status())
-}
-
-fn models_for_provider(provider: ProviderId) -> Vec<ModelEntry> {
-    ModelId::ALL
-        .iter()
-        .copied()
-        .filter(|m| m.provider() == provider)
-        .map(model_entry)
-        .collect()
-}
-
-fn model_entry(model: ModelId) -> ModelEntry {
-    ModelEntry {
-        id: model.as_str().to_string(),
-        display_name: model.display_name(),
-        provider: model.provider(),
-        kind: model.kind(),
-    }
+    Json(
+        SUPPORTED_PROVIDERS
+            .iter()
+            .map(|descriptor| ProviderStatus {
+                provider: descriptor.id,
+                connected: provider_available(descriptor.id, &config),
+                validated_at: store
+                    .credentials
+                    .get(&descriptor.id)
+                    .and_then(|credential| credential.validated_at.clone()),
+            })
+            .collect(),
+    )
 }

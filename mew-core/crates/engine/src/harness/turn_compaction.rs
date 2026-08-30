@@ -137,7 +137,7 @@ pub fn should_compact_history(
 impl Harness {
     /// Check if compaction should trigger based on estimated context usage.
     fn should_compact(&self) -> bool {
-        let limit = self.model.context_limit();
+        let limit = self.model.context_limit(self.model_context_length);
         if limit == 0 {
             return false;
         }
@@ -227,7 +227,7 @@ impl Harness {
         let pruned = compaction::prune_messages(uncovered);
         let (compact_head, tail) = compaction::split_for_compaction(&pruned);
         let tokens_before = self.compaction.context_tokens;
-        let context_limit = self.model.context_limit();
+        let context_limit = self.model.context_limit(self.model_context_length);
         tracing::info!(
             head_count = compact_head.len(),
             tail_count = tail.len(),
@@ -241,7 +241,9 @@ impl Harness {
             .map(|checkpoint| checkpoint.summary.as_str());
         let result = compaction::compact_history(
             compact_head,
-            self.model,
+            &self.model,
+            self.model_kind,
+            self.model_context_length,
             cfg,
             self.memory.clone(),
             tokens_before,
@@ -255,7 +257,7 @@ impl Harness {
         let (summary, thought_duration_ms) = match accept_summary(result) {
             Ok(accepted) => accepted,
             Err(error) => {
-                tracing::warn!(%error, "compaction produced no usable summary");
+                tracing::warn!("compaction produced no usable summary");
                 return self.history_without_new_summary(
                     mode,
                     prior_messages,

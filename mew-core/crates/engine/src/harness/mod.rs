@@ -20,7 +20,7 @@ pub use crate::compaction::estimate_compacted_context;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use mewcode_protocol::{Message, Mode, ModelId, Role, StreamEvent};
+use mewcode_protocol::{Message, Mode, ModelKind, ModelRef, Role, StreamEvent};
 use tokio::sync::mpsc;
 use tracing::Instrument;
 use uuid::Uuid;
@@ -37,7 +37,9 @@ use crate::tools::{ApprovalBroker, ToolRegistry};
 /// The agent harness.
 #[derive(Clone)]
 pub struct Harness {
-    model: ModelId,
+    model: ModelRef,
+    model_kind: Option<ModelKind>,
+    model_context_length: Option<u64>,
     mode: Mode,
     skills: Arc<SkillRegistry>,
     tools: Arc<ToolRegistry>,
@@ -94,13 +96,15 @@ impl Harness {
     /// Build a new harness. `skills` is the catalog source for the
     /// system prompt; `tools` supplies the descriptors the model can call.
     pub fn new(
-        model: ModelId,
+        model: impl Into<ModelRef>,
         mode: Mode,
         skills: Arc<SkillRegistry>,
         tools: Arc<ToolRegistry>,
     ) -> Self {
         Self {
-            model,
+            model: model.into(),
+            model_kind: None,
+            model_context_length: None,
             mode,
             skills,
             tools,
@@ -116,6 +120,18 @@ impl Harness {
             max_tokens: None,
             max_turns: None,
         }
+    }
+
+    /// Attach the endpoint protocol captured during runtime model discovery.
+    pub fn with_model_kind(mut self, model_kind: Option<ModelKind>) -> Self {
+        self.model_kind = model_kind;
+        self
+    }
+
+    /// Attach the context limit captured during runtime model discovery.
+    pub fn with_model_context_length(mut self, context_length: Option<u64>) -> Self {
+        self.model_context_length = context_length;
+        self
     }
 
     /// Set the project root used to resolve `@file` mentions.
@@ -265,7 +281,7 @@ impl Harness {
             .map_or(0, |(index, _)| index);
         let prior_messages = &messages[..current_user_pos];
 
-        let span = langfuse::chat_turn_span(self.model, self.mode);
+        let span = langfuse::chat_turn_span(self.model.clone(), self.mode);
         if let Some(session_id) = self.session_id {
             span.record(FIELD_LANGFUSE_SESSION_ID, session_id.to_string());
         }
@@ -274,11 +290,11 @@ impl Harness {
         // Validate the credential before Start so boundary failures (missing
         // key, unsupported model) produce only the caller-owned Error event —
         // no Start precedes it.
-        let provider = Provider::for_model(self.model, &cfg)?;
+        let provider = Provider::for_model_kind(&self.model, self.model_kind, &cfg)?;
         tx.send(StreamEvent::Start {
             message_id: Uuid::new_v4(),
             mode: self.mode,
-            model: self.model,
+            model: self.model.clone(),
             pwd: self
                 .project_root
                 .as_deref()
@@ -365,9 +381,10 @@ impl Harness {
             &self.tools
         };
         let tools = crate::tools::adapter::rig_tools(tools_registry);
-        let mut agent = Agent::new(provider.clone(), self.model, system_prompt)
+        let mut agent = Agent::new(provider.clone(), self.model.clone(), system_prompt)
             .with_tools(tools)
-            .with_session_tokens(self.compaction.context_tokens);
+            .with_session_tokens(self.compaction.context_tokens)
+            .with_context_limit(self.model.context_limit(self.model_context_length));
         if let Some(max_tokens) = self.max_tokens {
             agent = agent.with_max_tokens(max_tokens);
         }
@@ -395,7 +412,8 @@ impl Harness {
             input_tokens: (usage.input_tokens > 0).then_some(usage.input_tokens),
             output_tokens: (usage.output_tokens > 0).then_some(usage.output_tokens),
             session_tokens: Some(self.compaction.context_tokens),
-            context_limit: (self.model.context_limit() > 0).then(|| self.model.context_limit()),
+            context_limit: (self.model.context_limit(self.model_context_length) > 0)
+                .then(|| self.model.context_limit(self.model_context_length)),
             cost_usd: usage.cost,
         })
         .await
@@ -423,7 +441,7 @@ impl Harness {
         tx.send(StreamEvent::Start {
             message_id,
             mode: self.mode,
-            model: self.model,
+            model: self.model.clone(),
             pwd: self
                 .project_root
                 .as_deref()
@@ -446,8 +464,8 @@ impl Harness {
             input_tokens: None,
             output_tokens: None,
             session_tokens: Some(self.compaction.context_tokens),
-            context_limit: if self.model.context_limit() > 0 {
-                Some(self.model.context_limit())
+            context_limit: if self.model.context_limit(self.model_context_length) > 0 {
+                Some(self.model.context_limit(self.model_context_length))
             } else {
                 None
             },
