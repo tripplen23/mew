@@ -13,7 +13,9 @@ use ratatui::layout::Rect;
 
 use crate::net::SessionPatch;
 
-use crate::runtime::model::{Cmd, Overlay, PickerState, SessionState};
+use crate::runtime::model::{
+    CONNECT_PROVIDERS, Cmd, Overlay, PickerState, SLASH_COMMANDS, SessionState,
+};
 use crate::runtime::update::key_to_input;
 
 /// Handle navigation and selection inside the model picker overlay.
@@ -109,36 +111,47 @@ fn move_picker_cursor(picker: &mut PickerState, len: usize, delta: i32) {
     picker.cursor = (picker.cursor as i32 + delta).clamp(0, max) as usize;
 }
 
-/// Mouse handling for the active scrollable picker overlay (skills, session
-/// list, file picker). Wheel scrolls a row per tick; a left click on a row
-/// moves the cursor there (Enter still runs the pick). Returns `true` when
-/// the pointer is over the picker's content rect, so the session screen does
-/// not also scroll the transcript.
-pub(super) fn on_picker_mouse(s: &mut SessionState, event: MouseEvent) -> bool {
+/// Outcome of routing a mouse event through the active picker.
+pub(super) enum PickerMouseResult {
+    /// Pointer was outside the picker or the event was not actionable.
+    Ignored,
+    /// Picker consumed the event without activating a row.
+    Consumed,
+    /// A selectable row was clicked and should run the overlay's Enter action.
+    Activate,
+}
+
+/// Mouse handling for the active scrollable picker overlay. Wheel scrolls a
+/// row per tick; a left click selects and immediately activates that row.
+/// Events outside the content rect remain available to the session screen.
+pub(super) fn on_picker_mouse(s: &mut SessionState, event: MouseEvent) -> PickerMouseResult {
     let Some(rect) = picker_rect(s) else {
-        return false;
+        return PickerMouseResult::Ignored;
     };
     if event.column < rect.x
         || event.column >= rect.x + rect.width
         || event.row < rect.y
         || event.row >= rect.y + rect.height
     {
-        return false;
+        return PickerMouseResult::Ignored;
     }
     match event.kind {
         MouseEventKind::ScrollUp => {
             cursor_move(s, -1);
-            true
+            PickerMouseResult::Consumed
         }
         MouseEventKind::ScrollDown => {
             cursor_move(s, 1);
-            true
+            PickerMouseResult::Consumed
         }
         MouseEventKind::Down(MouseButton::Left) => {
-            click_picker_row(s, rect, event.row);
-            true
+            if click_picker_row(s, rect, event.row) {
+                PickerMouseResult::Activate
+            } else {
+                PickerMouseResult::Consumed
+            }
         }
-        _ => false,
+        _ => PickerMouseResult::Ignored,
     }
 }
 
@@ -149,44 +162,86 @@ fn picker_rect(s: &SessionState) -> Option<Rect> {
         Overlay::SessionList => s.session_list.picker.rect,
         Overlay::Skills => s.skills_picker.rect,
         Overlay::FilePicker => s.file_picker.picker.rect,
+        Overlay::SlashPicker => s.slash_picker_geometry.map(|(rect, _)| rect),
+        Overlay::ConnectProvider
+            if s.connect_provider.step == crate::runtime::model::ConnectStep::PickProvider =>
+        {
+            s.connect_provider.picker.rect
+        }
         _ => None,
     }
 }
 
-// Map a clicked screen row to an entry index and move the cursor there.
-fn click_picker_row(s: &mut SessionState, rect: Rect, row: u16) {
+// Map a clicked screen row to an entry index. Returns true only when the row
+// is selectable, so provider headers and empty rows never activate.
+fn click_picker_row(s: &mut SessionState, rect: Rect, row: u16) -> bool {
     let local = (row.saturating_sub(rect.y)) as usize;
     match s.overlay {
         Overlay::SessionList => {
             let len = s.session_list.summaries.len();
-            let index = (s.session_list.picker.scroll + local).min(len.saturating_sub(1));
+            if local >= rect.height as usize || len == 0 {
+                return false;
+            }
+            let index = s.session_list.picker.scroll + local;
+            if index >= len {
+                return false;
+            }
             s.session_list.picker.cursor = index;
             clamp_session_list_scroll(s);
+            true
         }
         Overlay::Skills => {
             let len = s.skills.as_ref().map(Vec::len).unwrap_or(0);
-            let index = (s.skills_picker.scroll + local).min(len.saturating_sub(1));
+            let index = s.skills_picker.scroll + local;
+            if index >= len {
+                return false;
+            }
             s.skills_picker.cursor = index;
             clamp_skills_picker_scroll(s);
+            true
         }
         Overlay::FilePicker => {
             let len = s.filtered_files().len();
-            let index = (s.file_picker.picker.scroll + local).min(len.saturating_sub(1));
+            let index = s.file_picker.picker.scroll + local;
+            if index >= len {
+                return false;
+            }
             s.file_picker.picker.cursor = index;
             clamp_file_picker_scroll(s);
+            true
         }
         // Model rows include provider headers; only model rows map to entries.
         Overlay::ModelPicker => {
             let Some(models) = s.model_picker.models.as_ref() else {
-                return;
+                return false;
             };
             let visual_row = s.model_picker.picker.scroll + local;
-            if let Some(index) = model_entry_at_row(models, visual_row) {
-                s.model_picker.picker.cursor = index;
-                clamp_model_picker_scroll(s);
-            }
+            let Some(index) = model_entry_at_row(models, visual_row) else {
+                return false;
+            };
+            s.model_picker.picker.cursor = index;
+            clamp_model_picker_scroll(s);
+            true
         }
-        _ => {}
+        Overlay::SlashPicker => {
+            let Some((_, start)) = s.slash_picker_geometry else {
+                return false;
+            };
+            let index = start + local;
+            if index >= SLASH_COMMANDS.len() {
+                return false;
+            }
+            s.slash_cursor = index;
+            true
+        }
+        Overlay::ConnectProvider => {
+            if local >= CONNECT_PROVIDERS.len() {
+                return false;
+            }
+            s.connect_provider.picker.cursor = local;
+            true
+        }
+        _ => false,
     }
 }
 
@@ -300,6 +355,21 @@ fn cursor_move(s: &mut SessionState, delta: i32) -> Cmd {
                 s.skills_picker.cursor,
                 len,
                 s.skills_picker.viewport.max(1) as usize,
+            );
+            Cmd::None
+        }
+        Overlay::SlashPicker => {
+            if !SLASH_COMMANDS.is_empty() {
+                let max = (SLASH_COMMANDS.len() - 1) as i32;
+                s.slash_cursor = (s.slash_cursor as i32 + delta).clamp(0, max) as usize;
+            }
+            Cmd::None
+        }
+        Overlay::ConnectProvider => {
+            move_picker_cursor(
+                &mut s.connect_provider.picker,
+                CONNECT_PROVIDERS.len(),
+                delta,
             );
             Cmd::None
         }

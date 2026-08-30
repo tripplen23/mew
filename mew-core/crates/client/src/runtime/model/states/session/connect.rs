@@ -2,12 +2,19 @@ use tui_textarea::TextArea;
 
 use mewcode_protocol::ProviderId;
 
+use super::PickerState;
+
+/// Providers selectable in the connect dialog.
+pub const CONNECT_PROVIDERS: &[ProviderId] = &[ProviderId::OpenCodeGo, ProviderId::OpenAi];
+
 /// State for the provider connect dialog.
 #[derive(Default)]
 pub struct ConnectProviderState {
     /// Which step in the wizard: picking provider, entering key, or awaiting validation.
     pub step: ConnectStep,
-    /// Which provider the user selected.
+    /// Shared cursor and hit-test geometry for the provider list.
+    pub picker: PickerState,
+    /// Provider committed by Enter or click.
     pub selected_provider: Option<ProviderId>,
     /// Error message from validation, if any.
     pub error: Option<String>,

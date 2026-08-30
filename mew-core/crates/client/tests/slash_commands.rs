@@ -6,7 +6,7 @@
 //! - the `Cmd` returned to the runtime (the side effect to dispatch),
 //! - the resulting state mutation (overlay state, model state).
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::Terminal;
 use ratatui::backend::{Backend, TestBackend};
 use tui_textarea::TextArea;
@@ -586,6 +586,60 @@ fn slash_picker_lists_theme_command() {
 }
 
 #[test]
+fn connect_provider_click_selects_and_confirms_row() {
+    let mut app = test_app();
+    {
+        let s = active_state(&mut app);
+        s.overlay = Overlay::ConnectProvider;
+        s.connect_provider.step = ConnectStep::PickProvider;
+    }
+    render_picker(&mut app, 80, 24);
+    let rect = active_state(&mut app)
+        .connect_provider
+        .picker
+        .rect
+        .expect("render should store connect picker geometry");
+
+    let cmd = update(
+        &mut app,
+        picker_mouse(MouseEventKind::Down(MouseButton::Left), rect.x, rect.y + 1),
+    );
+
+    let s = active_state(&mut app);
+    assert!(matches!(cmd, Cmd::None));
+    assert_eq!(
+        s.connect_provider.selected_provider,
+        Some(ProviderId::OpenAi)
+    );
+    assert_eq!(s.connect_provider.step, ConnectStep::EnterKey);
+}
+
+#[test]
+fn connect_provider_wheel_uses_shared_picker_cursor() {
+    let mut app = test_app();
+    {
+        let s = active_state(&mut app);
+        s.overlay = Overlay::ConnectProvider;
+        s.connect_provider.step = ConnectStep::PickProvider;
+    }
+    render_picker(&mut app, 80, 24);
+    let rect = active_state(&mut app)
+        .connect_provider
+        .picker
+        .rect
+        .expect("render should store connect picker geometry");
+
+    let _ = update(
+        &mut app,
+        picker_mouse(MouseEventKind::ScrollDown, rect.x, rect.y),
+    );
+
+    let s = active_state(&mut app);
+    assert_eq!(s.connect_provider.picker.cursor, 1);
+    assert_eq!(s.connect_provider.step, ConnectStep::PickProvider);
+}
+
+#[test]
 fn connect_overlay_parks_cursor_in_api_key_field() {
     let mut app = test_app();
     {
@@ -966,6 +1020,20 @@ fn press_arrow(code: KeyCode) -> Msg {
     Msg::Key(KeyEvent::new(code, KeyModifiers::NONE))
 }
 
+fn picker_mouse(kind: MouseEventKind, column: u16, row: u16) -> Msg {
+    Msg::Mouse(MouseEvent {
+        kind,
+        column,
+        row,
+        modifiers: KeyModifiers::NONE,
+    })
+}
+
+fn render_picker(app: &mut App, width: u16, height: u16) {
+    let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+    terminal.draw(|frame| render(frame, app)).unwrap();
+}
+
 #[test]
 fn typing_slash_opens_picker() {
     let mut app = test_app();
@@ -1013,6 +1081,82 @@ fn picker_down_arrow_moves_cursor() {
     assert_eq!(active_state(&mut app).slash_cursor, 2);
     let _ = update(&mut app, press_arrow(KeyCode::Up));
     assert_eq!(active_state(&mut app).slash_cursor, 1);
+}
+
+#[test]
+fn picker_mouse_wheel_moves_cursor_without_scrolling_transcript() {
+    let mut app = test_app();
+    let _ = update(&mut app, type_char('/'));
+    render_picker(&mut app, 80, 24);
+    active_state(&mut app).scroll = 5;
+    active_state(&mut app).max_scroll = 10;
+    let rect = active_state(&mut app)
+        .slash_picker_geometry
+        .expect("render should store slash picker geometry")
+        .0;
+
+    let _ = update(
+        &mut app,
+        picker_mouse(MouseEventKind::ScrollDown, rect.x, rect.y),
+    );
+
+    let s = active_state(&mut app);
+    assert_eq!(s.slash_cursor, 1);
+    assert_eq!(s.scroll, 5, "picker wheel must not scroll the transcript");
+}
+
+#[test]
+fn picker_mouse_click_activates_visible_row() {
+    let mut app = test_app();
+    let _ = update(&mut app, type_char('/'));
+    render_picker(&mut app, 80, 24);
+    let rect = active_state(&mut app)
+        .slash_picker_geometry
+        .expect("render should store slash picker geometry")
+        .0;
+
+    let cmd = update(
+        &mut app,
+        picker_mouse(MouseEventKind::Down(MouseButton::Left), rect.x, rect.y + 4),
+    );
+
+    assert!(matches!(cmd, Cmd::None));
+    assert_eq!(active_state(&mut app).overlay, Overlay::Tools);
+}
+
+#[test]
+fn model_picker_click_activates_model_row() {
+    let mut app = test_app();
+    seed_active_session(active_state(&mut app));
+    active_state(&mut app).model_picker.models = Some(vec![mewcode_client::net::ModelEntry {
+        id: "minimax-m3".into(),
+        display_name: "MiniMax M3".into(),
+        provider: ProviderId::OpenCodeGo,
+        kind: mewcode_protocol::ModelKind::OpenCodeGo,
+    }]);
+    active_state(&mut app).overlay = Overlay::ModelPicker;
+    render_picker(&mut app, 80, 24);
+    let rect = active_state(&mut app)
+        .model_picker
+        .picker
+        .rect
+        .expect("render should store model picker geometry");
+
+    let cmd = update(
+        &mut app,
+        picker_mouse(MouseEventKind::Down(MouseButton::Left), rect.x, rect.y + 1),
+    );
+
+    assert!(matches!(
+        cmd,
+        Cmd::PatchSession {
+            patch: mewcode_client::net::SessionPatch {
+                model: Some(ModelId::MiniMaxM3),
+                ..
+            },
+            ..
+        }
+    ));
 }
 
 #[test]

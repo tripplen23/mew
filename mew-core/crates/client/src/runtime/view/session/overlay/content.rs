@@ -2,14 +2,14 @@ use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::{Block, Clear, Paragraph, Wrap};
+use ratatui::widgets::{Block, Clear, Paragraph};
 
 use mewcode_protocol::Mode;
 use mewcode_protocol::ModelId;
 use mewcode_protocol::ProviderId;
 use mewcode_protocol::tool::allowed_tools_for_mode;
 
-use crate::runtime::model::{SLASH_COMMANDS, SessionState, ThemeId};
+use crate::runtime::model::{CONNECT_PROVIDERS, SLASH_COMMANDS, SessionState, ThemeId};
 use crate::runtime::view::panel::scroll_start_for_cursor;
 use crate::runtime::view::text_cursor_glyph;
 
@@ -131,7 +131,7 @@ pub(super) fn choice_lines(s: &SessionState) -> (Vec<Line<'static>>, usize) {
     (lines, cursor_line)
 }
 
-pub(super) fn render_slash_picker(frame: &mut Frame, area: Rect, s: &SessionState) {
+pub(super) fn render_slash_picker(frame: &mut Frame, area: Rect, s: &mut SessionState) {
     let row_count = SLASH_COMMANDS.len() as u16;
     let max_height = fallback(area.height.saturating_sub(4), 1);
     let height = row_count.saturating_add(2).min(max_height.max(3));
@@ -162,6 +162,7 @@ pub(super) fn render_slash_picker(frame: &mut Frame, area: Rect, s: &SessionStat
         .unwrap_or(0);
     let visible = inner.height as usize;
     let start = scroll_start_for_cursor(s.slash_cursor, visible, SLASH_COMMANDS.len());
+    s.slash_picker_geometry = Some((inner, start));
     let lines: Vec<Line> = SLASH_COMMANDS
         .iter()
         .enumerate()
@@ -174,13 +175,15 @@ pub(super) fn render_slash_picker(frame: &mut Frame, area: Rect, s: &SessionStat
                 Style::default()
             };
             let cmd = format!("{:<cmd_w$}", c.command);
-            Line::from(Span::styled(format!(" {cmd}  {}", c.description), style))
+            let text = truncate_with_ellipsis(
+                &format!(" {cmd}  {}", c.description),
+                inner.width as usize,
+                "…",
+            );
+            Line::from(Span::styled(text, style))
         })
         .collect();
-    frame.render_widget(
-        Paragraph::new(Text::from(lines)).wrap(Wrap { trim: false }),
-        inner,
-    );
+    frame.render_widget(Paragraph::new(Text::from(lines)), inner);
 }
 
 pub(super) fn file_picker_lines(s: &SessionState, max_width: usize) -> Vec<Line<'static>> {
@@ -464,19 +467,15 @@ pub(super) fn connect_provider_lines(s: &SessionState) -> Vec<Line<'static>> {
     let state = &s.connect_provider;
     match state.step {
         ConnectStep::PickProvider => {
-            let providers = [ProviderId::OpenCodeGo, ProviderId::OpenAi];
             let mut lines = vec![Line::from("Select a provider to connect:")];
-            for p in providers {
-                let marker = if Some(p) == state.selected_provider {
-                    "▶"
-                } else {
-                    " "
-                };
+            for (i, &provider) in CONNECT_PROVIDERS.iter().enumerate() {
+                let selected = i == state.picker.cursor;
+                let marker = if selected { "▶" } else { " " };
                 lines.push(Line::from(vec![
                     Span::raw(format!("  {marker} ")),
                     Span::styled(
-                        p.to_string(),
-                        if Some(p) == state.selected_provider {
+                        provider.to_string(),
+                        if selected {
                             Style::default()
                                 .add_modifier(Modifier::BOLD)
                                 .fg(Color::Cyan)

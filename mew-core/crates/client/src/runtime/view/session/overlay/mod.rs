@@ -8,8 +8,8 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::runtime::model::{ConnectStep, Overlay, SessionState};
 use crate::runtime::view::panel::{
-    centered_rect, panel_list_content_rect, render_panel, render_scrolled_panel,
-    render_scrolled_text_panel, wrapped_line_count,
+    centered_rect, panel_content_rect, panel_list_content_rect, render_panel,
+    render_scrolled_panel, render_scrolled_text_panel, wrapped_line_count,
 };
 use crate::runtime::view::session::overlay::content::{
     choice_lines, connect_provider_key_text, connect_provider_lines, file_picker_lines,
@@ -89,6 +89,18 @@ pub(super) fn render_active_overlay(frame: &mut Frame, area: Rect, s: &mut Sessi
             render_scrolled_text_panel(frame, area, "Choose", body, scroll as u16);
         }
         Overlay::ConnectProvider => {
+            let rect = centered_rect(area, 60, 60);
+            if s.connect_provider.step == ConnectStep::PickProvider {
+                let inner = panel_content_rect(rect);
+                s.connect_provider.picker.rect = Some(Rect {
+                    x: inner.x,
+                    y: inner.y.saturating_add(1),
+                    width: inner.width,
+                    height: crate::runtime::model::CONNECT_PROVIDERS.len() as u16,
+                });
+            } else {
+                s.connect_provider.picker.rect = None;
+            }
             let body = connect_provider_lines(s);
             let title = match s.connect_provider.step {
                 ConnectStep::PickProvider => "Connect Provider",

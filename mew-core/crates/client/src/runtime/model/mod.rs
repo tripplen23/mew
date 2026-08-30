@@ -13,9 +13,9 @@ mod states;
 pub use cmd::{Cmd, QUIT_COMMAND};
 pub use msg::{CreateError, Msg, StreamMsg};
 pub use states::{
-    App, CachedBlock, ChoicePromptState, CompactionEntry, CompactionUiState, CompactionView,
-    ConnectProviderState, ConnectStep, CreationState, FileEntry, FilePickerState, ModelPickerState,
-    Overlay, PASTED_MARKER_PREFIX, PastedText, PickerState, SLASH_COMMANDS, Screen,
-    SessionListState, SessionState, SlashCommand, SlashCommandKind, StreamingState, ThemeId, Toast,
-    ToastKind, ToolCallView, TranscriptCache, TurnItem, slash_command_by_token,
+    App, CONNECT_PROVIDERS, CachedBlock, ChoicePromptState, CompactionEntry, CompactionUiState,
+    CompactionView, ConnectProviderState, ConnectStep, CreationState, FileEntry, FilePickerState,
+    ModelPickerState, Overlay, PASTED_MARKER_PREFIX, PastedText, PickerState, SLASH_COMMANDS,
+    Screen, SessionListState, SessionState, SlashCommand, SlashCommandKind, StreamingState,
+    ThemeId, Toast, ToastKind, ToolCallView, TranscriptCache, TurnItem, slash_command_by_token,
 };

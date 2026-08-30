@@ -660,7 +660,7 @@ fn skills_picker_wheel_outside_picker_scrolls_transcript() {
 }
 
 #[test]
-fn skills_picker_click_selects_row() {
+fn skills_picker_click_activates_row() {
     let mut app = skills_app_with_picker();
 
     update(
@@ -672,7 +672,8 @@ fn skills_picker_click_selects_row() {
     );
 
     let s = sess(&app);
-    assert_eq!(s.skills_picker.cursor, 3, "click maps screen row to entry");
+    assert_eq!(s.composer.lines().join("\n"), "/skill-3 ");
+    assert_eq!(s.overlay, Overlay::None);
     assert_eq!(s.scroll, 0, "transcript must not scroll");
 }
 

@@ -41,7 +41,7 @@ pub fn update(app: &mut App, msg: Msg) -> Cmd {
     match msg {
         Msg::Key(key) => on_session_key(s, toast, key),
 
-        Msg::Mouse(event) => on_session_mouse(s, event),
+        Msg::Mouse(event) => on_session_mouse(s, toast, event),
 
         Msg::ChoiceRequested(request) => {
             s.pending_choice = Some(super::model::ChoicePromptState::new(request));

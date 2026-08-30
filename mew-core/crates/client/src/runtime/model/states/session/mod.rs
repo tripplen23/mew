@@ -21,7 +21,7 @@ mod streaming;
 mod transcript_cache;
 
 pub use choice::ChoicePromptState;
-pub use connect::{ConnectProviderState, ConnectStep};
+pub use connect::{CONNECT_PROVIDERS, ConnectProviderState, ConnectStep};
 pub use pickers::{FileEntry, FilePickerState, ModelPickerState, PickerState, SessionListState};
 pub use slash::{SLASH_COMMANDS, SlashCommand, SlashCommandKind, slash_command_by_token};
 pub use streaming::{CompactionEntry, CompactionView, StreamingState, ToolCallView, TurnItem};
@@ -131,6 +131,8 @@ pub struct SessionState {
     pub skills_picker: PickerState,
     /// Highlighted row in the slash-command picker (0-based).
     pub slash_cursor: usize,
+    /// Absolute content rect and first visible row from the last slash-picker render.
+    pub slash_picker_geometry: Option<(ratatui::layout::Rect, usize)>,
     /// File picker with @ command
     pub file_picker: FilePickerState,
     /// Pending structured choice prompt, if any.
@@ -179,6 +181,7 @@ impl SessionState {
             skills: None,
             skills_picker: PickerState::default(),
             slash_cursor: 0,
+            slash_picker_geometry: None,
             file_picker: FilePickerState::default(),
             pending_choice: None,
             connect_provider: ConnectProviderState::default(),

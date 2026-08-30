@@ -16,8 +16,8 @@ use commands::switch_mode;
 use composer::on_session_submit;
 use connect::on_connect_provider_key;
 use picker::{
-    on_file_picker_key, on_model_picker_key, on_picker_mouse, on_session_list_key,
-    on_skills_picker_key, open_file_picker, refresh_file_picker,
+    PickerMouseResult, on_file_picker_key, on_model_picker_key, on_picker_mouse,
+    on_session_list_key, on_skills_picker_key, open_file_picker, refresh_file_picker,
 };
 use slash::{SlashPickerResult, on_slash_picker_key, open_slash_picker, slash_default_cursor};
 
@@ -33,12 +33,19 @@ pub(super) use choice::submit_choice_response;
 pub(super) use composer::on_session_paste;
 pub(super) use streaming::apply_stream_event;
 
-/// Session screen: mouse events. Picker overlays get wheel/click first via
-/// [`picker::on_picker_mouse`]; otherwise wheel scrolls the transcript and a
-/// click on the todo header toggles collapse.
-pub(super) fn on_session_mouse(s: &mut SessionState, event: MouseEvent) -> Cmd {
-    if on_picker_mouse(s, event) {
-        return Cmd::None;
+/// Session screen mouse events. Picker wheel/click goes through one shared
+/// router; clicking a selectable row reuses the overlay's Enter behavior.
+pub(super) fn on_session_mouse(
+    s: &mut SessionState,
+    toast: &mut Option<Toast>,
+    event: MouseEvent,
+) -> Cmd {
+    match on_picker_mouse(s, event) {
+        PickerMouseResult::Activate => {
+            return on_session_key(s, toast, KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        }
+        PickerMouseResult::Consumed => return Cmd::None,
+        PickerMouseResult::Ignored => {}
     }
     match event.kind {
         MouseEventKind::ScrollUp => scroll_by(s, -3),
